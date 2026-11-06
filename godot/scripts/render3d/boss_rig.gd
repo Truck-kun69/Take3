@@ -16,6 +16,8 @@ var head: Node3D
 var core_mat: StandardMaterial3D
 var shards: Array[Node3D] = []
 var flash_mats: Array[StandardMaterial3D] = []
+var char_mats: Array[ShaderMaterial] = []
+var core_cmat: ShaderMaterial
 var light: OmniLight3D
 var override: Node3D
 var anim: AnimationPlayer
@@ -64,41 +66,71 @@ func _p(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, scl: Vector3, r
 func _n(parent: Node3D, pos: Vector3) -> Node3D:
 	var n := Node3D.new(); n.position = pos; parent.add_child(n); return n
 
+func _cm(c: Color, kind: int, rough: float = 0.7, metal: float = 0.0, emis: Color = Color.BLACK, ei: float = 0.0) -> ShaderMaterial:
+	var m := HeroRig.char_mat(c, kind, rough, metal, emis, ei)
+	char_mats.append(m)
+	return m
+
+## Charred demon tyrant (loop 2 rebuild): ashen hide with ember cracks, muscular capsule limbs,
+## digitigrade legs, segmented curved horns, membrane wings, bone ribs over a furnace core.
+## The stage colour only drives the emissive parts, the body stays dark like PoE2 bosses.
 func _build_tyrant() -> void:
 	HeroRig._prims()
-	var hide_m := _m(col.darkened(0.55), 0.8)
-	var plate := _m(col.darkened(0.2), 0.45, 0.3)
-	var bone := _m(Color("e8e0d0"), 0.6)
-	core_mat = _m(col.lightened(0.2), 0.2, 0.0, col, 5.0)
-	var eye := _m(Color.WHITE, 0.2, 0.0, Color("ff5030"), 6.0)
-	root = _n(self, Vector3(0, 48, 0))
-	for s in [-1.0, 1.0]:
-		var lg := _n(root, Vector3(0, 0, 12.0 * s))
-		_p(lg, HeroRig._box, hide_m, Vector3(0, -22, 0), Vector3(13, 44, 13))
-		_p(lg, HeroRig._box, plate, Vector3(4, -46, 0), Vector3(20, 8, 15))
+	var hide := _cm(Color("2a2422"), 1, 0.8)
+	var hide_l := _cm(Color("3c3330"), 1, 0.75)
+	var bone := _cm(Color("cfc4b0"), 1, 0.55)
+	var horn := _cm(Color("1c1816"), 2, 0.4, 0.3)
+	var memb := _cm(col.darkened(0.75), 0, 0.85)
+	memb.set_shader_parameter("grime", 0.8)
+	var ember := _cm(col.lightened(0.2), 4, 0.3, 0.0, col, 2.4)
+	core_cmat = _cm(col.lightened(0.4), 4, 0.2, 0.0, col, 4.0)
+	var eye := _cm(Color.WHITE, 4, 0.2, 0.0, col.lightened(0.3), 5.0)
+	root = _n(self, Vector3(0, 52, 0))
+	for s2 in [-1.0, 1.0]:                                               # digitigrade legs
+		var lg := _n(root, Vector3(-2, 0, 13.0 * s2))
+		_p(lg, HeroRig._taper(7.0, 5.0), hide, Vector3(4, -12, 0), Vector3(1, 24, 1), Vector3(0, 0, 0.35))
+		_p(lg, HeroRig._taper(4.6, 3.2), hide_l, Vector3(1, -34, 0), Vector3(1, 22, 1), Vector3(0, 0, -0.4))
+		_p(lg, HeroRig._sph, horn, Vector3(5, -49, 0), Vector3(15, 6, 12))
+		for c in 3: _p(lg, HeroRig._cone, bone, Vector3(13, -51, -4 + c * 4), Vector3(2.2, 6, 2.2), Vector3(0, 0, -1.5))
 		legs.append(lg)
-	var body := _p(root, HeroRig._sph, hide_m, Vector3(0, 30, 0), Vector3(38, 52, 46))
-	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	_p(root, HeroRig._sph, core_mat, Vector3(14, 32, 0), Vector3(14, 18, 18))
-	for r in 4:
-		_p(root, HeroRig._box, bone, Vector3(17, 22 + r * 6, 0), Vector3(3, 2.5, 30), Vector3(0, 0, 0.2))
-	head = _n(root, Vector3(10, 62, 0))
-	_p(head, HeroRig._sph, plate, Vector3.ZERO, Vector3(20, 18, 20))
-	_p(head, HeroRig._box, eye, Vector3(9, 1, 4), Vector3(2, 2, 3))
-	_p(head, HeroRig._box, eye, Vector3(9, 1, -4), Vector3(2, 2, 3))
-	for s in [-1.0, 1.0]:
-		_p(head, HeroRig._cone, bone, Vector3(-2, 12, 9 * s), Vector3(5, 22, 5), Vector3(0.5 * s, 0, 0.5))
-		var ar := _n(root, Vector3(4, 46, 26 * s))
-		_p(ar, HeroRig._box, hide_m, Vector3(0, -16, 0), Vector3(11, 32, 11))
-		_p(ar, HeroRig._sph, plate, Vector3(0, 0, 0), Vector3(18, 14, 18))
-		_p(ar, HeroRig._cone, bone, Vector3(4, -36, 0), Vector3(9, 20, 9), Vector3(0, 0, PI * 0.9))
+	_p(root, HeroRig._sph, hide, Vector3(0, 6, 0), Vector3(30, 24, 34))                  # pelvis mass
+	_p(root, HeroRig._sph, hide, Vector3(4, 30, 0), Vector3(38, 44, 50))                  # torso
+	_p(root, HeroRig._sph, core_cmat, Vector3(14, 30, 0), Vector3(14, 20, 20))            # furnace behind the ribs
+	for r in 4:                                                          # ribs: V-shaped bars on the chest front
+		for s3 in [-1.0, 1.0]:
+			_p(root, HeroRig._box, bone, Vector3(20.5 - absf(r - 1.5) * 0.8, 20 + r * 6.0, 6.5 * s3), Vector3(2.2, 2.0, 11.0 - r * 0.6), Vector3(0.55 * s3, 0, 0))
+	for k in 6:                                                          # ember cracks in the hide
+		_p(root, HeroRig._box, ember, Vector3(-6 + k * 3, 18 + (k % 3) * 11, (-1 + (k % 2) * 2) * 22), Vector3(9, 0.8, 0.6), Vector3(0.3 * k, 0, 0.8 - k * 0.3))
+	_p(root, HeroRig._sph, hide_l, Vector3(-6, 46, 15), Vector3(22, 18, 20))              # shoulder masses
+	_p(root, HeroRig._sph, hide_l, Vector3(-6, 46, -15), Vector3(22, 18, 20))
+	head = _n(root, Vector3(14, 58, 0))
+	_p(head, HeroRig._sph, hide, Vector3.ZERO, Vector3(18, 16, 17))
+	_p(head, HeroRig._sph, hide_l, Vector3(7, -5, 0), Vector3(12, 8, 12))                 # jaw
+	for t in 4: _p(head, HeroRig._cone, bone, Vector3(11, -7, -4.5 + t * 3), Vector3(1.4, 4, 1.4), Vector3(0, 0, PI))
+	_p(head, HeroRig._box, eye, Vector3(8.4, 1.5, 3.6), Vector3(1.4, 1.4, 2.6))
+	_p(head, HeroRig._box, eye, Vector3(8.4, 1.5, -3.6), Vector3(1.4, 1.4, 2.6))
+	for s4 in [-1.0, 1.0]:                                               # curved, segmented horns
+		var hp := _n(head, Vector3(-2, 6, 7 * s4))
+		var prev := hp
+		for k in 4:
+			var seg := _n(prev, Vector3(0, 5.5 if k > 0 else 0.0, 0))
+			seg.rotation = Vector3(0.35 * s4, 0, -0.35)
+			_p(seg, HeroRig._taper(1.2 * (4 - k) * 0.5, 1.6 * (4 - k) * 0.5), horn, Vector3(0, 2.8, 0), Vector3(1, 6, 1))
+			prev = seg
+		var ar := _n(root, Vector3(2, 46, 30 * s4))
+		_p(ar, HeroRig._taper(5.2, 4.2), hide, Vector3(0, -12, 0), Vector3(1, 22, 1))
+		_p(ar, HeroRig._taper(4.2, 3.4), hide_l, Vector3(4, -30, 0), Vector3(1, 18, 1), Vector3(0, 0, 0.3))
+		_p(ar, HeroRig._sph, hide, Vector3(7, -42, 0), Vector3(10, 9, 10))
+		for c in 3: _p(ar, HeroRig._cone, bone, Vector3(10, -47, -3 + c * 3), Vector3(1.8, 9, 1.8), Vector3(0, 0, PI * 0.85))
 		arms.append(ar)
-		var wg := _n(root, Vector3(-16, 50, 10 * s))
-		var wm := _m(col.darkened(0.6), 0.9)
-		wm.cull_mode = BaseMaterial3D.CULL_DISABLED
-		_p(wg, HeroRig._box, wm, Vector3(-18, 8, 22 * s), Vector3(40, 1.5, 44), Vector3(0.3 * s, 0, 0.4))
+		var wg := _n(root, Vector3(-14, 52, 10 * s4))                    # membrane wing on a bone strut
+		_p(wg, HeroRig._taper(0.6, 1.1), horn, Vector3(-14, 12, 18 * s4), Vector3(1, 46, 1), Vector3(0.9 * s4, 0, 0.9))
+		var mm := memb
+		var mesh_m := _p(wg, HeroRig._prism, mm, Vector3(-18, 4, 24 * s4), Vector3(50, 42, 1.2), Vector3(0.8 * s4, 0, 0.55))
+		_p(wg, HeroRig._box, ember, Vector3(-18, -14, 24 * s4), Vector3(40, 0.6, 0.8), Vector3(0.8 * s4, 0, 0.55))     # ember-lit trailing edge
+		mesh_m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		wings.append(wg)
-	light.position = Vector3(30, 80, 0)
+	light.position = Vector3(36, 80, 0)
 
 func _build_herald() -> void:
 	HeroRig._prims()
@@ -139,11 +171,14 @@ func animate(st: Dictionary) -> void:
 			if anim.has_animation(want) and anim.current_animation != want: anim.play(want, 0.2)
 		return
 	var fl := clampf(float(st.flash) * 10.0, 0.0, 1.0)
+	for m in char_mats:
+		m.set_shader_parameter("flash", fl * fl * fl * 0.35)
 	for m in flash_mats:
 		m.emission = col.lightened(0.5)
 		m.emission_energy_multiplier = fl * fl * fl * 0.5
 	var pulse := 0.5 + 0.5 * sin(t * (3.0 + 4.0 * (1.0 - float(st.hp_frac))))
 	if core_mat != null: core_mat.emission_energy_multiplier = (2.0 + pulse * 3.0) if kind == "herald" else (3.0 + pulse * 4.0)
+	if core_cmat != null: core_cmat.set_shader_parameter("pulse", pulse * 1.5)
 	light.light_energy = (2.0 + pulse * 2.5) * WorldView3D.LIGHT_GAIN
 	if kind == "herald":
 		root.position.y = 70.0 + sin(t * 1.3) * 8.0
@@ -157,7 +192,7 @@ func animate(st: Dictionary) -> void:
 	var sw := sin(_ph) * 0.45
 	legs[0].rotation.z = sw
 	legs[1].rotation.z = -sw
-	root.position.y = 48.0 + absf(sin(_ph)) * 3.0
+	root.position.y = 52.0 + absf(sin(_ph)) * 3.0
 	# slam wind-up: both arms rise then crash down
 	var raise := sin(clampf(_atk, 0.0, 1.0) * PI)
 	for i in arms.size():

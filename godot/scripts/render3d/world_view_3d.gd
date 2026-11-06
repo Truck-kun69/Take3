@@ -49,6 +49,7 @@ var _prop_mm := {}
 var _chunk_key := ""
 var _look: Dictionary
 var cost_us := 0.0
+var sky_mat: ProceduralSkyMaterial
 
 func _ready() -> void:
 	cam = Camera3D.new()
@@ -59,6 +60,12 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	env = Environment.new()
 	env.background_mode = Environment.BG_COLOR
+	# a dim sky used only for reflections, so metal armour has something to reflect instead of black
+	sky_mat = ProceduralSkyMaterial.new()
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	env.sky = sky
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_energy = 0.3
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -153,6 +160,36 @@ func _ready() -> void:
 	fx = FX3D.new()
 	add_child(fx)
 	fx.view = self
+	_aura_mm = MultiMeshInstance3D.new()
+	var amm := MultiMesh.new()
+	amm.transform_format = MultiMesh.TRANSFORM_3D
+	amm.use_colors = true
+	var ap := PlaneMesh.new()
+	ap.size = Vector2(2, 2)
+	amm.mesh = ap
+	amm.instance_count = 64
+	amm.visible_instance_count = 0
+	amm.custom_aabb = AABB(Vector3(-1e6, -10, -1e6), Vector3(2e6, 20, 2e6))
+	_aura_mm.multimesh = amm
+	var asm := ShaderMaterial.new()
+	var ash := Shader.new()
+	ash.code = """shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float time = 0.0;
+void fragment() {
+	vec2 p = (UV - 0.5) * 2.0;
+	float r = length(p);
+	float ang = atan(p.y, p.x);
+	float ring = smoothstep(0.05, 0.0, abs(r - 0.82)) * (0.7 + 0.3 * sin(time * 4.0));
+	float runes = step(0.62, r) * step(r, 0.76) * step(0.55, fract(ang * 1.2732 * 3.0 + time * 0.3));
+	float glow = smoothstep(0.9, 0.2, r) * 0.18;
+	ALBEDO = COLOR.rgb * 2.0;
+	ALPHA = clamp(ring + runes * 0.45 + glow, 0.0, 1.0);
+}"""
+	asm.shader = ash
+	_aura_mm.material_override = asm
+	_aura_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_aura_mm)
 
 func bind(world: World) -> void:
 	w = world
@@ -187,6 +224,13 @@ func bind(world: World) -> void:
 	hero.build(String(h.id), Content.col(h.col))
 	for u in boss_rigs: boss_rigs[u].queue_free()
 	boss_rigs.clear()
+	for u in exile_rigs: exile_rigs[u].queue_free()
+	exile_rigs.clear()
+	corpses.clear()
+	sky_mat.sky_top_color = _look.amb.lightened(0.2)
+	sky_mat.sky_horizon_color = _look.fog.lightened(0.3)
+	sky_mat.ground_bottom_color = _look.bg
+	sky_mat.ground_horizon_color = _look.fog
 	_chunk_key = ""
 	_cam_pos = Vector3(w.pp.x, 0, w.pp.y)
 	_cam_target = _cam_pos
@@ -204,7 +248,7 @@ func _process(dt: float) -> void:
 		return
 	var t0 := Time.get_ticks_usec()
 	time += dt
-	for m in [terrain_mat, foe_mat, prop_mat]:
+	for m in [terrain_mat, foe_mat, prop_mat, _aura_mm.material_override]:
 		m.set_shader_parameter("time", time)
 	_camera(dt)
 	_lighting(dt)
@@ -306,7 +350,7 @@ func _foes() -> void:
 	var ecl := w.director.eclipse()
 	for i in sw.n:
 		var k := sw.kind[i]
-		if k == Content.E.BOSS or k == Content.E.HERALD:
+		if k == Content.E.BOSS or k == Content.E.HERALD or k == Content.E.EXILE:
 			continue
 		var p := sw.pos[i]
 		var dpl := p.distance_to(w.pp)
@@ -330,8 +374,19 @@ func _foes() -> void:
 		_fb[o + 16] = time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37
 		_fb[o + 17] = maxf(0.0, sw.flash[i])
 		_fb[o + 18] = _status_code(i)
-		_fb[o + 19] = float(f & 0xff)
+		_fb[o + 19] = float(f & 0xff) + 256.0 * float(sw.uid[i] % 64)
 		_foe_n[k] = n + 1
+		if (f & Swarm.F_ELITE) != 0 and dpl < 520.0:
+			var naff := 0
+			var af := sw.affix[i]
+			while af != 0:
+				naff += af & 1
+				af >>= 1
+			_aura(p, sw.rad[i] * 2.2, Color("ffb02e") if naff >= 2 else Color("4f86ff"))
+	_corpses()
+	var amm := _aura_mm.multimesh
+	amm.visible_instance_count = _aura_n
+	_aura_n = 0
 	for k in _foe_mm.size():
 		var mm := _foe_mm[k].multimesh
 		if _foe_n[k] > 0 or mm.visible_instance_count != 0:
@@ -349,6 +404,58 @@ func _status_code(i: int) -> float:
 	return 0.0
 
 var _kind_col: Array[Color] = []
+
+# ---------------------------------------------------------------- corpses: topple, lie, crumble
+var corpses: Array = []          # [kind, pos, dir, rad, t0, seed]
+const CORPSE_LIFE := 3.6
+func add_corpse(kind: int, pos: Vector2, dir: Vector2, rad: float, seed_v: int) -> void:
+	if kind == Content.E.BOSS or kind == Content.E.HERALD or kind == Content.E.EXILE: return
+	if corpses.size() >= 140: corpses.pop_front()
+	corpses.append([kind, pos, dir if dir != Vector2.ZERO else Vector2.RIGHT, rad, time, seed_v % 64])
+
+func _corpses() -> void:
+	var span := Swarm.CAP * FOE_STRIDE
+	var k2 := corpses.size() - 1
+	while k2 >= 0:
+		if time - float(corpses[k2][4]) > CORPSE_LIFE: corpses.remove_at(k2)
+		k2 -= 1
+	for c in corpses:
+		var k: int = c[0]
+		var n := _foe_n[k]
+		if n >= Swarm.CAP: continue
+		var age: float = time - float(c[4])
+		var fall := clampf(age / 0.28, 0.0, 1.0)
+		fall = 1.0 - (1.0 - fall) * (1.0 - fall)                       # ease-out topple
+		var a := fall * PI * 0.5
+		var d: Vector2 = c[2]
+		var s: float = c[3]
+		var xa := Vector3(-d.x, 0, -d.y)                                # falls backwards, away from the hero
+		var side := Vector3(-d.y, 0, d.x)
+		var ya := Vector3.UP * cos(a) + side * sin(a)
+		var za := xa.cross(ya)
+		var o := k * span + n * FOE_STRIDE
+		var p: Vector2 = c[1]
+		var bounce := sin(clampf((age - 0.28) / 0.2, 0.0, 1.0) * PI) * 0.08 * s
+		_fb[o] = xa.x * s; _fb[o + 1] = ya.x * s; _fb[o + 2] = za.x * s; _fb[o + 3] = p.x
+		_fb[o + 4] = xa.y * s; _fb[o + 5] = ya.y * s; _fb[o + 6] = za.y * s; _fb[o + 7] = 0.42 * s * fall + bounce
+		_fb[o + 8] = xa.z * s; _fb[o + 9] = ya.z * s; _fb[o + 10] = za.z * s; _fb[o + 11] = p.y
+		var col := _kind_col[k]
+		_fb[o + 12] = col.r; _fb[o + 13] = col.g; _fb[o + 14] = col.b; _fb[o + 15] = 1.0
+		_fb[o + 16] = 0.0
+		_fb[o + 17] = clampf((age - 1.2) / (CORPSE_LIFE - 1.2), 0.0, 1.0)  # dissolve
+		_fb[o + 18] = 7.0
+		_fb[o + 19] = 256.0 * float(c[5])
+		_foe_n[k] = n + 1
+
+# ---------------------------------------------------------------- magic / rare monster auras
+var _aura_mm: MultiMeshInstance3D
+var _aura_n := 0
+func _aura(p: Vector2, r: float, c: Color) -> void:
+	if _aura_n >= 64: return
+	var mm := _aura_mm.multimesh
+	mm.set_instance_transform(_aura_n, Transform3D(Basis().scaled(Vector3(r, 1, r)), Vector3(p.x, 0.8, p.y)))
+	mm.set_instance_color(_aura_n, c)
+	_aura_n += 1
 
 func _foe_color(k: int) -> Color:
 	var s: Dictionary = Content.STAGES[w.stage]
@@ -371,7 +478,31 @@ func _hero(dt: float) -> void:
 		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
 	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
 
+var exile_rigs := {}
+func _exiles(dt: float) -> void:
+	var alive := {}
+	for i in w.sw.n:
+		if w.sw.kind[i] != Content.E.EXILE: continue
+		var u := w.sw.uid[i]
+		alive[u] = true
+		var rig: HeroRig = exile_rigs.get(u)
+		if rig == null:
+			rig = HeroRig.new()
+			add_child(rig)
+			var wid := String(w.bosses.exile_weapon)
+			rig.build({"bolt": "spark", "nova": "ember", "storm": "storm"}.get(wid, "warden"), Color("4a2a2a"))
+			rig.scale = Vector3.ONE * 1.35
+			exile_rigs[u] = rig
+		var to := w.pp - w.sw.pos[i]
+		rig.animate({"pos": w.sw.pos[i], "face": to.normalized(), "mv": 1.0 if w.sw.freeze_t[i] <= 0.0 else 0.0, "ph": time * 9.0 + u, "cast_age": fmod(time + u, 1.6),
+			"cast_dir": to.normalized(), "roll": -1.0, "hit": clampf(w.sw.flash[i] * 10.0, 0, 1), "dead": false, "t": time}, dt)
+	for u in exile_rigs.keys():
+		if not alive.has(u):
+			exile_rigs[u].queue_free()
+			exile_rigs.erase(u)
+
 func _bosses(dt: float) -> void:
+	_exiles(dt)
 	var alive := {}
 	for i in w.sw.n:
 		var k := w.sw.kind[i]

@@ -233,7 +233,8 @@ func _consume_feed() -> void:
 		var col: Color = d[1]
 		var r: float = d[2]
 		var elite: bool = d[3]
-		for i in (10 if elite else 5):
+		if d.size() > 6: view.add_corpse(int(d[4]), pos2, d[5], r, int(d[6]))
+		for i in (8 if elite else 3):
 			_debris(Vector3(pos2.x, r * 0.9, pos2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(120, 260), col, r * randf_range(0.18, 0.4))
 		_mark(pos2, r * (1.6 if elite else 1.1), 0)
 		if elite: add_light(Vector3(pos2.x, 30, pos2.y), Color(1, 0.8, 0.4), 3.0, 180.0, 0.35)

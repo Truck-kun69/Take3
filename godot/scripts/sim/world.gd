@@ -1404,7 +1404,7 @@ func _on_kill(i: int) -> void:
 	charge_ult(0.6)
 	var elite := (f & Swarm.F_ELITE) != 0
 	if deaths.size() < 48:
-		deaths.append([at, _foe_col(k), sw.rad[i], elite or (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) != 0])
+		deaths.append([at, _foe_col(k), sw.rad[i], elite or (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) != 0, k, (pp - at).normalized(), sw.uid[i]])
 	gain_flask(4.0 if elite else 1.0)
 	_burst(at, _foe_col(k), 14 if elite else 5, 200.0 if elite else 120.0)
 	director.on_kill(i, at)
