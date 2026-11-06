@@ -105,6 +105,9 @@ var phoenix_used := false
 var momentum := 0.0
 var hit_count := 0
 var regen_acc := 0.0
+var cast_t := -9.0                # renderer feed: last weapon cast (hero turns and thrusts toward it)
+var cast_dir := Vector2.RIGHT
+var deaths: Array = []            # renderer feed: [pos, colour, radius, elite] per kill, consumed by the 3D view
 
 # input written by the controller (touch, keyboard, gamepad or test bot)
 var in_move := Vector2.ZERO
@@ -731,6 +734,11 @@ func _target(max_d: float) -> int:
 			if best2 >= 0: return best2
 	return grid.nearest(pp, max_d, sw)
 
+func _cast(d: Vector2) -> void:
+	if t - cast_t > 0.12:
+		cast_t = t
+		cast_dir = d.normalized() if d.length() > 0.01 else face
+
 func _bolt(s: Dictionary, mul: float) -> bool:
 	var tg := _target(460.0)
 	if tg < 0:
@@ -739,6 +747,7 @@ func _bolt(s: Dictionary, mul: float) -> bool:
 	var n := int(s.n) + int(stats.value("proj_count", 0.0, loc))
 	var base := (sw.pos[tg] - pp).angle()
 	var dmg := float(s.dmg) * _dmg_scale("bolt") * mul
+	_cast(sw.pos[tg] - pp)
 	var em := elmask("bolt")
 	var ch := int(stats.value("chain", 0.0, loc))
 	var pc := int(s.pierce) + int(stats.value("pierce", 0.0, loc))
@@ -755,6 +764,7 @@ func _nova(s: Dictionary, mul: float) -> bool:
 	var r := float(s.rad) * stats.value("area", 1.0, wlocal["nova"])
 	if grid.nearest(pp, r + 40.0, sw) < 0:
 		return false
+	_cast(face)
 	nova_at(pp, r, float(s.dmg) * _dmg_scale("nova") * mul, elmask("nova"), Color("ff7b50"), 520.0 if weapons.nova.evo else 260.0)
 	Sfx.play("nova")
 	return true
@@ -779,6 +789,7 @@ func _storm(s: Dictionary, mul: float) -> bool:
 	var r := float(s.rad) * stats.value("area", 1.0, wlocal["storm"])
 	var dmg := float(s.dmg) * _dmg_scale("storm") * mul
 	var em := elmask("storm")
+	_cast(sw.pos[picks_i[0]] - pp if picks_i[0] < sw.n else face)
 	for k in int(s.n):
 		var i := picks_i[rng.randi_range(0, cands - 1)]
 		if i >= sw.n: continue
@@ -1375,6 +1386,8 @@ func _on_kill(i: int) -> void:
 	best_combo = maxi(best_combo, combo)
 	charge_ult(0.6)
 	var elite := (f & Swarm.F_ELITE) != 0
+	if deaths.size() < 48:
+		deaths.append([at, _foe_col(k), sw.rad[i], elite or (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) != 0])
 	gain_flask(4.0 if elite else 1.0)
 	_burst(at, _foe_col(k), 14 if elite else 5, 200.0 if elite else 120.0)
 	director.on_kill(i, at)

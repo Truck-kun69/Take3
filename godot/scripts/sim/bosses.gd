@@ -63,6 +63,7 @@ func _tyrant(i: int, st: Dictionary, dt: float, guardian: bool) -> void:
 			var a := off + TAU * k / nb
 			w.spawn_eshot(p, Vector2(cos(a), sin(a)) * 150.0 * float(Content.STAGES[w.stage].spd), 8.0)
 		st.bt = 1.6 if half else 2.4
+		st.atk_t = w.t
 		Sfx.play("zap")
 	if st.sm <= 0.0:
 		st.sm = 5.0 if half else 7.0
@@ -72,6 +73,7 @@ func _tyrant(i: int, st: Dictionary, dt: float, guardian: bool) -> void:
 	if st.sl <= 0.0:
 		st.sl = 6.0 if half else 8.5
 		w.add_tele(0, w.pp, 96.0, 1.0, 0.0, 18.0, true, false, -1, Color(1, 0.25, 0.3, 0.55), "a slam")
+		st.atk_t = w.t
 	if guardian and fmod(w.t, 9.0) < dt:
 		var z := w.add_tele(2, p, 0.0, 1.0, 3.5, 6.0, true, false, -1, Color(1, 0.3, 0.9, 0.45), "the guardian's beam")
 		z.length = 620.0; z.width = 36.0; z.dir = (w.pp - p).normalized(); z.spin = 0.9; z.tick = 0.25
@@ -191,6 +193,7 @@ func _herald(i: int, dt: float) -> void:
 	if far and w.rng.randf() < 0.5 and opts.has("volley"):
 		atk = "volley"
 	H.last = atk
+	H.atk_t = w.t
 	var em := 3.0 if H.enraged else 1.0
 	var dmg := 14.0 * em
 	match atk:

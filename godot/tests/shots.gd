@@ -87,7 +87,7 @@ func _process(dt: float) -> void:
 			_drive()
 			if main.world.t > 16.0:
 				step = 9; await _snap("07_herald")
-				print("view upload cost: %.2f ms, fps %d" % [main.view.cost_us / 1000.0, Engine.get_frames_per_second()])
+				print("view3d cost: %.2f ms, fps %d" % [main.view3d.cost_us / 1000.0, Engine.get_frames_per_second()])
 				get_tree().quit()
 
 func _drive() -> void:

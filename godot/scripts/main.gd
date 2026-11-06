@@ -4,7 +4,9 @@ extends Node
 ## (a RenderingDevice is expensive) and reused across runs.
 
 var world: World
-var view: WorldView
+var view: WorldView                # classic 2D renderer (option "renderer" = 1, and low-end fallback)
+var view3d: WorldView3D            # default: PoE2-style 3D renderer
+var overlay: Overlay3D
 var hud: Hud
 var touch: TouchControls
 var screens: Screens
@@ -18,6 +20,8 @@ func _ready() -> void:
 	_input_map()
 	view = WorldView.new()
 	add_child(view)
+	view3d = WorldView3D.new()
+	add_child(view3d)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	ui = Control.new()
@@ -25,6 +29,9 @@ func _ready() -> void:
 	ui.theme = UIKit.theme()
 	layer.add_child(ui)
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay = Overlay3D.new()
+	overlay.view = view3d
+	ui.add_child(overlay)
 	touch = TouchControls.new()
 	ui.add_child(touch)
 	hud = Hud.new()
@@ -86,6 +93,7 @@ func _free_world() -> void:
 		world.dispose()
 	world = null
 	view.w = null
+	view3d.w = null
 	hud.w = null
 	touch.world = null
 
@@ -99,13 +107,28 @@ func start(cfg: Dictionary) -> void:
 	world.level_up.connect(_on_level)
 	world.ended.connect(_on_end)
 	world.merchant_open.connect(func(): if state == "play": state = "merchant"; screens.show_merchant(world))
-	view.bind(world)
+	_bind_view()
 	hud.bind(world)
 	touch.world = world
 	hud.visible = true
 	touch.visible = true
 	screens.close()
 	state = "play"
+
+func use_3d() -> bool:
+	return int(Save.opt("renderer")) == 0
+
+func _bind_view() -> void:
+	if use_3d():
+		view.w = null
+		view3d.bind(world)
+		view3d.cam.make_current()
+		hud.project = func(p: Vector2) -> Vector2: return view3d.to_screen(p)
+	else:
+		view3d.w = null
+		view.bind(world)
+		view.cam.make_current()
+		hud.project = func(p: Vector2) -> Vector2: return get_viewport().get_canvas_transform() * p
 
 func _on_level() -> void:
 	if state != "play": return
@@ -180,7 +203,7 @@ func _on_act(what: String, arg) -> void:
 			if world != null:
 				world.colorblind = bool(Save.opt("colorblind"))
 				world.aim_mode = int(Save.opt("aim"))
-				view.bind(world)
+				_bind_view()
 		"equip": equip(arg)
 		"salvage":
 			Save.data.stash.erase(arg)

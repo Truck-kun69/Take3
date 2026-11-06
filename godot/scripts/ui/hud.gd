@@ -27,6 +27,7 @@ var fps_lbl: Label
 var flash_rect: ColorRect
 var vignette: ColorRect
 var _cache := {}
+var project: Callable            # world (sim plane) -> screen; set by main for the active renderer
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -221,7 +222,7 @@ static func _fmt(s: float) -> String:
 ## Edge-of-screen arrows pointing at off-screen objectives (events, shrines, rare loot, bosses).
 func _draw() -> void:
 	if w == null: return
-	var xf := get_viewport().get_canvas_transform()
+	if not project.is_valid(): return
 	var vs := get_viewport_rect().size
 	var targets: Array = []
 	for ev in w.director.active:
@@ -239,7 +240,7 @@ func _draw() -> void:
 	var c := vs * 0.5
 	var rect := Rect2(Vector2(40, 120), vs - Vector2(80, 180))
 	for t in targets:
-		var sp: Vector2 = xf * (t[0] as Vector2)
+		var sp: Vector2 = project.call(t[0] as Vector2)
 		if rect.has_point(sp): continue
 		var d := (sp - c)
 		if d.length() < 1.0: continue
