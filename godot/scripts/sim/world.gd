@@ -174,6 +174,7 @@ var fx: Array = []            # {k, pos, r, col, life, t, pts, to}
 var bursts: Array = []        # [pos, col, n, speed] consumed by the renderer each frame
 var _agg := {}
 var _label_t := {}
+var _crit_stop := -9.0
 var metrics := {"reactions": 0, "react_by": {}, "texts": 0, "peak_foes": 0, "dmg_taken": 0.0, "perfect": 0, "events": {}, "dmg_dealt": 0.0,
 	"react_dropped": 0, "cascade_max": 0, "items": 0, "deaths_by": ""}
 
@@ -291,6 +292,7 @@ func step(dt: float) -> void:
 		slow_t -= dt
 		dt *= 0.4
 	t += dt
+	Sfx.listener = pp
 	buffs.step(dt)
 	_refresh_max_hp()
 	shake = maxf(0.0, shake - dt * 1.8)
@@ -758,6 +760,7 @@ func _bolt(s: Dictionary, mul: float) -> bool:
 		p.dmg = dmg; p.pierce = pc; p.chain = ch; p.el = em; p.wid = "bolt"; p.col = Color("aef4ff")
 		projs.append(p)
 	Sfx.play("shoot")
+	Sfx.play("ice", 1.0, 0.5)
 	return true
 
 func _nova(s: Dictionary, mul: float) -> bool:
@@ -767,6 +770,7 @@ func _nova(s: Dictionary, mul: float) -> bool:
 	_cast(face)
 	nova_at(pp, r, float(s.dmg) * _dmg_scale("nova") * mul, elmask("nova"), Color("ff7b50"), 520.0 if weapons.nova.evo else 260.0)
 	Sfx.play("nova")
+	Sfx.play("fire", 1.0, 0.7)
 	return true
 
 ## Area hit used by the nova weapon, ultimates and legendary powers.
@@ -794,7 +798,7 @@ func _storm(s: Dictionary, mul: float) -> bool:
 		var i := picks_i[rng.randi_range(0, cands - 1)]
 		if i >= sw.n: continue
 		strike_at(sw.pos[i], r, dmg, em)
-	Sfx.play("zap")
+	Sfx.play("thunder")
 	shake = minf(1.0, shake + 0.05)
 	return true
 
@@ -838,6 +842,7 @@ func _orbit(dt: float, s: Dictionary) -> void:
 			if p.distance_squared_to(blades[b]) < rr * rr:
 				sw.set_hit_t(i, t)
 				hit(i, dmg, em, (p - pp).normalized(), 120.0, 0)
+				Sfx.play("impact", 1.0, 0.55)
 				break
 
 func _conduit(dt: float) -> void:
@@ -866,6 +871,11 @@ func hit(i: int, dmg: float, em: int, kdir: Vector2, kb: float, depth: int) -> v
 		if rng.randf() < cc:
 			crit = true
 			dmg *= stats.value("crit_mult", 1.8)
+			Sfx.play("crit")
+			if t - _crit_stop > 0.6:                  # PoE2-style weight: a 25 ms freeze on crits, at most ~4% of the time
+				_crit_stop = t
+				hitstop = maxf(hitstop, 0.025)
+				shake = minf(1.0, shake + 0.06)
 		if sw.freeze_t[i] > 0.0 and has_leg("rimeheart"):
 			dmg *= 1.2
 	if sw.shock_t[i] > 0.0: dmg *= 1.15
@@ -1326,6 +1336,12 @@ func drop_item(at: Vector2, rarity_floor: int = 0, slot: String = "") -> void:
 		return
 	var it := Items.make(slot if slot != "" else Items.random_slot(rng), r, ilvl(), rng)
 	add_pick(at, "item", 0.0, it, 999.0)
+	match r:
+		Content.Rarity.MAGIC: Sfx.play_at("drop_magic", at)
+		Content.Rarity.RARE: Sfx.play("drop_rare")
+		Content.Rarity.LEGENDARY:
+			Sfx.play("drop_legendary")
+			banner.emit("Legendary drop!", Items.name_of(it), Content.col(Content.RARITY_COL[3]))
 
 func drop_currency(at: Vector2, n: int = 1) -> void:
 	for k in n:
@@ -1336,6 +1352,7 @@ func drop_currency(at: Vector2, n: int = 1) -> void:
 			r -= Content.CURRENCY_WEIGHT[c]
 			if r < 0:
 				add_pick(at, "currency", 0.0, c, 60.0)
+				Sfx.play_at("drop_currency", at)
 				break
 
 func drop_lore(at: Vector2) -> void:
@@ -1404,6 +1421,7 @@ func _on_kill(i: int) -> void:
 	var qty := stats.value("item_quantity", 1.0)
 	if elite:
 		hitstop = maxf(hitstop, 0.04)
+		Sfx.play_at("explode", at)
 		for c in 3: add_pick(at, "coin", 2.0 * (1.5 if season == "avarice" else 1.0))
 		if rng.randf() < 0.35: add_pick(at, "heart")
 		if rng.randf() < 0.4: drop_powerup(at)

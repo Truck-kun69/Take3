@@ -51,9 +51,19 @@ func _ready() -> void:
 	else:
 		print("crowd compute: GPU separation active")
 	get_tree().root.size_changed.connect(_on_resize)
+	_ui_scale()
 	_menu()
 
+## Portrait phones: the 1280x720 design base shrinks the UI to ~0.56x; scale the 2D canvas back up.
+## (content_scale_factor only affects 2D, the 3D camera handles portrait framing itself.)
+func _ui_scale() -> void:
+	var vs := DisplayServer.window_get_size()
+	var f := 1.0
+	if vs.y > vs.x: f = clampf(float(vs.y) / float(vs.x), 1.0, 1.9)
+	get_window().content_scale_factor = f * float(Save.opt("ui_scale"))
+
 func _on_resize() -> void:
+	_ui_scale()
 	if state == "menu": screens.show_menu()
 
 func _input_map() -> void:
@@ -83,6 +93,7 @@ func _input_map() -> void:
 # ================================================================= flow
 func _menu() -> void:
 	state = "menu"
+	Sfx.stop_ambience()
 	_free_world()
 	hud.visible = false
 	touch.visible = false
@@ -114,6 +125,7 @@ func start(cfg: Dictionary) -> void:
 	touch.visible = true
 	screens.close()
 	state = "play"
+	Sfx.start_ambience(world.stage)
 
 func use_3d() -> bool:
 	return int(Save.opt("renderer")) == 0
