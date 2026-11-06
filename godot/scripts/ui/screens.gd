@@ -264,6 +264,7 @@ func show_options(back: String = "menu") -> void:
 	_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
 	_cycle(v, "Effects quality", "quality", ["Low", "High"], back)
 	_toggle(v, "Show FPS", "show_fps", back)
+	_toggle(v, "Always show touch buttons", "force_touch_ui", back)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); act.emit(back, null)))
 
 func _toggle(v: VBoxContainer, label: String, key: String, back: String) -> void:

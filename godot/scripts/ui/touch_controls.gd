@@ -20,6 +20,7 @@ var knob := Vector2.ZERO
 var value := Vector2.ZERO
 var world: World
 var _btn_touch := {}
+var _seen_touch := DisplayServer.is_touchscreen_available()
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -52,6 +53,8 @@ func _in_move_half(p: Vector2) -> bool:
 func _gui_input(ev: InputEvent) -> void:
 	if ev is InputEventScreenTouch:
 		var t := ev as InputEventScreenTouch
+		if not _seen_touch and ev.device != InputEvent.DEVICE_ID_EMULATION:   # a real finger, not mouse emulation
+			_seen_touch = true
 		if t.pressed:
 			for b in _buttons():
 				if t.position.distance_to(b.pos) < b.r * 1.25:
@@ -105,6 +108,9 @@ func _process(_dt: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	# desktop/gamepad players never see on-screen buttons (cycle 2: they cluttered the play area)
+	if not _seen_touch and not bool(Save.opt("force_touch_ui")):
+		return
 	if stick_id >= 0:
 		draw_circle(origin, R, Color(1, 1, 1, 0.08))
 		draw_arc(origin, R, 0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)

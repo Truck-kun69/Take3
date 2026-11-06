@@ -51,7 +51,9 @@ void fragment() {
 	if (kind == 2) prof += 0.08 * smoothstep(-0.2, -1.0, p.y);       // brute: hunched top
 	float d = length(p) - prof;                                        // < 0 inside the body
 	vec3 base = v_col.rgb;
-	vec4 outc = vec4(0.0);
+	// soft contact shadow under every foe: separates bodies from busy ground (cycle 2 readability)
+	float shd = length((p - vec2(0.08, 0.62)) * vec2(1.0, 3.2)) - 0.62;
+	vec4 outc = vec4(0.0, 0.0, 0.05, smoothstep(0.15, -0.1, shd) * 0.45);
 	// rim glow for elites (gold), exiles (orange), allies (ethereal violet)
 	if (elite || kind >= 9 || ally) {
 		vec3 gc = ally ? vec3(0.75, 0.6, 1.0) : (kind == 9 ? vec3(1.0, 0.55, 0.2) : vec3(1.0, 0.85, 0.3));
@@ -81,7 +83,7 @@ void fragment() {
 		}
 		if (ally) c = mix(c, vec3(0.7, 0.6, 1.0), 0.5);
 		c = mix(c, vec3(1.0), clamp(v_custom.y * 9.0, 0.0, 1.0));         // hit flash
-		float edge = smoothstep(-0.07, -0.03, d);                          // dark outline
+		float edge = smoothstep(-0.09, -0.04, d);                          // dark outline (thicker since cycle 2)
 		c = mix(c, vec3(0.05, 0.06, 0.1), edge);
 		float a = smoothstep(0.0, -0.02, d) * (ally ? 0.7 : 1.0);
 		outc = mix(outc, vec4(c, 1.0), a);

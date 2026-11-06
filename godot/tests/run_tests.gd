@@ -131,6 +131,15 @@ func _unit() -> void:
 	var sw0 := Swarm.new()
 	sw0.add(0, Vector2.ZERO, 1.0, 1.0, 5.0, 1.0, 1.0, 0, 0)
 	ok(g0.query(Vector2.ZERO, 50.0, sw0) == 0, "unbuilt grid reads empty")
+	# regression (cycle 2): an overkilled gremlin must not spin the coin-spill loop
+	var wg := _world({"mode": "campaign", "hero": 0, "seed": 9})
+	var ge := wg.director.start("goblin")
+	var gi := wg.sw.index_of(int(ge.u))
+	wg.sw.take(gi, 1e9)
+	var tg0 := Time.get_ticks_msec()
+	wg.director.step(1.0 / 60.0)
+	ok(Time.get_ticks_msec() - tg0 < 200 and wg.picks.size() < 20, "overkill does not explode the gremlin loop")
+	wg.dispose()
 	# swarm swap-removal keeps uid index coherent
 	var sw := Swarm.new()
 	for k in 50: sw.add(0, Vector2(k, 0), 10.0, 1.0, 5.0, 1.0, 1.0, 0, 0)
@@ -206,6 +215,7 @@ func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
 
 func _sims() -> void:
 	print("== sim (bot-played runs)")
+	run_bot({"mode": "campaign", "hero": 0, "seed": 1}, 20.0, 0)     # warm-up: first-use script paths cost ~15 ms once
 	var rows: Array = []
 	for h in 4:
 		rows.append(run_bot({"mode": "campaign", "hero": h, "stage": 0, "seed": 100 + h}, 200.0, h))

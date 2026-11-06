@@ -248,15 +248,15 @@ func _need(l: int) -> float:
 func hp_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
 	var m := float(s.hp) * (1.0 + t / 110.0)
-	if mode == "atlas": m = (1.0 + 0.22 * (int(node.tier) - 1)) * (1.0 + t / 110.0)
-	if mode == "rift": m = float(s.hp) * Content.gr_hp_mult(gr_level) * (1.0 + t / 240.0)
+	if mode == "atlas": m = (1.0 + 0.35 * (int(node.tier) - 1)) * (1.0 + t / 110.0)
+	if mode == "rift": m = 1.5 * float(s.hp) * Content.gr_hp_mult(gr_level) * (1.0 + t / 240.0)
 	if has_mod("hardened"): m *= 1.4
 	return m
 
 func dmg_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
-	var m := float(s.dmg)
-	if mode == "atlas": m = 1.0 + 0.1 * (int(node.tier) - 1)
+	var m := float(s.dmg) * (1.0 + t / 300.0)     # cycle 2: late-run foes barely scratched the bot
+	if mode == "atlas": m = (1.0 + 0.12 * (int(node.tier) - 1)) * (1.0 + t / 300.0)
 	if mode == "rift": m *= Content.gr_dmg_mult(gr_level)
 	if has_mod("lethal"): m *= 1.3
 	return m
@@ -479,7 +479,7 @@ func charge_ult(v: float) -> void:
 func spawn_rate() -> float:
 	var r := (1.4 + t * 0.045) * director.rate_mult()
 	if mode == "rift": r = (2.6 + t * 0.05) * director.rate_mult()
-	if mode == "pinnacle": r = 0.6 if bosses.herald_phase() < 3 else 1.4
+	if mode == "pinnacle": r = 1.8 if bosses.herald_uid < 0 else (0.6 if bosses.herald_phase() < 3 else 1.4)
 	if boss_spawned and mode != "rift": r *= 0.5
 	if has_mod("packed"): r *= 1.4
 	return r
@@ -1357,7 +1357,7 @@ func _on_kill(i: int) -> void:
 		return
 	add_gem(at, sw.xp[i] * (4.0 if elite else 1.0))
 	if mode == "rift":
-		progress = minf(Content.GR_PROGRESS, progress + (1.6 if elite else 0.11) * (1.0 if sw.mhp[i] > 0 else 1.0))
+		progress = minf(Content.GR_PROGRESS, progress + (1.2 if elite else 0.07))
 		if elite: add_pick(at, "progress", 2.5, null, 20.0)
 	if k == Content.E.SPLITTER:
 		for s in 3:

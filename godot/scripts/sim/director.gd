@@ -235,7 +235,10 @@ func _step_goblin(ev: Dictionary, dt: float) -> void:
 	if i < 0:
 		ev.done = true
 		return
-	var frac := w.sw.hp[i] / w.sw.mhp[i]
+	if w.sw.hp[i] <= 0.0:
+		return                               # dying this frame (or dismissed): the kill handler pays out
+	# clamped: an overkill hit must not make this loop run millions of times (cycle 2 hang)
+	var frac := clampf(w.sw.hp[i] / w.sw.mhp[i], 0.0, 1.0)
 	while ev.last_hp - frac > 0.1:          # every 10% of its life lost spills coins
 		ev.last_hp -= 0.1
 		w.add_pick(w.sw.pos[i], "coin", 2.0)

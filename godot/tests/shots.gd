@@ -18,6 +18,7 @@ func _ready() -> void:
 	sv.data = sv.defaults()
 	sv.data.options.sound = false
 	sv.data.cleared = [true, true, false, false]
+	sv.data.options.force_touch_ui = true
 	sv.data.currency.chaos = 3; sv.data.currency.exalt = 1; sv.data.currency.regal = 2
 	sv.data.fragments = {"rupture": 1, "greed": 1, "dread": 0}
 	var rng := RandomNumberGenerator.new(); rng.seed = 5

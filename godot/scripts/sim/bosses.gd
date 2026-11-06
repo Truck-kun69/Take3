@@ -121,7 +121,7 @@ func _exile(i: int, st: Dictionary, dt: float) -> void:
 				for k in 3:
 					w.add_tele(0, w.pp + Vector2(w.rng.randf_range(-70, 70), w.rng.randf_range(-70, 70)), 50.0, 0.9, 0.0, dmg * 1.5, true, false, -1, Color(0.8, 0.6, 1, 0.5), exile_name)
 				st.atk = 2.5
-	var frac := w.sw.hp[i] / w.sw.mhp[i]
+	var frac := clampf(w.sw.hp[i] / w.sw.mhp[i], 0.0, 1.0)
 	if st.blink_hp - frac > 0.15:            # blinks away after taking a big chunk
 		st.blink_hp = frac
 		var a := w.rng.randf() * TAU
@@ -134,7 +134,8 @@ func spawn_herald() -> void:
 
 func _do_spawn_herald() -> void:
 	var lv := maxf(1.0, float(w.lvl))
-	var i := w.sw.add(Content.E.HERALD, Vector2(0, -260), 9000.0 * (0.6 + 0.04 * lv), 70.0, 44.0, 20.0, 0.0, Swarm.F_HERALD, 0)
+	# cycle 2: 9000 * (0.6 + 0.04 lv) died in 33 s; the pinnacle should be a 2-3 minute fight
+	var i := w.sw.add(Content.E.HERALD, Vector2(0, -260), 24000.0 * (0.5 + 0.05 * lv), 70.0, 44.0, 20.0, 0.0, Swarm.F_HERALD, 0)
 	if i < 0: return
 	herald_uid = w.sw.uid[i]
 	H = {"phase": 1, "cd": 2.5, "last": "", "enrage": w.t + 180.0, "enraged": false, "trans": 0.0}
