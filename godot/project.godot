@@ -35,6 +35,7 @@ common/physics_ticks_per_second=60
 
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
+renderer/rendering_method.web="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0.04, 0.05, 0.08, 1)
 2d/snap/snap_2d_transforms_to_pixel=false

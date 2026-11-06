@@ -16,4 +16,5 @@ bash tools/provision.sh                 # Godot 4.7.2, Android templates, SDK, d
 export PATH="$HOME/toolchains/godot:$PATH"
 godot --headless --path godot res://tests/tests.tscn -- unit sim bench
 bash tools/build_android.sh             # build/shardfall-debug.apk
+bash tools/build_web.sh                 # build/shardfall.html: one self-contained file, double-click to play
 ```

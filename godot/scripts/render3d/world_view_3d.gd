@@ -242,7 +242,9 @@ func bind(world: World) -> void:
 	for k in Models.FOE_KINDS.size(): _kind_col.append(_foe_color(k))
 	fx.bind(w)
 	env_fx.bind(w)
-	torch.shadow_enabled = hq                      # radial shadows from the hero's light (high quality)
+	# radial shadows from the hero's light: high quality only, and never on Compatibility/WebGL, where the
+	# omni shadow renders as a large black wedge
+	torch.shadow_enabled = hq and RenderingServer.get_current_rendering_method() != "gl_compatibility"
 	torch.shadow_bias = 0.08
 
 ## World -> screen, used by the overlay and the HUD compass.
