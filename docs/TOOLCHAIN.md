@@ -10,7 +10,7 @@ The scripts are idempotent, so they double as an environment setup script.
 | Godot editor (headless-capable) | 4.7.2-stable | `github.com/godotengine/godot/releases` | ~150 MB |
 | Export templates (Android only) | 4.7.2-stable | same release, `.tpz` (1.28 GB download, only `android_*` extracted) | ~130 MB |
 | Android cmdline-tools | 11076708 | `dl.google.com/android/repository` | ~150 MB |
-| platform-tools, build-tools 35.0.1, platforms;android-35 | via `sdkmanager` | Google repository | ~300 MB |
+| platform-tools, build-tools 36.0.0, platforms;android-36 | via `sdkmanager` | Google repository | ~300 MB |
 | JDK | OpenJDK 21 (pre-installed) | apt | - |
 | Debug keystore | RSA 2048, `androiddebugkey` / `android` | `keytool` | 3 KB |
 
@@ -91,5 +91,6 @@ The status/DoT/reaction system lives in `Swarm` as **packed struct-of-arrays** (
   `docs/DESIGN.md` show where the time goes.
 * A GDExtension build needs `godot-cpp` (matching 4.7), SCons, and for Android the NDK
   (`sdkmanager "ndk;28.1.13356709"`) to cross-compile `arm64-v8a`. That was not done in this
-  session; the GDScript version runs a 680-foe stress test in about 1–1.5 ms of simulation per
-  frame on the CPU path after the cycle 1 and 2 fixes.
+  session. Measured on this x86 container with 680 foes: the whole simulation step costs
+  3.3 ms on the CPU path (separation 2.2 ms of it) and 1.8 ms with GPU separation. A phone CPU is
+  roughly 3-4x slower, so the CPU path is the one a C++ port would help.

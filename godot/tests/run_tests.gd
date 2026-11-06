@@ -140,6 +140,15 @@ func _unit() -> void:
 	wg.director.step(1.0 / 60.0)
 	ok(Time.get_ticks_msec() - tg0 < 200 and wg.picks.size() < 20, "overkill does not explode the gremlin loop")
 	wg.dispose()
+	# regression (cycle 3): a screen-wide ultimate must not recharge itself
+	var wu := _world({"mode": "rift", "hero": 2, "gr": 1, "seed": 4})
+	for k in 200: wu.spawn_foe(Content.E.GRUNT, Vector2(randf_range(-300, 300), randf_range(-200, 200)), 0)
+	wu.grid.build(wu.sw)
+	wu.ult = 100.0
+	wu.use_ult()
+	for k in 60: wu.step(1.0 / 60.0)
+	ok(wu.ult < 1.0, "ultimate does not refund itself (charge after cast %.1f)" % wu.ult)
+	wu.dispose()
 	# swarm swap-removal keeps uid index coherent
 	var sw := Swarm.new()
 	for k in 50: sw.add(0, Vector2(k, 0), 10.0, 1.0, 5.0, 1.0, 1.0, 0, 0)
@@ -225,6 +234,8 @@ func _sims() -> void:
 	rows.append(run_bot({"mode": "atlas", "hero": 2, "node": node, "seed": 55}, 200.0, 6))
 	rows.append(run_bot({"mode": "rift", "hero": 3, "gr": 1, "seed": 31}, 320.0, 7))
 	rows.append(run_bot({"mode": "rift", "hero": 3, "gr": 8, "seed": 32}, 320.0, 8))
+	rows.append(run_bot({"mode": "rift", "hero": 1, "gr": 15, "seed": 33}, 320.0, 10))
+	rows.append(run_bot({"mode": "rift", "hero": 2, "gr": 25, "seed": 34}, 320.0, 11))
 	rows.append(run_bot({"mode": "pinnacle", "hero": 0, "seed": 13}, 300.0, 9))
 	for r in rows:
 		print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%4d dps=%5d react=%4d drop=%3d casc=%d txt/s=%5s foes=%3d ms=%5s/%6s hp_low=%s killer=%s ev=%s" % [

@@ -23,13 +23,25 @@ var win_t := -1.0
 func _init(world: World) -> void:
 	w = world
 
+## Cycle 3: bosses spawned off-screen and walked at 50 px/s toward a hero kiting at 155 px/s, so a
+## completed rift could time out without the guardian ever being met. They now arrive on-screen,
+## behind a summoning ring, at 55% of the view radius.
+func arrival_point() -> Vector2:
+	var a := w.rng.randf() * TAU
+	var p := w.pp + Vector2(cos(a), sin(a)) * w.view_r * 0.55
+	if w.arena_r > 0.0 and p.length() > w.arena_r - 60.0:
+		p = p.normalized() * (w.arena_r - 80.0)
+	w.fx.append({"k": "ring", "pos": p, "r": 0.0, "max": 90.0, "col": Color("ff4fd8"), "life": 0.9, "t": 0.0})
+	w._burst(p, Color("ff4fd8"), 24, 260.0)
+	return p
+
 # ---------------------------------------------------------------- stage boss
 func spawn_stage_boss(twin: bool) -> void:
 	w.boss_spawned = true
 	var s: Dictionary = Content.STAGES[w.stage]
 	var n := 2 if twin else 1
 	for k in n:
-		var i := w.sw.add(Content.E.BOSS, w.ring_point(60.0), 1400.0 * w.hp_mult() * (0.62 if twin else 1.0), 46.0 * w.spd_mult(), 36.0, 16.0, 0.0, Swarm.F_BOSS, 0)
+		var i := w.sw.add(Content.E.BOSS, arrival_point(), 1400.0 * w.hp_mult() * (0.62 if twin else 1.0), 46.0 * w.spd_mult(), 36.0, 16.0, 0.0, Swarm.F_BOSS, 0)
 		if i < 0: continue
 		var u := w.sw.uid[i]
 		stage_uids.append(u)
@@ -68,7 +80,7 @@ func _tyrant(i: int, st: Dictionary, dt: float, guardian: bool) -> void:
 
 # ---------------------------------------------------------------- rift guardian
 func spawn_guardian() -> void:
-	var i := w.sw.add(Content.E.BOSS, w.ring_point(60.0), 2600.0 * w.hp_mult(), 50.0 * w.spd_mult(), 40.0, 18.0, 0.0, Swarm.F_RIFTG, 0)
+	var i := w.sw.add(Content.E.BOSS, arrival_point(), 2600.0 * w.hp_mult(), 50.0 * w.spd_mult(), 40.0, 18.0, 0.0, Swarm.F_RIFTG, 0)
 	if i < 0: return
 	guardian_uid = w.sw.uid[i]
 	bstate[guardian_uid] = {"bt": 2.0, "sm": 5.0, "sl": 6.0}

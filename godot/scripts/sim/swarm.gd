@@ -262,11 +262,16 @@ func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float) ->
 ## neighbours found through the spatial grid.
 ## Staggered: only foes with i % 2 == parity are solved each frame; the others keep last frame's
 ## push. Separation is a soft force, so 30 Hz is visually identical and halves the cost.
-func cpu_separation(grid: SpatialGrid, parity: int = -1) -> void:
+## Foes outside `vis_r` of `center` are not solved at all (cycle 3): nobody sees them overlap.
+func cpu_separation(grid: SpatialGrid, parity: int = -1, center: Vector2 = Vector2.ZERO, vis_r: float = INF) -> void:
 	var start := 0 if parity < 0 else parity
 	var stride := 1 if parity < 0 else 2
+	var vr2 := vis_r * vis_r
 	for i in range(start, n, stride):
 		var p := pos[i]
+		if p.distance_squared_to(center) > vr2:
+			sep[i] = Vector2.ZERO
+			continue
 		var r := rad[i]
 		var push_v := Vector2.ZERO
 		var c := grid.query(p, r * 1.6, self)

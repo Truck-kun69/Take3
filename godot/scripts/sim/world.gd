@@ -97,6 +97,8 @@ var roll_buffer := 0.0
 var roll_perfect_used := false
 var ult := 0.0
 var ult_cd := 0.0
+var _ult_lock := 0.0
+const ULT_RATE_CAP := 8.0          # max charge per second (a full bar takes >= 12.5 s of fighting)
 var flasks: Array = []
 var heal_hot := 0.0
 var phoenix_used := false
@@ -168,6 +170,7 @@ var texts: Array = []         # {pos, v, col, tier, t, uid}
 var fx: Array = []            # {k, pos, r, col, life, t, pts, to}
 var bursts: Array = []        # [pos, col, n, speed] consumed by the renderer each frame
 var _agg := {}
+var _label_t := {}
 var metrics := {"reactions": 0, "react_by": {}, "texts": 0, "peak_foes": 0, "dmg_taken": 0.0, "perfect": 0, "events": {}, "dmg_dealt": 0.0,
 	"react_dropped": 0, "cascade_max": 0, "items": 0, "deaths_by": ""}
 
@@ -201,6 +204,11 @@ func setup(cfg: Dictionary) -> void:
 	max_hp = stats.value("max_hp", float(h.hp))
 	hp = max_hp
 	need = _need(1)
+	if mode == "atlas":                        # map head start: two extra picks per tier above 1
+		var bonus := mini(10, 2 * (int(node.tier) - 1))
+		lvl += bonus
+		pending += bonus
+		need = _need(lvl)
 	if mode == "pinnacle":
 		arena_r = 520.0
 		bosses.spawn_herald()
@@ -225,7 +233,9 @@ func _apply_meta() -> void:
 	mm.append(["item_quantity", "inc", rw.x])
 	mm.append(["item_rarity", "inc", rw.y])
 	if season == "blight": mm.append(["item_quantity", "inc", 0.25])
-	if mode == "rift": mm.append(["item_rarity", "inc", 0.04 * gr_level])
+	if mode == "rift":
+		mm.append(["item_rarity", "inc", 0.04 * gr_level])
+		mm.append(["xp_gain", "more", 0.6])     # cycle 3: dense rift spawns out-levelled the +17%/level curve
 	stats.set_source("map", mm)
 
 func has_leg(id: String) -> bool:
@@ -248,7 +258,9 @@ func _need(l: int) -> float:
 func hp_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
 	var m := float(s.hp) * (1.0 + t / 110.0)
-	if mode == "atlas": m = (1.0 + 0.35 * (int(node.tier) - 1)) * (1.0 + t / 110.0)
+	if mode == "atlas":
+		# cycle 3: full tier pressure ramps in over ~60 s so a fresh level-1 hero can draft first
+		m = (1.0 + 0.35 * (int(node.tier) - 1) * minf(1.0, 0.4 + t / 100.0)) * (1.0 + t / 110.0)
 	if mode == "rift": m = 1.5 * float(s.hp) * Content.gr_hp_mult(gr_level) * (1.0 + t / 240.0)
 	if has_mod("hardened"): m *= 1.4
 	return m
@@ -452,6 +464,7 @@ func use_ult() -> void:
 	else:
 		ult = 0.0
 	var h: String = Content.HEROES[hero].id
+	_ult_lock = t + 6.0
 	shake = 1.0
 	flash = 0.25
 	Sfx.play("ult")
@@ -472,8 +485,19 @@ func use_ult() -> void:
 				z.tick = 0.4
 		"storm": buffs.add("thunderdome")
 
+## Cycle 3: a screen-wide ultimate used to refund itself (its own damage and kills charged it),
+## looping forever at GR25. Charge is now blocked for 6 s after a cast and rate-capped per second.
+var _ult_gain_window := 0.0
+var _ult_gain := 0.0
 func charge_ult(v: float) -> void:
-	ult = minf(100.0, ult + v * stats.value("ult_charge", 1.0))
+	if t < _ult_lock:
+		return
+	if t - _ult_gain_window >= 1.0:
+		_ult_gain_window = t
+		_ult_gain = 0.0
+	var add := minf(v * stats.value("ult_charge", 1.0), maxf(0.0, ULT_RATE_CAP - _ult_gain))
+	_ult_gain += add
+	ult = minf(100.0, ult + add)
 
 # ================================================================= spawning
 func spawn_rate() -> float:
@@ -572,7 +596,7 @@ func _step_foes(dt: float) -> void:
 		crowd.dispatch(sw)         # kick off this frame's
 	else:
 		_sep_parity = 1 - _sep_parity
-		sw.cpu_separation(grid, _sep_parity)
+		sw.cpu_separation(grid, _sep_parity, pp, view_r + 40.0)
 	_shots_req.clear()
 	var target := pp
 	sw.step_move(dt, target, _shots_req, 1.0)
@@ -910,7 +934,9 @@ func _react(i: int, R: Dictionary, depth: int, echo: bool) -> void:
 	var scale := (1.0 + 0.05 * lvl) * stats.value("reaction_damage", 1.0) * pow(Content.REACT_FALLOFF, depth) * (0.5 if echo else 1.0)
 	var col := Content.col(R.col)
 	var spread_m := (1 << int(R.spread)) if int(R.spread) >= 0 else 0
-	_text(at + Vector2(0, -18), 0.0, col, 3, -1, R.name)
+	if t - float(_label_t.get(R.id, -9.0)) > 0.35:       # one label per reaction kind per 0.35 s
+		_label_t[R.id] = t
+		_text(at + Vector2(0, -18), 0.0, col, 3, -1, R.name)
 	match R.id:
 		"septic":
 			var pay: float = sw.dot_dps(i) * maxf(sw.pois_t[i], sw.bleed_t[i]) * float(R.payout) * scale

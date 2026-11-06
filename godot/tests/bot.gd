@@ -55,6 +55,12 @@ func think() -> void:
 				goal = p.pos
 		if goal != Vector2.INF:
 			mv = (mv * 0.4 + (goal - w.pp).normalized()).normalized()
+	# engage a live boss that is far away (a kiting bot otherwise never meets it)
+	var bf := -1
+	for u in w.boss_uids:
+		if w.sw.index_of(u) >= 0: bf = w.sw.index_of(u)
+	if bf >= 0 and w.sw.pos[bf].distance_to(w.pp) > 320.0:
+		mv = (mv * 0.3 + (w.sw.pos[bf] - w.pp).normalized()).normalized()
 	if w.arena_r > 0.0 and w.pp.length() > w.arena_r - 80.0:
 		mv = (mv - w.pp.normalized()).normalized()
 	w.in_move = mv

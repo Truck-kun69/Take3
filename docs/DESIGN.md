@@ -62,4 +62,125 @@ friction, balance), and the change made for the next cycle. Measurements come fr
 `tests/run_tests.gd` (9 bot-played runs across all modes, plus a 680-foe stress bench) and
 `tests/shots.gd` (screenshots on the real Forward Mobile renderer).
 
-<!-- CYCLES -->
+
+### Baseline (cycle 0) — first full implementation
+
+9 bot runs + bench, before any fixes. Two runs never finished and the first sim hung outright.
+
+| Run | Result | Level | Note |
+|---|---|---|---|
+| Campaign, Stormwright | timed out | **2** | 339 kills, 0 gold, 0 items |
+| Campaign stage 3, Sparkcaller | timed out | **1** | 19 kills |
+| Atlas citadel (tier 6), Emberwitch | **died at 2:02** | 1 | 2 kills |
+| Rift GR1 vs GR8, Stormwright | won in 228 s vs **185 s** | 54 / 50 | higher GR finished faster |
+| Stress bench, 680 foes, CPU | 5.23 ms / frame | | separation alone 4.24 ms (81%) |
+
+Screenshots (`docs/screenshots/cycle0_*`) showed an empty battlefield and broken overlays.
+
+### Critique cycle 1
+
+**Engineering**
+1. *Hang:* `SpatialGrid` bucket heads started at 0, so any query before the first rebuild (the bot
+   thinks before the first step) walked a self-loop on foe 0 forever. → heads/next start at -1;
+   regression test `unbuilt grid reads empty`.
+2. *Invisible swarm:* the MultiMesh bounding box is computed once from the initial all-zero
+   transforms and never again (buffers are uploaded wholesale), so the whole batch was culled once
+   the camera left the origin. → huge `custom_aabb` on both batches.
+3. *Zero-size UI root:* anchors were set before the root Control entered the CanvasLayer, so its
+   size stayed 0: no dim behind overlays, uncentred sheets, HUD bars 270 px wide. → anchors and
+   offsets applied after `add_child`, everywhere.
+4. *Stale frame:* the last world frame stayed on screen under every menu. → view hides without a run.
+5. *Cape triangulation error* when facing straight up/down (self-intersecting quad). → two triangles.
+6. *Perf:* CPU separation was 81% of the sim frame. → staggered 30 Hz solve (half the swarm per
+   frame) and a tighter query radius. The GPU path was verified on Vulkan (lavapipe): 0.90 ms for the
+   whole foe step.
+7. *Leaks:* World ↔ Director/Bosses reference cycles leaked every run. → `World.dispose()`.
+
+**Player friction**
+8. *Loot stranding:* ranged kits (Skyfall strikes anywhere on screen) killed far away and the XP,
+   coins and currency stayed there; the kiting bot (like a kiting player) never collected them.
+   → shard gravity: drops older than 3 s drift home, accelerating with age.
+9. *DoT noise:* streams of "1" ticks. → ticks under 3 damage and under 2% of the foe's life are not shown.
+
+**Balance**
+10. *Atlas wall:* tier and biome multipliers stacked (2.5x tier × 3.0x biome) on a level-1 hero.
+    → atlas difficulty comes from tier only; the start node has no mods.
+11. *Runaway power:* linear XP plus 4–10%-per-level scalars let bots reach level 50+ and made GR8
+    faster than GR1. → XP need gains a 0.15·l² term; per-level scalars cut to 3/5/6%.
+
+**Result:** Stormwright level 2 → **25**, stage-3 Sparkcaller level 1 → **27**, atlas citadel
+death → **win**, GR8 now slower than GR1. Bench 5.23 → **3.33 ms** (separation 4.24 → 2.24 ms).
+
+### Critique cycle 2
+
+**Engineering**
+1. *Second hang* (found by the cycle-1 re-run): when a boss dies, `_victory` deals 1e9 to leftover
+   foes; a fleeing Treasure Gremlin then reported a life fraction of about −10⁷ and the
+   "spill coins per 10% lost" loop ran millions of iterations. → fractions clamped to [0, 1],
+   dying gremlins skipped; same clamp on the exile blink check; regression test.
+2. *18.8 ms frame spike:* reproduced only in the first run of a process; an isolated replay of the
+   same seed never exceeded 5 ms. It was first-use cost of script paths, not gameplay. → bench warm-up
+   run; worst frame afterwards **6.7 ms**.
+
+**Player friction / readability**
+3. Foes blended into busy ground (orange on brown). → contact shadow under every body and a thicker outline in the swarm shader.
+4. On-screen touch buttons covered the play area on desktop/gamepad. → shown only after a real touch (or by option).
+
+**Balance** (from cycle-1 data: 8 of 9 bot runs won, mostly above 60% life)
+5. Atlas tier step 0.22 → 0.35; enemy damage now ramps +1/3 over five minutes; rift monster life ×1.5 and slower progress.
+6. The Herald died in 33 s. → life 24000·(0.5 + 0.05·level), and a denser 90 s preparation phase.
+
+**Result:** campaign 4/5 wins with one death to boss bullets; Herald fight about **110 s**.
+New problems: the atlas citadel became a wall again for a fresh hero, and rift difficulty barely
+rose between GR1 and GR8.
+
+### Critique cycle 3
+
+**Engineering / balance (one bug, found from data)**
+1. *Self-refunding ultimate:* an Emberwitch cleared **GR25** (≈65x monster life) averaging 31,716
+   DPS. Tagging damage by source showed 240k of 264k damage came from the ultimate: Cataclysm hits
+   every foe on screen, and ultimate charge came from damage dealt and kills, so one cast refilled the
+   bar and it recast forever. → charge is locked for 6 s after a cast and capped at 8 per second
+   (a full bar needs at least 12.5 s of fighting); regression test `ultimate does not refund itself`.
+
+**Player friction**
+2. *Unmeetable bosses:* GR1 reached 100% and still timed out: the guardian spawned off-screen and
+   walked at 50 px/s toward a hero kiting at 155 px/s. → bosses arrive on-screen (55% of the view
+   radius) behind a summoning ring; the bot seeks out live bosses as a player would via the compass.
+3. *Atlas head start:* maps grant two extra level-up picks per tier above 1 and ramp the tier
+   multiplier in over the first minute, so a fresh hero can draft a build before full pressure.
+
+**Performance**
+4. Foes more than a screen away no longer run separation at all. CPU separation 2.24 → **1.94–2.23 ms**
+   (run-to-run noise), sim frame **2.8–3.3 ms** at 680 foes.
+
+**Final measured state** (`tests/run_tests.gd -- sim bench`):
+
+| Run | Result | Time | Level | Low life |
+|---|---|---|---|---|
+| Campaign stage 1 (4 heroes) | 2 wins, 1 death, 1 time-out | 142–200 s | 12–28 | 0–54% |
+| Campaign stage 3, Sparkcaller | win | 187 s | 21 | 54% |
+| Atlas citadel tier 6, Emberwitch | win | 176 s | 34 | 60% |
+| Greater Rift 1 / 8 / 15 | win / win / win | 207 / 203 / 269 s of 300 | 31–32 | 64–85% |
+| Greater Rift 25 | wall (1 kill) | time-out | 1 | 58% |
+| Pinnacle: Shard Herald | win | 170 s | 17 | 40% |
+| Stress bench 680 foes | CPU 3.29 ms total | | | |
+
+### What would still make it better (next iteration)
+
+* **Warden underperforms** in every bot run (lowest DPS, the one stage-1 death). Part of that is the
+  bot's melee play, but the orbit weapon's reach vs. contact damage needs a human playtest pass
+  before numbers change.
+* **Reaction mix is lopsided**: Thermal Shock is 60–90% of all reactions because fire and cold are
+  the most common perk pair. Either rebalance perk weights or give each reaction a distinct niche
+  (e.g. Superconduct as the boss-killer).
+* **Late-rift spikes**: GR15 peaked at 14 ms worst frame with 1,500+ reactions and 44 damage numbers
+  per second. Next steps: spread the reaction budget across frames instead of dropping jobs, and move
+  `Swarm` (statuses, separation, movement) to a C++ GDExtension for the CPU path.
+* **APK size**: 55 MB because the debug build ships x86_64 for emulators too; arm64-only release is
+  roughly half.
+* **No art pipeline**: everything is procedural (SDF bodies, canvas-drawn props). A sprite atlas would
+  plug into the same MultiMesh batches via a texture and UV rect in `INSTANCE_CUSTOM`.
+* **Bot ≠ human**: all balance numbers come from a deliberately mediocre bot. Touch feel (dead
+  zone, curve, button sizes) has only been verified in screenshots, not on a phone.
+
