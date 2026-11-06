@@ -11,10 +11,10 @@ extends Node3D
 ## gems 1, debris 1, projectiles 1, blades 1, pickups 4, beams 1, lightning 1, decal pool <= 96.
 
 const STAGE_LOOK := [
-	{"sun": Color(1.0, 0.92, 0.78), "amb": Color(0.35, 0.45, 0.4), "fog": Color(0.1, 0.18, 0.14), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 22, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
-	{"sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 4, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
-	{"sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 6, "crystal": 1, "pillar": 2.5, "bones": 4}},
-	{"sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 3, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
+	{"sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 60, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
+	{"sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 10, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
+	{"sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 20, "crystal": 1, "pillar": 2.5, "bones": 4}},
+	{"sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 8, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
 ]
 const CHUNK := 640.0
 ## Godot's omni falloff is distance^-attenuation in world units. This world is ~60 units per hero,
@@ -39,6 +39,7 @@ var decal_mat: ShaderMaterial
 var hero: HeroRig
 var boss_rigs := {}            # uid -> BossRig
 var fx: FX3D
+var env_fx: EnvFX
 var time := 0.0
 var view_scale := 1.0
 var _cam_pos := Vector3.ZERO
@@ -160,6 +161,9 @@ func _ready() -> void:
 	fx = FX3D.new()
 	add_child(fx)
 	fx.view = self
+	env_fx = EnvFX.new()
+	env_fx.view = self
+	add_child(env_fx)
 	_aura_mm = MultiMeshInstance3D.new()
 	var amm := MultiMesh.new()
 	amm.transform_format = MultiMesh.TRANSFORM_3D
@@ -237,6 +241,9 @@ func bind(world: World) -> void:
 	_kind_col.clear()
 	for k in Models.FOE_KINDS.size(): _kind_col.append(_foe_color(k))
 	fx.bind(w)
+	env_fx.bind(w)
+	torch.shadow_enabled = hq                      # radial shadows from the hero's light (high quality)
+	torch.shadow_bias = 0.08
 
 ## World -> screen, used by the overlay and the HUD compass.
 func to_screen(p: Vector2, h: float = 0.0) -> Vector2:
@@ -256,6 +263,7 @@ func _process(dt: float) -> void:
 	_foes()
 	_hero(dt)
 	_bosses(dt)
+	env_fx.step(dt)
 	fx.step(dt)
 	_assign_lights()
 	cost_us = lerpf(cost_us, float(Time.get_ticks_usec() - t0), 0.05)

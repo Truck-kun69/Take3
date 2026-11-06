@@ -62,3 +62,61 @@ lavapipe) and the model turntable (`tests/model_view.tscn`).
   write, which would have cost ~40 MB of copying per frame.
 * Low effects quality turns off sun shadows and foe shadow casting, uses 3 terrain noise octaves
   instead of 5, and lowers the caps on sparks and debris.
+
+
+## PoE2 pass 2: characters, enemies and a reactive world
+
+### Characters and enemies
+
+* **Material shader** (`shaders/3d/char.gdshader`) for heroes, bosses and exiles. Detail is computed
+  in part-local space so it stays on the part while it animates: cloth gets a weave and grime,
+  leather gets mottled grain and scuffs, metal gets worn bright edges and pits, and skin gets a warm
+  tint. Runes and crystals glow and flare on every cast. A dim reflection sky stops metal from
+  rendering black.
+* **Heroes rebuilt** with layered gear. The Warden has a gambeson under a breastplate, layered
+  pauldron lames, tassets, greaves, a sallet with a plume, a rune-etched bastard sword and an oak
+  heater shield painted with heraldry. Sparkcaller has a cowl, fur mantle, ice talismans and a
+  pronged staff. The Emberwitch has a corset, a bent witch hat, hair, a skull talisman, an
+  ember-lit hem and a gnarled staff. Stormwright has a mantle, sash, glowing arm tattoos and a
+  forked rod. Knees and elbows bend.
+* **Muted dyes:** each hero's colour is now a desaturated dye on the cloth, and full saturation is
+  saved for runes and heraldry (PoE2 palettes).
+* **Cape and robes in motion:** the cape is four chained segments on a damped spring driven by
+  speed, with flutter that grows when running. Robes are front and back panels that kick and trail
+  with the stride.
+* **Grim foes:** a ghoul with ribs, claws and crystal growths; a feral hound; a rubble golem with
+  a glowing core; a pustule-covered bloat; a crystal-swallowed husk; a crystal mite; a tusked boar;
+  an abyssal tentacle mass; a sack-hauling imp.
+* **Foe skin:** the foe shader adds dark, desaturated, mottled skin with veins and crevice
+  darkening, plus a per-foe seed so no two look alike.
+* **Corpses** fall backwards away from the hero, lie for a moment, then crumble from the edges
+  with an ember burn line (PoE2 keeps corpses on the ground; here they are a timed visual so the
+  simulation is unchanged).
+* **Monster rarity:** magic monsters (one affix) get a blue rune ring on the ground, rare monsters
+  (two or more affixes) a gold one.
+* **Rogue Exiles** are drawn with the full hero rig in dark gear and turn and cast like a player.
+* **The tyrant boss** is a charred demon: ashen hide with ember cracks, digitigrade legs, curved
+  segmented horns, membrane wings with a glowing trailing edge, bone ribs over a pulsing furnace.
+
+### Environment reacting to the hero and the swarm (`scripts/render3d/env_fx.gd`)
+
+| Effect | How |
+|---|---|
+| Grass bends and flattens around bodies, and shockwaves roll over it | `pushers[16]` uniform (hero, a rotating sample of nearby foes, expanding nova and reaction rings) bends every swaying vertex in the prop shader |
+| Low ground fog that parts | lit translucent plane with drifting noise; the same pushers clear holes, and the torch and spell lights glow inside it |
+| Footsteps | dust puffs on each footfall (plus a soft step sound), a dust ring on roll, a dust cloud when a slam lands |
+| Statuses in the world | burning foes trail flame sparks and smoke, chilled ones shed frost mist, poisoned ones leak green fumes, shocked ones crackle |
+| Hits | fresh hits spray ichor sparks and sometimes leave a splatter mark that fades |
+| Casting | every cast flashes a short light in the element's colour at the hero's hand, with sparks |
+| Ambient motes | per stage: fireflies (Mossglen), rising embers (Cinder), dust (Crypt), data sparks (Neon) |
+| Breakables | urns and barrels appear in clusters near the hero; any skill area, projectile or blade shatters them into shards and dust for coins, sometimes a heart, power-up or currency (simulation side in `World.shatter`, unit-tested) |
+| Light | warm torch against a cool ambient (PoE2's warm/cool split); on high quality the torch casts shadows that radiate from the hero |
+
+### Critique loops for this pass
+
+| Loop | Seen | Fixed |
+|---|---|---|
+| 1 | Toy-bright, saturated hero cloth; robes like stacked lampshades; a black mask box on Sparkcaller; foes pink and plastic; the ghoul read as a pig; huge eyes; corpse dissolve glowing white with pixel noise | Muted dyes; one flared robe split into swinging panels; an open cowl; dark desaturated foe skin with stronger rim; an upright ghoul; small eyes; a broader, dimmer burn line |
+| 2 | Golem faces speckled (z-fighting between overlapping boxes and the core gem); tyrant a saturated orange toy robot | Separated surfaces; tyrant rebuilt as a charred demon on the character shader |
+| 3 | Tyrant wing struts like white sticks, ribs like stitches, then ribs as hoops around its belly; Warden's shield a bright yellow slab, pauldrons like round ears | Dark horn struts, bigger membranes with an ember edge, V-shaped rib bars; oak shield with steel bands and painted heraldry; flat layered lames |
+| Env 1 | Hit pops still blew out to white on the darker foes; urns looked like pink balls; cool fog washed the forest ground blue-grey | Tinted, weaker hit pop; darker urns with a foot and straps; lighter, per-stage fog density |

@@ -6,6 +6,8 @@ uniform float time = 0.0;
 uniform vec3 tint : source_color = vec3(1.0);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
 uniform vec3 hero_pos = vec3(0.0);
+// (x, z, radius, strength): bodies and shockwaves that push foliage aside
+uniform vec4 pushers[16];
 varying flat float v_part;
 varying vec3 wpos;
 void vertex() {
@@ -17,7 +19,25 @@ void vertex() {
 		VERTEX.x += sway;
 		VERTEX.z += sway * 0.6;
 	}
-	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 wv = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	if (part > 7.5) {                                      // swaying parts also bend away from bodies
+		vec2 off = vec2(0.0);
+		float flat_k = 0.0;
+		for (int i = 0; i < 16; i++) {
+			vec4 q = pushers[i];
+			if (q.z <= 0.0) continue;
+			vec2 d = wv.xz - q.xy;
+			float l = length(d);
+			float k = clamp(1.0 - l / q.z, 0.0, 1.0);
+			off += (l > 0.01 ? d / l : vec2(0.0)) * k * q.w;
+			flat_k = max(flat_k, k * min(q.w / 12.0, 1.0));
+		}
+		float hgt = max(0.0, wv.y - wroot.y);
+		vec3 woff = vec3(off.x, -hgt * flat_k * 0.6, off.y) * min(1.0, hgt / 10.0);
+		VERTEX += inverse(mat3(MODEL_MATRIX)) * woff;
+		wv += woff;
+	}
+	wpos = wv;
 }
 void fragment() {
 	// screen-door fade near the camera-to-hero line (taller props only matter there)

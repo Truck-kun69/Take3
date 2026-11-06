@@ -107,6 +107,9 @@ var hit_count := 0
 var regen_acc := 0.0
 var cast_t := -9.0                # renderer feed: last weapon cast (hero turns and thrusts toward it)
 var cast_dir := Vector2.RIGHT
+var breakables: Array = []        # {pos, kind 0 urn / 1 barrel, r}; skills shatter them for small loot (PoE2)
+var broken: Array = []            # renderer feed: [pos, kind]
+var _brk_t := 6.0
 var deaths: Array = []            # renderer feed: [pos, colour, radius, elite] per kill, consumed by the 3D view
 
 # input written by the controller (touch, keyboard, gamepad or test bot)
@@ -315,6 +318,7 @@ func step(dt: float) -> void:
 	_resolve_reactions()
 	director.step(dt)
 	bosses.step(dt)
+	_step_breakables(dt)
 	_step_pickups(dt)
 	_step_feed(dt)
 	_reap()
@@ -775,6 +779,7 @@ func _nova(s: Dictionary, mul: float) -> bool:
 
 ## Area hit used by the nova weapon, ultimates and legendary powers.
 func nova_at(at: Vector2, r: float, dmg: float, em: int, col: Color, kb: float = 200.0) -> void:
+	shatter(at, r)
 	var c := grid.query(at, r, sw)
 	var hit_list := grid.results.slice(0, c)
 	for q in hit_list.size():
@@ -803,6 +808,7 @@ func _storm(s: Dictionary, mul: float) -> bool:
 	return true
 
 func strike_at(at: Vector2, r: float, dmg: float, em: int) -> void:
+	shatter(at, r)
 	var c := grid.query(at, r, sw)
 	var hl := grid.results.slice(0, c)
 	for q in hl.size():
@@ -830,6 +836,8 @@ func _orbit(dt: float, s: Dictionary) -> void:
 		blades[k] = pp + Vector2(cos(a), sin(a)) * rad
 	var dmg := float(s.dmg) * _dmg_scale("orbit") * (3.0 if cyc else 1.0)
 	var em := elmask("orbit")
+	if not breakables.is_empty():
+		for b in n: shatter(blades[b], 12.0)
 	var c := grid.query(pp, rad + 30.0, sw)
 	var hl := grid.results.slice(0, c)
 	for q in hl.size():
@@ -1044,6 +1052,8 @@ func _step_projs(dt: float) -> void:
 		var p: Proj = projs[k]
 		p.pos += p.vel * dt
 		p.life -= dt
+		if not breakables.is_empty() and shatter(p.pos, p.r):
+			p.dead = p.pierce <= 0
 		if p.life <= 0.0:
 			p.dead = true
 		else:
@@ -1596,6 +1606,52 @@ func end_run(win: bool) -> void:
 		Save.flush()
 	Sfx.play("win" if win else "lose")
 	ended.emit(win)
+
+# ================================================================= breakables (urns and barrels)
+## Clusters of 3-5 appear near the hero every 18-30 s (never more than 10 nearby). Any skill area or
+## projectile touching one shatters it: coins mostly, sometimes a heart, power-up or currency.
+func _step_breakables(dt: float) -> void:
+	if mode == "pinnacle":
+		return
+	_brk_t -= dt
+	var k := breakables.size() - 1
+	var near := 0
+	while k >= 0:
+		var d: float = breakables[k].pos.distance_to(pp)
+		if d > 1300.0: breakables.remove_at(k)
+		elif d < 700.0: near += 1
+		k -= 1
+	if _brk_t <= 0.0:
+		_brk_t = rng.randf_range(18.0, 30.0)
+		if near < 10:
+			var a := rng.randf() * TAU
+			var c := pp + Vector2(cos(a), sin(a)) * rng.randf_range(260.0, 420.0)
+			var kind := rng.randi_range(0, 1)
+			for i in rng.randi_range(3, 5):
+				breakables.append({"pos": c + Vector2(rng.randf_range(-40, 40), rng.randf_range(-40, 40)), "kind": kind, "r": 10.0 if kind == 0 else 13.0})
+
+## Returns true if anything broke.
+func shatter(at: Vector2, r: float) -> bool:
+	if breakables.is_empty():
+		return false
+	var any := false
+	var k := breakables.size() - 1
+	while k >= 0:
+		var b: Dictionary = breakables[k]
+		if b.pos.distance_to(at) < r + b.r:
+			breakables.remove_at(k)
+			any = true
+			if broken.size() < 32: broken.append([b.pos, b.kind])
+			Sfx.play_at("break", b.pos)
+			var roll := rng.randf()
+			if mode == "rift" and roll >= 0.65: roll = 1.0       # rifts: urns pay coins only, no sustain from pots
+			if roll < 0.65:
+				for c in rng.randi_range(1, 3): add_pick(b.pos, "coin", 1.0)
+			elif roll < 0.73: add_pick(b.pos, "heart")
+			elif roll < 0.77: drop_powerup(b.pos)
+			elif roll < 0.80: drop_currency(b.pos)
+		k -= 1
+	return any
 
 ## Breaks the World <-> Director/Bosses reference cycle so RefCounted can free the run.
 func dispose() -> void:

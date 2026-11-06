@@ -37,6 +37,7 @@ var _marks: Array = []          # [pos, rot, size, kind]
 var _mark_head := 0
 var objs := {}                  # key -> Node3D event props
 var _boss_deaths: Array = []
+var ext_glow: Array = []        # [pos, size, colour, shape] pushed by EnvFX each frame (motes)
 
 # debris and sparks (renderer-owned simulation)
 var d_pos := PackedVector3Array(); var d_vel := PackedVector3Array(); var d_rot := PackedVector3Array(); var d_spin := PackedVector3Array()
@@ -180,6 +181,11 @@ func step(dt: float) -> void:
 	_gems(dt)
 	_blades()
 	gn = _pickups(gn)
+	for e in ext_glow:
+		if gn >= GLOW_CAP: break
+		_g(gn * 20, e[0], e[1], e[2], e[3])
+		gn += 1
+	ext_glow.clear()
 	var mm := glow_mm.multimesh
 	mm.buffer = _gb
 	mm.visible_instance_count = gn

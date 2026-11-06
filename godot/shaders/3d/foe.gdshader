@@ -116,7 +116,7 @@ void fragment() {
 	if (exile) em += vec3(1.0, 0.45, 0.15) * fres * 3.0;
 	if (ally) { base *= 0.4; em += vec3(0.6, 0.45, 1.0) * (0.6 + fres * 2.0); }
 	float fl = clamp(v_custom.y * 10.0, 0.0, 1.0);
-	em += mix(base, vec3(1.0), 0.6) * fl * fl * fl * 1.6;    // short, curved hit flash (a pop, not a strobe)
+	em += mix(base * 2.0, vec3(1.0, 0.85, 0.75), 0.35) * fl * fl * fl * 0.9;    // short, curved, tinted hit pop
 	if (corpse) {
 		// crumble from the edges, glowing at the burn line, then gone
 		float cut = vn3(v_mpos * 2.4 + seed) - v_custom.y * 1.1 + 0.05;

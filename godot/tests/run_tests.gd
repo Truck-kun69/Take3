@@ -149,6 +149,13 @@ func _unit() -> void:
 	for k in 60: wu.step(1.0 / 60.0)
 	ok(wu.ult < 1.0, "ultimate does not refund itself (charge after cast %.1f)" % wu.ult)
 	wu.dispose()
+	# breakables shatter under skills and pay out
+	var wb := _world({"mode": "campaign", "hero": 2, "seed": 21})
+	wb.breakables.append({"pos": Vector2(40, 0), "kind": 0, "r": 10.0})
+	wb.breakables.append({"pos": Vector2(900, 0), "kind": 1, "r": 13.0})
+	wb.nova_at(Vector2.ZERO, 60.0, 1.0, 0, Color.WHITE)
+	ok(wb.breakables.size() == 1 and wb.broken.size() == 1, "nova shatters only breakables in reach")
+	wb.dispose()
 	# swarm swap-removal keeps uid index coherent
 	var sw := Swarm.new()
 	for k in 50: sw.add(0, Vector2(k, 0), 10.0, 1.0, 5.0, 1.0, 1.0, 0, 0)
