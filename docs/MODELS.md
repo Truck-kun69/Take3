@@ -105,3 +105,52 @@ More: [bosses pass 1](screenshots/models_bosses_pass1.png), [guardian and herald
 
 The web build is now 19.7 MB as a single file. For the artifact host it splits into a 14 MB page
 plus a 5.7 MB `shardfall_artifact_data.js` (`tools/pack_web.py --split`).
+
+## Swarm foes from CC0 packs (KayKit, Quaternius)
+
+```bash
+bash tools/blender/fetch_packs.sh /tmp/packs          # KayKit via git, Quaternius via gdown (pip install gdown)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/import_packs.py -- /tmp/packs [kinds...]
+```
+
+The swarm draws hundreds of foes per kind in one instanced call, and the foe shader animates them,
+so `tools/blender/import_packs.py` bakes each rigged creature into that format:
+
+1. **Pose**: frame 1 of the creature's own `Idle` clip, deformed by its skeleton and frozen.
+2. **Colour**: its texture atlas sampled into vertex colours, pulled toward a darker, less saturated palette.
+3. **Limbs**: each face takes its dominant bone's part id (legs, arms, head) and that limb's joint
+   height into UV2, so the shader can walk the legs, swing the arms and bob the head. KayKit's
+   glowing eye mesh and Quaternius' dark pupils and maws become emissive eyes.
+4. **Lore**: glowing shard crystals grow from each creature's upper back. They're shard-touched.
+5. **Fit**: faces +X, feet at 0, scaled to the procedural foe's height. Coplanar facets are merged
+   losslessly, then each limb is collapsed to its share of a triangle budget (about 600–2,300).
+
+| Foe | Model | Triangles |
+|---|---|---|
+| Shardling (grunt) | KayKit Skeleton_Minion with blade | ~2.3k |
+| Skitterer (runner) | Quaternius Dino | ~0.7k |
+| Shardhulk (brute) | Quaternius Yeti | ~1.0k |
+| Glassmaw (spitter) | Quaternius Frog | ~1.4k |
+| Ramshard (charger) | Quaternius Demon | ~0.8k |
+| Breachspawn (breach) | Quaternius Alien | ~0.8k |
+| Treasure Gremlin (goblin) | Quaternius Mushroom King | ~0.8k |
+| Fractal (splitter) | Quaternius spiky blob | ~1.3k |
+| Fractal Shard (mini) | Quaternius blob | ~0.6k |
+
+Credits: `godot/models/foes/CREDITS.md`. Delete a `.glb` to bring that kind's procedural foe back.
+
+### Next: TRELLIS 2 (fal.ai)
+
+Image to 3D at `fal-ai/trellis-2` (about $0.25 at 512p, $0.30 at 1024p, $0.35 at 1536p). The plan:
+concept image, then TRELLIS 2, then the same bake for swarm kinds or the hero/boss path for elites.
+The fal key is the key ID and secret joined by a colon. fal shows the secret only once, when the
+key is created. In a cloud session it is entered through the secure credential form, never in chat.
+
+Critique passes for the imports:
+1. Decimation tore holes in the skeleton skull, and the colours were pastel toy colours. Fixed with
+   a lossless flat-face merge before collapsing, a higher budget for the skeleton, and a darker,
+   less saturated grade ([pass 1](screenshots/foes_pass1_pale_no_eyes.png)).
+2. The Quaternius creatures had no glowing eyes. Their dark pupils and maws are now emissive eyes,
+   and the blob pack fills the Fractal and its shards ([all nine](screenshots/foes_imported.png)).
+3. In play the creatures read as dark figures with amber eyes and blades
+   ([before and after, same moment](screenshots/foes_ingame_before_after.png)).

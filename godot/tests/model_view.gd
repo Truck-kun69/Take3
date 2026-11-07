@@ -78,6 +78,23 @@ func _ready() -> void:
 				foe_mm.append(mmi)
 			var ex := HeroRig.new(); add_child(ex); ex.build("ember", Color("4a2a2a")); ex.scale = Vector3.ONE * 1.35
 			rigs.append([ex, Vector2(250, 0)])
+		"foe":
+			# imported swarm meshes: each kind three times (front, three-quarter, side), walking
+			var kinds2: PackedStringArray = (a[2] if a.size() > 2 else "grunt").split(",")
+			cam.position = Vector3(30.0 * kinds2.size(), 60, 150); cam.look_at(Vector3(30.0 * kinds2.size(), 14, 0))
+			var fm2 := ShaderMaterial.new(); fm2.shader = load("res://shaders/3d/foe.gdshader")
+			fm2.set_shader_parameter("glow_col", Color("8fd8ff")); fm2.set_shader_parameter("eye_col", Color(1, 0.6, 0.2))
+			for k in kinds2.size():
+				var mmi := MultiMeshInstance3D.new(); var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.use_custom_data = true
+				mm.mesh = Models.foe_mesh(kinds2[k]); mm.instance_count = 3
+				for j in 3:
+					var s2 := 13.0
+					mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, [-PI / 2, -0.8, 0.0][j]).scaled(Vector3(s2, s2, s2)), Vector3(k * 60.0 + (j - 1) * 18.0, 0, -j * 22.0)))
+					mm.set_instance_color(j, Color(0.85, 0.8, 0.78))
+					mm.set_instance_custom_data(j, Color(1.2 + j, 0, 0, 0))
+				mmi.multimesh = mm; mmi.material_override = fm2
+				add_child(mmi)
 		"one", "boss":
 			# close-up of one model in four states: idle (front), run (three-quarter), cast, roll/attack
 			var id := a[2] if a.size() > 2 else "warden"
