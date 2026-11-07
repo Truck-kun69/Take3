@@ -230,3 +230,10 @@ Critique passes:
 Size: each hero is about 42k triangles with 1024 textures (imported as WebP). The hosted page now
 loads its game data from two files, 15 MB and 1.6 MB ([in the browser](screenshots/heroes_realistic_web.png)).
 fal spend for the heroes: about $3.50, including the failed and repeated runs.
+
+2048 texture pass: the four heroes were regenerated from the same paintings and seed with
+`texture_size` 2048 (about $1 more; fal prices TRELLIS 2 by resolution, not texture size) and
+re-rigged with the same script. Shapes and rigs are unchanged. The added detail shows up close and
+on the title stage, but is barely visible at gameplay distance
+([1024 left, 2048 right](screenshots/heroes_tex1024_vs_2048.png)). The single-file page is now
+35 MB; the hosted page loads game data from two files (15 MB and 6 MB).
