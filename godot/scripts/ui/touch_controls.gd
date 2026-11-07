@@ -20,7 +20,7 @@ var knob := Vector2.ZERO
 var value := Vector2.ZERO
 var world: World
 var _btn_touch := {}
-var _seen_touch := DisplayServer.is_touchscreen_available()
+var _seen_touch := DisplayServer.is_touchscreen_available() and UIKit.touch_mode != 0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -107,33 +107,65 @@ func _press(id: String) -> void:
 func _process(_dt: float) -> void:
 	queue_redraw()
 
+const BRONZE := Color("b98a4a")
+const BRONZE_D := Color("5a3c1e")
+
+## A forged ring: dark rim, bronze band, thin highlight, so it reads on any floor.
+func _ring(p: Vector2, r: float, a: float, w: float = 3.0) -> void:
+	draw_arc(p, r + 1.5, 0, TAU, 48, Color(0, 0, 0, 0.55 * a), w + 3.0, true)
+	draw_arc(p, r, 0, TAU, 48, Color(BRONZE.r, BRONZE.g, BRONZE.b, a), w, true)
+	draw_arc(p, r - w * 0.5, PI * 1.05, PI * 1.7, 16, Color(1, 0.92, 0.75, 0.45 * a), 1.2, true)
+
 func _draw() -> void:
 	# desktop/gamepad players never see on-screen buttons (cycle 2: they cluttered the play area)
-	if not _seen_touch and not bool(Save.opt("force_touch_ui")):
+	if UIKit.touch_mode == 0 or (not _seen_touch and not bool(Save.opt("force_touch_ui"))):
 		return
 	if stick_id >= 0:
-		draw_circle(origin, R, Color(1, 1, 1, 0.08))
-		draw_arc(origin, R, 0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)
-		draw_circle(knob, 26.0, Color(1, 1, 1, 0.35))
+		draw_circle(origin, R, Color(0.03, 0.025, 0.03, 0.35))
+		_ring(origin, R, 0.75)
+		for k in 4:                                   # compass notches
+			var a := k * PI / 2.0
+			draw_line(origin + Vector2(cos(a), sin(a)) * (R - 8.0), origin + Vector2(cos(a), sin(a)) * (R + 6.0), Color(BRONZE.r, BRONZE.g, BRONZE.b, 0.7), 2.0)
+		draw_circle(knob, 27.0, Color(0.05, 0.04, 0.05, 0.75))
+		draw_circle(knob, 21.0, Color(BRONZE_D.r, BRONZE_D.g, BRONZE_D.b, 0.8))
+		_ring(knob, 26.0, 0.95, 2.5)
+		draw_circle(knob + Vector2(-6, -7), 6.0, Color(1, 0.9, 0.7, 0.18))
 	elif _fixed():
-		var h := _stick_home()
-		draw_arc(h, R, 0, TAU, 48, Color(1, 1, 1, 0.2), 3.0)
-	var font := ThemeDB.fallback_font
+		_ring(_stick_home(), R, 0.35)
+	var font := UIKit.font("display")
 	for b in _buttons():
+		var bp: Vector2 = b.pos
+		var br: float = b.r
 		var held := _btn_touch.values().has(b.id)
-		var fill := Color(1, 1, 1, 0.2 if held else 0.1)
-		draw_circle(b.pos, b.r, fill)
-		draw_arc(b.pos, b.r, 0, TAU, 40, Color(1, 1, 1, 0.4), 2.5)
+		var col := Color("f4c04e")
+		var k := -1.0
 		if world != null:
-			var k := -1.0
-			var col := Color("f4c04e")
 			match b.id:
 				"ult": k = world.ult / 100.0
-				"f0": k = world.flasks[0].c / world.flasks[0].max; col = Color("ff5a6a")
-				"f1": k = world.flasks[1].c / world.flasks[1].max; col = Color("8adfff")
+				"f0": k = world.flasks[0].c / world.flasks[0].max; col = Color("e0434f")
+				"f1": k = world.flasks[1].c / world.flasks[1].max; col = Color("5ab4ff")
 				"roll": k = clampf(1.0 - world.roll_cd / 1.4, 0, 1); col = Color("c9f3ff")
-			if k >= 0.0:
-				draw_arc(b.pos, b.r - 5.0, -PI / 2, -PI / 2 + TAU * k, 40, col if k >= 1.0 or b.id != "ult" else col.darkened(0.4), 6.0)
-		var fs := int(b.r * 0.42)
+		draw_circle(bp, br, Color(0.04, 0.035, 0.045, 0.62 if held else 0.48))
+		if b.id.begins_with("f") and k >= 0.0:        # flask liquid level
+			var lvl := clampf(k, 0.0, 1.0)
+			var top := bp.y + br - 2.0 * br * lvl
+			var pts := PackedVector2Array()
+			for j in 33:
+				var a := TAU * float(j) / 32.0
+				var q := bp + Vector2(cos(a), sin(a)) * (br - 4.0)
+				q.y = maxf(q.y, top)
+				pts.append(q)
+			draw_colored_polygon(pts, Color(col.r, col.g, col.b, 0.42))
+		if held: draw_circle(bp, br - 3.0, Color(col.r, col.g, col.b, 0.16))
+		_ring(bp, br, 0.85 if held else 0.65, 3.0)
+		if k >= 0.0 and not b.id.begins_with("f"):
+			var ready := k >= 1.0
+			draw_arc(bp, br - 6.0, -PI / 2, -PI / 2 + TAU * k, 40, col if ready or b.id != "ult" else col.darkened(0.45), 5.0, true)
+			if ready and b.id == "ult":
+				var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)
+				draw_arc(bp, br + 5.0, 0, TAU, 48, Color(col.r, col.g, col.b, 0.35 + 0.35 * pulse), 3.0, true)
+		var fs := int(br * 0.4)
 		var tw := font.get_string_size(b.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(font, b.pos + Vector2(-tw * 0.5, fs * 0.35), b.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.85))
+		var tp := bp + Vector2(-tw * 0.5, fs * 0.36)
+		draw_string_outline(font, tp, b.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.8))
+		draw_string(font, tp, b.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("efe2c4"))

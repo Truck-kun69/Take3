@@ -36,10 +36,20 @@ pck = b64gz(src / f"{exe}.pck")
 # refuses them as worklet modules; data: URLs load from disk and from any server.
 worklets = {p.name: "data:text/javascript;base64," + base64.b64encode(p.read_bytes()).decode("ascii") for p in src.glob(f"{exe}.audio*.js")}
 loader = (src / f"{exe}.js").read_text()
+# Loading screen art: the game's own logo and type, so the page matches the title screen.
+ROOT = pathlib.Path(__file__).resolve().parent.parent / "godot"
+def data_url(path: pathlib.Path, mime: str) -> str:
+    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+WEB_LOGO = pathlib.Path(__file__).resolve().parent / "web_logo.png"     # 1120px copy of godot/ui/logo.png (tools/make_art.py)
+logo_url = data_url(WEB_LOGO, "image/png") if WEB_LOGO.exists() else ""
+cinzel = data_url(ROOT / "fonts" / "cinzel-latin-700-normal.woff2", "font/woff2")
+garamond = data_url(ROOT / "fonts" / "eb-garamond-latin-400-italic.woff2", "font/woff2")
 assert "</script" not in loader.lower(), "loader contains a closing script tag"
 
 head = f"""<title>Shardfall Rift Survivors</title>
 <style>
+  @font-face {{ font-family: "Cinzel"; font-weight: 700; src: url({cinzel}) format("woff2"); }}
+  @font-face {{ font-family: "EB Garamond"; font-style: italic; src: url({garamond}) format("woff2"); }}
   /* One dark look on purpose: a dungeon-lit loading screen in front of a full-bleed game canvas. */
   :root {{ color-scheme: dark; --bg: #07080c; --fg: #ece8dd; --dim: #9aa0b4; --gold: #f4c04e; --track: #1d2130; --glow: #1a1420; --ember: #b8762a; --err: #ff8a8a; }}
   html, body {{ margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; touch-action: none; }}
@@ -48,18 +58,19 @@ head = f"""<title>Shardfall Rift Survivors</title>
   #status {{ position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
             gap: 18px; background: radial-gradient(ellipse at 50% 40%, var(--glow) 0%, var(--bg) 70%); color: var(--fg);
             font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; text-align: center; padding: 16px; }}
-  #status h1 {{ margin: 0; font-size: clamp(28px, 6vw, 54px); letter-spacing: .04em; color: var(--gold); font-weight: 700; }}
-  #status p {{ margin: 0; color: var(--dim); max-width: 36em; }}
+  #status h1 {{ margin: 0; font: 700 clamp(28px, 6vw, 54px) "Cinzel", Georgia, serif; letter-spacing: .06em; color: var(--gold); }}
+  #status h1 img {{ display: block; width: min(560px, 86vw); height: auto; }}
+  #status p {{ margin: 0; color: var(--dim); max-width: 36em; font: italic 18px/1.45 "EB Garamond", Georgia, serif; }}
   #bar {{ width: min(420px, 80vw); height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }}
   #bar i {{ display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ember), var(--gold)); transition: width .15s; }}
   @media (prefers-reduced-motion: reduce) {{ #bar i {{ transition: none; }} }}
-  #msg {{ color: var(--dim); font-size: 14px; min-height: 1.4em; }}
+  #msg {{ color: var(--dim); font: 700 13px "Cinzel", Georgia, serif; letter-spacing: .12em; text-transform: uppercase; min-height: 1.4em; }}
   #err {{ color: var(--err); white-space: pre-wrap; max-width: 40em; }}
 </style>
 """
 body = f"""<canvas id="canvas" tabindex="-1">Your browser does not support the canvas element.</canvas>
 <div id="status">
-  <h1>SHARDFALL</h1>
+  <h1>{('<img src="' + logo_url + '" alt="Shardfall: Rift Survivors">') if logo_url else 'SHARDFALL'}</h1>
   <p>Rift Survivors. Move with WASD or a thumb drag, roll with Space or double tap, ultimate with R, flasks with 1 and 2, pause with Esc.</p>
   <div id="bar"><i></i></div>
   <div id="msg">Unpacking the engine…</div>

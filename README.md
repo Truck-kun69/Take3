@@ -7,9 +7,9 @@ boss), three measured critique cycles, and a PoE2-style 3D renderer with drop-in
 authored models, sounds and textures (`godot/models`, `godot/audio`, `godot/textures`).
 
 * `docs/DESIGN.md` — the 20 enhancements and the three critique cycles with their numbers
-* `docs/GRAPHICS.md` — the 3D renderer (PoE2 direction), models, effects, audio, asset slots
+* `docs/GRAPHICS.md` — the 3D renderer (PoE2 direction), models, effects, audio, asset slots, and the UI pass (fonts, logo, tiles)
 * `docs/TOOLCHAIN.md` — provisioning Godot 4 + Android SDK headlessly, compute shader, export pipeline
-* `docs/screenshots/` — cycle-0 bugs and the final build on the Forward Mobile renderer
+* `docs/screenshots/` — cycle-0 bugs, the final build on the Forward Mobile renderer, and the UI pass (`ui_*.png`)
 
 ```bash
 bash tools/provision.sh                 # Godot 4.7.2, Android templates, SDK, debug keystore

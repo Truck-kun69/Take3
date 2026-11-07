@@ -120,3 +120,73 @@ lavapipe) and the model turntable (`tests/model_view.tscn`).
 | 2 | Golem faces speckled (z-fighting between overlapping boxes and the core gem); tyrant a saturated orange toy robot | Separated surfaces; tyrant rebuilt as a charred demon on the character shader |
 | 3 | Tyrant wing struts like white sticks, ribs like stitches, then ribs as hoops around its belly; Warden's shield a bright yellow slab, pauldrons like round ears | Dark horn struts, bigger membranes with an ember edge, V-shaped rib bars; oak shield with steel bands and painted heraldry; flat layered lames |
 | Env 1 | Hit pops still blew out to white on the darker foes; urns looked like pink balls; cool fog washed the forest ground blue-grey | Tinted, weaker hit pop; darker urns with a foot and straps; lighter, per-stage fog density |
+
+## UI pass: fonts, logo, tiles (PoE2 / Diablo IV direction)
+
+![Title screen](screenshots/ui_menu.png)
+
+### Art kit (`tools/make_art.py`, Pillow + numpy, fully procedural)
+
+| Asset | What it is |
+|---|---|
+| `godot/ui/logo.png` | "SHARDFALL" in Cinzel Black, forged-bronze fill with bevel, hairline fractures, ember underglow, a tilted rift crystal driven through "RD", and a ruled "RIFT SURVIVORS" subtitle |
+| `panel.png` | weathered slate, double bronze rim, corner filigree and a top crest (9-slice, margin 64) |
+| `btn_{normal,hover,pressed,disabled}.png` | notched bronze plates; hover adds an ember glow |
+| `tile.png`, `card.png` | neutral silver frames, tinted in Godot per hero, act, item rarity or reward type |
+| `orb_frame.png`, `slot.png`, `bar.png`, `divider.png` | globe bezel, action/buff slots, bar trough, ornamental rule |
+| `godot/icon.png` (from `tools/emblem.png`) | ringed falling-shard emblem for the app icon |
+| `tools/web_logo.png` | 760 px logo for the web loading screen |
+
+Fonts are OFL (licences in `godot/fonts/`), loaded as WOFF2 through `UIKit.font(role)`:
+
+| Role | Font | Used for |
+|---|---|---|
+| display / display_heavy | Cinzel 700 / 900 | titles, buttons, names, reaction callouts, anything with digits in a heading |
+| body / italic | EB Garamond 500 / 400 italic | descriptions, lore, flavour lines, loot plates |
+| label | Marcellus SC | section rules ("CHOOSE YOUR EXILE"); never for numbers, its small-cap digits read as letters |
+| num / num_heavy | Alegreya Sans 800 / 900 | life, timers, stats, damage numbers |
+
+### Screens
+
+* **Title / character select** (`Screens.show_menu`, `MenuStage3D`): the chosen hero idles on flagstones
+  between braziers with a floating rift shard, embers and fog, on its own camera and environment far
+  from the play field. The camera yaws so the hero lands between the two columns. Left: logo, season,
+  resources, the four exiles as tinted tiles. Right: the campaign acts (a green gem marks a cleared act,
+  sealed acts are greyed), Atlas, Herald and Greater Rift with level steppers. Portrait phones get one
+  scrolling column.
+* **HUD** (`hud.gd`): a liquid life globe and an ultimate globe in bronze bezels, a four-slot action bar
+  with key hints and cooldown sweeps (desktop), a buff tray, a slate time plate, and a Cinzel boss bar.
+  On touch screens the action bar is replaced by bronze touch rings with flask liquid levels and a
+  pulsing ready ring on the ultimate.
+* **Level-up** (`show_levelup`): three framed cards tinted by reward type, each with a faceted gem
+  (diamond = weapon, star = evolution, round = perk, hexagon = support gem), a tag, a Cinzel name and a
+  Garamond description. Keys 1 to 3 pick a card.
+* **Gear** (`show_stash`): equipped and stash lists as rarity-tinted tiles, the selected item as a framed
+  card with its affixes, then crafting shards.
+* **Atlas, Codex, Options, Pause, Results**: bronze-ringed atlas nodes (diamond citadels, jagged
+  corrupted rings), a quiet inset for Codex tabs instead of a frame inside a frame, option rows (name on
+  the left, value on the right), and a results screen of stat plaques.
+* **World overlay** (`overlay_3d.gd`): damage in Alegreya Sans Black, reactions in Cinzel capitals, loot
+  plates in Garamond with a rarity border and an inner rule.
+
+### UI critique loops
+
+| Loop | Found | Fixed |
+|---|---|---|
+| 1 | Hero framed off-screen; Endgame below the fold at 720p; act subtitles spilling out of tiles; buff slots drawn as white squares; Marcellus SC digits reading "IOs"; gear list looked like a debug dump; atlas still used the engine font | Camera yaws to put the hero between the columns; two-column layout; textures preloaded in `_ready` (a texture first loaded inside `_draw` rendered blank); digits moved to Cinzel; gear rebuilt as tiles + item card; atlas restyled |
+| 2 | Hero too close (head cropped, feet under the name plate); CLEARED tag colliding with titles; no desktop HUD in the tour; results screen was a plain list | Camera pulled back; green cleared-gem; `UIKit.touch_mode` override for tests; results rebuilt as plaques |
+| 3 | Pause printed a raw gem array; nested frames in the Codex; Options a wall of identical buttons; level-up cards top-heavy; locked tiles still bright | Build summary formatted; tab inset style; option rows; shorter cards; `_lock()` fades sealed titles |
+
+Before and after: [loop 1 menu](screenshots/ui_pass1_menu_hero_offscreen.png),
+[loop 1 white buff slot](screenshots/ui_pass1_white_buff_slot.png), [level-up](screenshots/ui_levelup.png),
+[desktop HUD](screenshots/ui_hud_desktop.png), [gear](screenshots/ui_gear.png), [results](screenshots/ui_end.png),
+[portrait phone](screenshots/ui_portrait.png).
+
+The UI tour runs at any size and can force either layout:
+
+```bash
+xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/ui_shots.tscn -- /tmp/ui L_ 0
+xvfb-run -a godot --path godot --rendering-method mobile --resolution 720x1280 res://tests/ui_shots.tscn -- /tmp/ui P_ 1
+```
+
+The web page is 15.6 MB. The logo ships at 1400 px and unused font weights were dropped to stay under 16 MB.

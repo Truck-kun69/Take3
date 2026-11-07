@@ -7,13 +7,19 @@ extends Control
 ##  - a constant soft vignette that frames the action (PoE2's look)
 
 var view: WorldView3D
-var font: Font
+var font: Font                     # damage numbers (Alegreya Sans black)
+var f_name: Font                   # reactions, boss / exile names (Cinzel)
+var f_tag: Font                    # events, affixes (Marcellus SC)
+var f_loot: Font                   # loot plates (EB Garamond)
 var _vig: ColorRect
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	font = ThemeDB.fallback_font
+	font = UIKit.font("num_heavy")
+	f_name = UIKit.font("display")
+	f_tag = UIKit.font("label")
+	f_loot = UIKit.font("body")
 	_vig = ColorRect.new()
 	_vig.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -28,18 +34,22 @@ func _process(_dt: float) -> void:
 	visible = view != null and view.w != null and view.visible
 	if visible: queue_redraw()
 
-func _text(p: Vector2, txt: String, col: Color, size: int, outline: int = 5) -> void:
-	var wdt := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+func _text(p: Vector2, txt: String, col: Color, size: int, outline: int = 5, f: Font = null) -> void:
+	if f == null: f = f_tag
+	var wdt := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	var at := p - Vector2(wdt * 0.5, 0)
-	draw_string_outline(font, at, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0.02, 0.02, 0.04, col.a * 0.9))
-	draw_string(font, at, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+	draw_string_outline(f, at, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0.02, 0.02, 0.04, col.a * 0.9))
+	draw_string(f, at, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
+## PoE-style loot plate: near-black body, rarity border with a darker inner line, name in Garamond.
 func _plate(p: Vector2, txt: String, col: Color, size: int) -> void:
-	var sz := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
-	var r := Rect2(p - Vector2(sz.x * 0.5 + 8, sz.y * 0.8), Vector2(sz.x + 16, sz.y + 6))
-	draw_rect(r, Color(0.02, 0.02, 0.03, 0.82))
+	var sz := f_loot.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var asc := f_loot.get_ascent(size)
+	var r := Rect2(p - Vector2(sz.x * 0.5 + 9, asc + 3), Vector2(sz.x + 18, asc + f_loot.get_descent(size) + 6))
+	draw_rect(r, Color(0.015, 0.012, 0.018, 0.86))
+	draw_rect(r.grow(-2), Color(col.r, col.g, col.b, 0.22), false, 1.0)
 	draw_rect(r, col, false, 1.5)
-	draw_string(font, Vector2(r.position.x + 8, r.position.y + sz.y * 0.8 + 1), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+	draw_string(f_loot, Vector2(r.position.x + 9, r.position.y + 3 + asc), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
 func _draw() -> void:
 	if view == null or view.w == null:
@@ -55,10 +65,10 @@ func _draw() -> void:
 			"item":
 				var it: Dictionary = p.data
 				if int(it.rarity) >= Content.Rarity.MAGIC:
-					_plate(sp + Vector2(0, -12), Items.name_of(it), Content.col(Content.RARITY_COL[it.rarity]), 14 if it.rarity < 2 else 16)
-			"currency": _plate(sp + Vector2(0, -10), Content.CURRENCY[p.data].name, Content.col(Content.CURRENCY[p.data].col), 13)
-			"lore": _plate(sp + Vector2(0, -10), "Lore Page", Color("e8dcc0"), 13)
-			"fragment": _plate(sp + Vector2(0, -10), "Fragment of " + String(p.data).capitalize(), Color("c48aff"), 15)
+					_plate(sp + Vector2(0, -12), Items.name_of(it), Content.col(Content.RARITY_COL[it.rarity]), 16 if it.rarity < 2 else 18)
+			"currency": _plate(sp + Vector2(0, -10), Content.CURRENCY[p.data].name, Content.col(Content.CURRENCY[p.data].col), 15)
+			"lore": _plate(sp + Vector2(0, -10), "Lore Page", Color("e8dcc0"), 15)
+			"fragment": _plate(sp + Vector2(0, -10), "Fragment of " + String(p.data).capitalize(), Color("c48aff"), 17)
 	# event and object names
 	for ev in w.director.active:
 		var sp2 := view.to_screen(ev.pos, 60.0)
@@ -81,7 +91,7 @@ func _draw() -> void:
 		if p3.distance_to(w.pp) > 420.0: continue
 		var sp4 := view.to_screen(p3, w.sw.rad[i] * 2.6 + 8.0)
 		if (f & Swarm.F_EXILE) != 0:
-			_text(sp4 + Vector2(0, -12), w.bosses.exile_name, Color("ff8a2b"), 15)
+			_text(sp4 + Vector2(0, -12), w.bosses.exile_name, Color("ff8a2b"), 16, 5, f_name)
 			_bar(sp4, 70.0, w.sw.hp[i] / w.sw.mhp[i], Color("ff8a2b"))
 		elif w.sw.affix[i] != 0:
 			var names := ""
@@ -100,13 +110,13 @@ func _draw() -> void:
 			0: txt = str(int(round(e.v)))
 			1: txt = str(int(round(e.v))); size = 26; col = Color("ffd24a")
 			2: txt = str(int(round(e.v))); size = 19
-			3: txt = e.label; size = 20
+			3: txt = e.label.to_upper(); size = 19
 			4: txt = str(int(round(e.v))); size = 14
 		if txt == "0" or txt == "": continue
 		col.a = 1.0 - maxf(0.0, k - 0.55) * 2.2
 		var sp5 := view.to_screen(e.pos, 30.0) + Vector2(0, -46.0 * k - (16.0 if e.tier == 3 else 0.0))
 		var pop := 1.0 + (0.45 * (1.0 - minf(1.0, k * 7.0)) if e.tier == 1 else 0.15 * (1.0 - minf(1.0, k * 8.0)))
-		_text(sp5, txt, col, int(size * pop), 6 if e.tier == 1 else 5)
+		_text(sp5, txt, col, int(size * pop), 6 if e.tier == 1 else 5, f_name if e.tier == 3 else font)
 
 func _bar(p: Vector2, wdt: float, frac: float, col: Color) -> void:
 	var r := Rect2(p - Vector2(wdt * 0.5, 0), Vector2(wdt, 5))

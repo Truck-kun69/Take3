@@ -6,6 +6,7 @@ extends Node
 var world: World
 var view: WorldView                # classic 2D renderer (option "renderer" = 1, and low-end fallback)
 var view3d: WorldView3D            # default: PoE2-style 3D renderer
+var menu_stage: MenuStage3D        # character-select backdrop behind the main menu
 var overlay: Overlay3D
 var hud: Hud
 var touch: TouchControls
@@ -22,6 +23,8 @@ func _ready() -> void:
 	add_child(view)
 	view3d = WorldView3D.new()
 	add_child(view3d)
+	menu_stage = MenuStage3D.new()
+	add_child(menu_stage)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	ui = Control.new()
@@ -97,6 +100,7 @@ func _menu() -> void:
 	_free_world()
 	hud.visible = false
 	touch.visible = false
+	menu_stage.show_stage(int(Save.data.hero))
 	screens.show_menu()
 
 func _free_world() -> void:
@@ -110,6 +114,7 @@ func _free_world() -> void:
 
 func start(cfg: Dictionary) -> void:
 	_free_world()
+	menu_stage.hide_stage()
 	last_cfg = cfg.duplicate()
 	cfg["hero"] = int(Save.data.hero)
 	world = World.new()
@@ -198,6 +203,7 @@ func _notification(what: int) -> void:
 func _on_act(what: String, arg) -> void:
 	match what:
 		"menu": _menu()
+		"hero": menu_stage.show_stage(int(arg))
 		"campaign": start({"mode": "campaign", "stage": int(arg)})
 		"rift": start({"mode": "rift", "gr": int(arg)})
 		"atlas":

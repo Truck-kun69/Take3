@@ -14,88 +14,274 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+var _choices: Array = []       # level-up choices, so number keys can pick them
+
 func close() -> void:
+	_choices = []
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _open(max_w: int = 980) -> VBoxContainer:
+	_choices = []
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	return UIKit.sheet(self, max_w)
 
 func _title(v: VBoxContainer, t: String, sub: String = "") -> void:
-	var l := UIKit.label(t, 44, UIKit.GOLD)
-	v.add_child(l)
+	v.add_child(UIKit.title(t, 38))
 	if sub != "":
-		v.add_child(UIKit.label(sub, 18, UIKit.DIM, true))
+		var l := UIKit.label(sub, 18, UIKit.DIM, true, "italic")
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
 
 func _back(v: VBoxContainer, what: String = "menu") -> void:
 	v.add_child(UIKit.button("Back", func(): act.emit(what, null)))
 
+func _grid(cols: int, sep: int = 10) -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = cols
+	g.add_theme_constant_override("h_separation", sep)
+	g.add_theme_constant_override("v_separation", sep)
+	return g
+
+func _unhandled_key_input(ev: InputEvent) -> void:
+	if _choices.is_empty() or not (ev is InputEventKey) or not ev.pressed or ev.echo: return
+	var k: int = ev.physical_keycode - KEY_1
+	if k >= 0 and k < _choices.size():
+		var c: Dictionary = _choices[k]
+		_choices = []
+		get_viewport().set_input_as_handled()
+		act.emit("pick", c)
+
 # ================================================================= main menu
+## Character-select layout: the 3D stage (MenuStage3D) fills the screen with the chosen hero on the
+## right; a dark gradient on the left hosts the logo and a scrolling column of tiles. Portrait
+## phones get one full-width column over a stronger scrim.
 func show_menu() -> void:
-	var v := _open(1100)
+	_choices = []
+	UIKit.clear(self)
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	var d: Dictionary = Save.data
-	_title(v, "SHARDFALL: RIFT SURVIVORS")
+	var vs := get_viewport_rect().size
+	var portrait := vs.x < 820.0
+	var wide := not portrait and vs.x >= 1100.0          # two columns, hero in between
+	var col_w := vs.x - 24.0 if portrait else (clampf(vs.x * 0.38, 440.0, 560.0) if wide else clampf(vs.x * 0.5, 440.0, 620.0))
+	var right_w := clampf(vs.x * 0.27, 320.0, 400.0)
+	if main != null and main.menu_stage != null:
+		main.menu_stage.frame_x = 0.5 if portrait else ((col_w + 36.0 + vs.x - right_w - 36.0) * 0.5 / vs.x if wide else 0.76)
+		main.menu_stage._frame()
+	# scrims: opaque behind the columns, clear over the hero
+	var gr := Gradient.new()
+	var ink := Color(0.02, 0.016, 0.022)
+	gr.set_color(0, Color(ink, 0.94)); gr.set_color(1, Color(ink, 0.9 if wide else (0.55 if portrait else 0.0)))
+	gr.add_point(clampf((col_w + 30.0) / vs.x, 0.1, 0.95), Color(ink, 0.8))
+	gr.add_point(clampf((col_w + 170.0) / vs.x, 0.1, 0.96), Color(ink, 0.55 if portrait else 0.0))
+	if wide:
+		gr.add_point(clampf((vs.x - right_w - 170.0) / vs.x, 0.1, 0.97), Color(ink, 0.0))
+		gr.add_point(clampf((vs.x - right_w - 30.0) / vs.x, 0.1, 0.98), Color(ink, 0.8))
+	add_child(_grad_rect(gr, false))
+	var g2 := Gradient.new()
+	g2.set_color(0, Color(0, 0, 0, 0.55)); g2.set_color(1, Color(0, 0, 0, 0.75))
+	g2.add_point(0.16, Color(0, 0, 0, 0)); g2.add_point(0.78, Color(0, 0, 0, 0))
+	add_child(_grad_rect(g2, true))
+	# left column: identity, exiles, utility
+	var v := _column(Vector2(12.0 if portrait else 36.0, 0), Vector2(col_w, vs.y))
+	var logo := TextureRect.new()
+	logo.texture = UIKit.tex("logo")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(0, (col_w - 14.0) * float(logo.texture.get_height()) / float(logo.texture.get_width()))
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(logo)
 	var sea := Save.season()
-	v.add_child(UIKit.label("%s - %s" % [sea.name, sea.d], 17, Color("c48aff"), true))
-	var cur := ""
-	for c in Content.CURRENCY_IDS:
-		if int(d.currency[c]) > 0: cur += "%s x%d   " % [Content.CURRENCY[c].name, d.currency[c]]
-	v.add_child(UIKit.label("Gold %d    Fragments %d/%d/%d    Rift key %d    %s" % [d.gold, d.fragments.rupture, d.fragments.greed, d.fragments.dread, d.gr_key, cur], 16, UIKit.DIM, true))
+	var sh := UIKit.hbox(8)
+	sh.alignment = BoxContainer.ALIGNMENT_CENTER
+	sh.add_child(UIKit.label(String(sea.name).to_upper(), 15, Color("c9a2ff"), false, "label"))
+	var sd := UIKit.label(String(sea.d), 16, Color("a99bc4"), true, "italic")
+	sd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.add_child(sd)
+	v.add_child(sh)
+	v.add_child(_resources(d))
 	if Save.has_nemesis():
-		v.add_child(UIKit.label("Your nemesis %s awaits (level %d)." % [d.nemesis.name, int(d.nemesis.level) + 1], 17, Color("ff8a2b")))
-	v.add_child(UIKit.label("Hero", 22))
-	var hg := GridContainer.new()
-	hg.columns = 4 if get_viewport_rect().size.x > 900 else 2
-	hg.add_theme_constant_override("h_separation", 10)
-	hg.add_theme_constant_override("v_separation", 10)
+		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, UIKit.EMBER, true, "italic")
+		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(nl)
+	v.add_child(_section("Choose your exile"))
+	var hg := _grid(2)
 	for i in Content.HEROES.size():
 		var h: Dictionary = Content.HEROES[i]
-		var b := UIKit.button("%s%s\n%s\nUlt: %s" % ["> " if i == int(d.hero) else "", h.name, h.blurb, h.ult], func(): Save.data.hero = i; Save.mark_dirty(); show_menu(), 96)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_color_override("font_color", Content.col(h.col) if i == int(d.hero) else UIKit.TEXT)
-		hg.add_child(b)
+		var t := UIKit.tile(h.name, h.blurb, func(): Save.data.hero = i; Save.mark_dirty(); act.emit("hero", i); show_menu(), Content.col(h.col), i == int(d.hero), 68)
+		t.tooltip_text = "Ultimate: %s. %s" % [h.ult, h.ult_d]
+		hg.add_child(t)
 	v.add_child(hg)
-	v.add_child(UIKit.label("Campaign", 22))
-	var sg := GridContainer.new()
-	sg.columns = hg.columns
-	sg.add_theme_constant_override("h_separation", 10)
-	sg.add_theme_constant_override("v_separation", 10)
-	for i in Content.STAGES.size():
-		var s: Dictionary = Content.STAGES[i]
-		var open: bool = i == 0 or bool(d.cleared[i - 1])
-		var b2 := UIKit.button("%s%s\n%s" % [s.name, "  (cleared)" if d.cleared[i] else "", s.blurb if open else "Locked"], func(): act.emit("campaign", i), 80)
-		b2.disabled = not open
-		b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sg.add_child(b2)
-	v.add_child(sg)
-	v.add_child(UIKit.label("Endgame", 22))
-	var eg := UIKit.hbox()
-	var atl := UIKit.button("Atlas of Falls", func(): show_atlas(), 72)
-	atl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	atl.disabled = not bool(d.cleared[0])
-	atl.tooltip_text = "Clear Mossglen Hollow to unlock"
-	eg.add_child(atl)
-	var gr := UIKit.button("Greater Rift %d" % int(d.get("gr_sel", d.gr_key)), func(): act.emit("rift", int(Save.data.get("gr_sel", Save.data.gr_key))), 72)
-	gr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	gr.disabled = not bool(d.cleared[0])
-	eg.add_child(gr)
-	eg.add_child(UIKit.button("-", func(): Save.data.gr_sel = maxi(1, int(Save.data.get("gr_sel", Save.data.gr_key)) - 1); show_menu(), 72))
-	eg.add_child(UIKit.button("+", func(): Save.data.gr_sel = mini(int(Save.data.gr_key), int(Save.data.get("gr_sel", Save.data.gr_key)) + 1); show_menu(), 72))
-	var have: bool = int(d.fragments.rupture) > 0 and int(d.fragments.greed) > 0 and int(d.fragments.dread) > 0
-	var pin := UIKit.button("Summon the Shard Herald" if have else "Pinnacle: need 3 fragments", func(): act.emit("pinnacle", null), 72)
-	pin.disabled = not have
-	pin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	eg.add_child(pin)
-	v.add_child(eg)
-	var row := UIKit.hbox()
-	for pair in [["Gear, Crafting & Cube", "stash"], ["Codex", "codex"], ["Options", "options"]]:
-		var b3 := UIKit.button(pair[0], func(): act.emit(pair[1], null), 64)
+	# the journey: campaign + endgame (its own column on wide screens)
+	var j := v
+	if wide:
+		j = _column(Vector2(vs.x - right_w - 36.0, 0), Vector2(right_w, vs.y))
+	_journey(j, d, wide)
+	if wide:
+		v.add_child(_spacer(4))
+	var row := _grid(3, 8)
+	for pair in [["Gear & Cube", "stash"], ["Codex", "codex"], ["Options", "options"]]:
+		var b3 := UIKit.button(pair[0], func(): act.emit(pair[1], null), 52)
 		b3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(b3)
 	v.add_child(row)
-	v.add_child(UIKit.label("Move: WASD / stick / drag.  Roll: Space / A / ROLL.  Ultimate: R / Y.  Flasks: 1, 2 / LB, RB.  Pause: Esc / Start.", 15, UIKit.DIM, true))
+	var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
+	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(help)
+	v.add_child(_spacer(10))
+	if not portrait:
+		_hero_plate(Content.HEROES[int(d.hero)], vs, col_w, right_w if wide else 0.0)
+
+func _journey(j: VBoxContainer, d: Dictionary, wide: bool) -> void:
+	var th := 64 if wide else 68
+	j.add_child(_section("Campaign"))
+	var sg := _grid(1 if wide else 2, 8)
+	for i in Content.STAGES.size():
+		var s: Dictionary = Content.STAGES[i]
+		var open: bool = i == 0 or bool(d.cleared[i - 1])
+		var t2 := UIKit.tile("%s  %s" % [["I", "II", "III", "IV", "V", "VI"][i], s.name], s.blurb if open else "Sealed until the previous act falls", func(): act.emit("campaign", i), Content.col(s.acc), false, th)
+		_lock(t2, not open)
+		if bool(d.cleared[i]):
+			_cleared_mark(t2)
+			t2.tooltip_text = "Cleared"
+		sg.add_child(t2)
+	j.add_child(sg)
+	j.add_child(_section("Endgame"))
+	var unlocked := bool(d.cleared[0])
+	var eg := _grid(1 if wide else 2, 8)
+	var atl := UIKit.tile("Atlas of Falls", "Chart the shattered maps" if unlocked else "Clear Mossglen Hollow to unlock", func(): show_atlas(), Color("8fd8ff"), false, th)
+	_lock(atl, not unlocked)
+	eg.add_child(atl)
+	var have: bool = int(d.fragments.rupture) > 0 and int(d.fragments.greed) > 0 and int(d.fragments.dread) > 0
+	var pin := UIKit.tile("The Shard Herald", "Offer three fragments" if have else "Needs Rupture, Greed and Dread fragments", func(): act.emit("pinnacle", null), Color("ff5a4a"), false, th)
+	_lock(pin, not have)
+	eg.add_child(pin)
+	j.add_child(eg)
+	var grs := int(d.get("gr_sel", d.gr_key))
+	var grow := UIKit.hbox(6)
+	var dec := UIKit.button("\u2212", func(): Save.data.gr_sel = maxi(1, int(Save.data.get("gr_sel", Save.data.gr_key)) - 1); show_menu(), th)
+	dec.custom_minimum_size.x = 48
+	dec.disabled = not unlocked or grs <= 1
+	var grt := UIKit.tile("Greater Rift %d" % grs, "Best %d  \u00b7  keys to %d" % [int(d.gr_best), int(d.gr_key)], func(): act.emit("rift", int(Save.data.get("gr_sel", Save.data.gr_key))), Color("c48aff"), false, th)
+	_lock(grt, not unlocked)
+	var inc := UIKit.button("+", func(): Save.data.gr_sel = mini(int(Save.data.gr_key), int(Save.data.get("gr_sel", Save.data.gr_key)) + 1); show_menu(), th)
+	inc.custom_minimum_size.x = 48
+	inc.disabled = not unlocked or grs >= int(d.gr_key)
+	for c in [dec, grt, inc]: grow.add_child(c)
+	j.add_child(grow)
+
+## Hero name, ultimate and element, centred under the hero between the columns.
+func _hero_plate(h: Dictionary, vs: Vector2, left_w: float, right_w: float) -> void:
+	var x0 := left_w + 36.0
+	var x1 := vs.x - (right_w + 36.0 if right_w > 0.0 else 24.0)
+	var plate := UIKit.vbox(0)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(plate)
+	plate.position = Vector2(x0, vs.y - 150.0)
+	plate.size = Vector2(x1 - x0, 130.0)
+	plate.alignment = BoxContainer.ALIGNMENT_END
+	var nm := UIKit.label(String(h.name).to_upper(), 42, Content.col(h.col).lerp(UIKit.TEXT, 0.4), false, "display_heavy")
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	plate.add_child(nm)
+	plate.add_child(UIKit.divider())
+	var ul := UIKit.label("%s  \u00b7  %s" % [String(h.ult).to_upper(), Content.EL_NAME[h.elem].to_upper()], 15, UIKit.GOLD, false, "label")
+	ul.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	plate.add_child(ul)
+	var ud := UIKit.label(h.ult_d, 16, Color("b8ad98"), true, "italic")
+	ud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	plate.add_child(ud)
+	for c in plate.get_children(): (c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+func _column(pos: Vector2, sz: Vector2) -> VBoxContainer:
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(sc)
+	sc.position = pos
+	sc.size = sz
+	var v := UIKit.vbox(9)
+	v.custom_minimum_size = Vector2(sz.x - 14.0, sz.y)     # at least screen tall, content centred; scrolls when taller
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	sc.add_child(v)
+	return v
+
+func _grad_rect(g: Gradient, vertical: bool) -> TextureRect:
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	if vertical:
+		gt.fill_to = Vector2(0, 1); gt.width = 4; gt.height = 256
+	else:
+		gt.fill_to = Vector2(1, 0); gt.width = 512; gt.height = 4
+	var r := TextureRect.new()
+	r.texture = gt
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	return r
+
+## Disable a tile and fade its carved title, so sealed content reads as sealed.
+func _lock(t: Button, locked: bool) -> void:
+	t.disabled = locked
+	if locked and t.has_meta("title_label"):
+		(t.get_meta("title_label") as Label).add_theme_color_override("font_color", Color(0.5, 0.47, 0.44))
+
+## A small green-gold gem on a tile's left edge: this act is cleared.
+func _cleared_mark(b: Control) -> void:
+	var g := Gem.new()
+	g.col = Color("9ad06a")
+	g.kind = "w"
+	g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(g)
+	g.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	g.offset_left = 8; g.offset_right = 30; g.offset_top = -11; g.offset_bottom = 11
+
+func _spacer(h: int) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+## A label-font heading flanked by thin bronze rules.
+func _section(txt: String) -> HBoxContainer:
+	var h := UIKit.hbox(12)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for k in 3:
+		if k == 1:
+			var l := UIKit.label(txt.to_upper(), 16, Color("c8a46a"), false, "label")
+			h.add_child(l)
+		else:
+			var r := ColorRect.new()
+			r.color = Color(0.62, 0.45, 0.24, 0.55)
+			r.custom_minimum_size = Vector2(0, 1)
+			r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(r)
+	return h
+
+## Gold, fragments, keys and crafting shards as a strip of numbers in small slots.
+func _resources(d: Dictionary) -> HFlowContainer:
+	var f := HFlowContainer.new()
+	f.alignment = FlowContainer.ALIGNMENT_CENTER
+	f.add_theme_constant_override("h_separation", 14)
+	f.add_theme_constant_override("v_separation", 4)
+	var items := [["Gold", int(d.gold), UIKit.GOLD], ["Rupture", int(d.fragments.rupture), Color("ff6a4a")], ["Greed", int(d.fragments.greed), Color("ffd24a")],
+		["Dread", int(d.fragments.dread), Color("b890ff")], ["Rift key", int(d.gr_key), Color("c48aff")]]
+	for c in Content.CURRENCY_IDS:
+		if int(d.currency[c]) > 0: items.append([Content.CURRENCY[c].name, int(d.currency[c]), Content.col(Content.CURRENCY[c].col)])
+	for it in items:
+		var h := UIKit.hbox(5)
+		var gem := ColorRect.new()
+		gem.color = it[2]
+		gem.custom_minimum_size = Vector2(7, 7)
+		gem.rotation = PI / 4.0
+		gem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(gem)
+		h.add_child(UIKit.label(str(it[1]), 17, UIKit.TEXT, false, "num"))
+		h.add_child(UIKit.label(String(it[0]), 15, UIKit.DIM, false, "italic"))
+		f.add_child(h)
+	return f
 
 # ================================================================= atlas
 func show_atlas() -> void:
@@ -133,63 +319,87 @@ func _gear_list() -> Array:
 
 func show_stash(in_run: bool = false) -> void:
 	var v := _open(1200)
-	_title(v, "Gear, Crafting & Cube", "Select an item, then apply a shard. Legendary items can be dissolved in the Cube to keep their power in the Codex forever.")
+	_title(v, "Gear, Crafting & Cube", "Select an item, then apply a shard. Legendary items dissolve in the Cube and keep their power in the Codex forever.")
 	var list := _gear_list()
-	var cols := UIKit.hbox(16)
+	var portrait := get_viewport_rect().size.x < 820.0
+	var cols: BoxContainer = UIKit.vbox(14) if portrait else UIKit.hbox(18)
 	v.add_child(cols)
 	var left := UIKit.vbox(6)
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(left)
 	var right := UIKit.vbox(8)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_stretch_ratio = 1.1
 	cols.add_child(right)
-	left.add_child(UIKit.label("Equipped  (%d in stash)" % Save.data.stash.size(), 20, UIKit.GOLD))
+	var stash_head := false
+	left.add_child(_section("Equipped"))
+	if list.is_empty() or not list[0].eq:
+		var ne := UIKit.label("Nothing equipped yet. Choose an item from your stash.", 16, UIKit.DIM, true, "italic")
+		ne.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		left.add_child(ne)
 	for k in list.size():
 		var e: Dictionary = list[k]
 		var it: Dictionary = e.it
-		var txt := "%s%s [%s] %s" % ["> " if k == _sel_item else "", "E " if e.eq else "", Content.SLOT_NAME[it.slot], Items.name_of(it)]
-		var b := UIKit.button(txt, func(): _sel_item = k; show_stash(in_run), 48)
-		b.add_theme_color_override("font_color", Content.col(Content.RARITY_COL[it.rarity]))
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		left.add_child(b)
-		if k == list.size() - 1 or (e.eq and not list[k + 1].eq):
-			pass
+		if not e.eq and not stash_head:
+			stash_head = true
+			left.add_child(_section("Stash  \u00b7  %d" % Save.data.stash.size()))
+		var rc := Content.col(Content.RARITY_COL[it.rarity])
+		var t := UIKit.tile(Items.name_of(it), "%s  \u00b7  %s  \u00b7  item level %d" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl],
+			func(): _sel_item = k; show_stash(in_run), rc, k == _sel_item, 62, true, rc.lightened(0.15))
+		left.add_child(t)
 	if _sel_item >= 0 and _sel_item < list.size():
 		var sel: Dictionary = list[_sel_item]
 		var it: Dictionary = sel.it
-		right.add_child(UIKit.label(Items.name_of(it), 24, Content.col(Content.RARITY_COL[it.rarity])))
-		right.add_child(UIKit.label("%s %s - item level %d - score %d" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl, int(Items.score(it))], 16, UIKit.DIM))
-		for line in Items.lines(it):
-			right.add_child(UIKit.label(line, 17, UIKit.TEXT, true))
+		var rc2 := Content.col(Content.RARITY_COL[it.rarity])
+		var card := UIKit.vbox(6)
+		var nm := UIKit.label(Items.name_of(it), 26, rc2, true, "display")
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(nm)
+		var sub := UIKit.label("%s %s  \u00b7  item level %d  \u00b7  score %d" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl, int(Items.score(it))], 16, UIKit.DIM, true, "italic")
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(sub)
+		card.add_child(UIKit.divider())
+		var lines := Items.lines(it)
+		for i in lines.size():
+			var ln := UIKit.label(lines[i], 18, Color("8fb4ff") if i > 0 else Color("cfc5b0"), true)
+			ln.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			card.add_child(ln)
 		var cur: Dictionary = Save.data.equipped[it.slot]
 		if not sel.eq and not cur.is_empty():
 			var diff := Items.score(it) - Items.score(cur)
-			right.add_child(UIKit.label("%+d vs equipped" % int(diff), 17, Color("7dff6b") if diff > 0 else Color("ff6a6a")))
+			var dl := UIKit.label("%+d score vs equipped" % int(diff), 17, Color("7dff6b") if diff > 0 else Color("ff6a6a"), false, "display")
+			dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			card.add_child(dl)
+		var cp := PanelContainer.new()
+		cp.add_theme_stylebox_override("panel", UIKit.nine("card", 46, Vector4(26, 26, 26, 24), Color(0.78, 0.76, 0.74).lerp(rc2, 0.5)))
+		cp.add_child(card)
+		right.add_child(cp)
 		var acts := UIKit.hbox()
+		acts.alignment = BoxContainer.ALIGNMENT_CENTER
 		if not sel.eq:
-			acts.add_child(UIKit.button("Equip", func(): act.emit("equip", it); show_stash(in_run), 52))
-			acts.add_child(UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 52))
+			acts.add_child(UIKit.button("Equip", func(): act.emit("equip", it); show_stash(in_run), 50))
+			acts.add_child(UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 50))
 			if String(it.leg) != "":
-				acts.add_child(UIKit.button("Cube: extract power", func(): act.emit("extract", it); _sel_item = -1; show_stash(in_run), 52))
+				acts.add_child(UIKit.button("Cube: extract", func(): act.emit("extract", it); _sel_item = -1; show_stash(in_run), 50))
 		right.add_child(acts)
-		right.add_child(UIKit.label("Craft", 20, UIKit.GOLD))
-		var grid := GridContainer.new()
-		grid.columns = 2
-		grid.add_theme_constant_override("h_separation", 8)
-		grid.add_theme_constant_override("v_separation", 8)
+		right.add_child(_section("Craft"))
+		var grid := _grid(2, 8)
 		for c in Content.CURRENCY_IDS:
 			var n := int(Save.data.currency[c])
-			var b2 := UIKit.button("%s x%d" % [Content.CURRENCY[c].name, n], func(): _craft_msg = main.craft(it, c); show_stash(in_run), 48)
+			var b2 := UIKit.button("%s  %d" % [Content.CURRENCY[c].name, n], func(): _craft_msg = main.craft(it, c); show_stash(in_run), 46)
 			b2.tooltip_text = Content.CURRENCY[c].d
 			b2.disabled = n <= 0
 			b2.add_theme_color_override("font_color", Content.col(Content.CURRENCY[c].col))
+			b2.add_theme_font_size_override("font_size", 16)
 			b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			grid.add_child(b2)
 		right.add_child(grid)
 		if _craft_msg != "":
-			right.add_child(UIKit.label(_craft_msg, 16, Color("ffb0b0"), true))
+			right.add_child(UIKit.label(_craft_msg, 17, Color("ffcf9a"), true, "italic"))
 	else:
-		right.add_child(UIKit.label("Select an item.", 18, UIKit.DIM))
+		var hint := UIKit.label("Select an item to inspect, equip or craft.", 19, UIKit.DIM, true, "italic")
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		right.add_child(hint)
 	_back(v, "resume_pause" if in_run else "menu")
 
 # ================================================================= codex
@@ -206,16 +416,21 @@ func show_codex() -> void:
 		var c := Save.bestiary_count(e.id)
 		var tier := Save.bestiary_tier(e.id)
 		var next := "" if tier >= Content.BESTIARY_TIERS.size() else " (next tier at %d)" % Content.BESTIARY_TIERS[tier]
-		b.add_child(UIKit.label("%s - %d slain - tier %d: +%d%% damage%s" % [e.name if c > 0 else "???", c, tier, tier * 3, next], 18, UIKit.TEXT if c > 0 else UIKit.DIM))
-		if tier >= 1: b.add_child(UIKit.label("    " + e.lore, 15, UIKit.DIM, true))
+		var row := UIKit.hbox(12)
+		var nm := UIKit.label(e.name if c > 0 else "Unknown horror", 18, UIKit.TEXT if c > 0 else Color(0.45, 0.42, 0.4), false, "display")
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(nm)
+		row.add_child(UIKit.label("%d slain  \u00b7  tier %d  \u00b7  +%d%% damage%s" % [c, tier, tier * 3, next], 15, UIKit.DIM, false, "italic"))
+		b.add_child(row)
+		if tier >= 1: b.add_child(UIKit.label(e.lore, 15, Color("a89c86"), true, "italic"))
 	tabs.add_child(_scroll(b, "Bestiary"))
 	# lore
 	var l := UIKit.vbox(6)
 	l.add_child(UIKit.label("%d / %d pages. Every set of %d: +5%% damage, +10 life." % [Save.data.lore.size(), Content.LORE.size(), Content.LORE_SET], 18, UIKit.GOLD))
 	for k in Content.LORE.size():
 		var have: bool = Save.data.lore.has(k)
-		l.add_child(UIKit.label(Content.LORE[k][0] if have else "Missing page", 19, Color("e8dcc0") if have else UIKit.DIM))
-		if have: l.add_child(UIKit.label("    " + Content.LORE[k][1], 15, UIKit.DIM, true))
+		l.add_child(UIKit.label(Content.LORE[k][0] if have else "A missing page", 18, Color("e8dcc0") if have else Color(0.45, 0.42, 0.4), false, "display"))
+		if have: l.add_child(UIKit.label(Content.LORE[k][1], 16, Color("a89c86"), true, "italic"))
 	tabs.add_child(_scroll(l, "Lore"))
 	# legendary powers (Cube codex)
 	var p := UIKit.vbox(6)
@@ -268,45 +483,111 @@ func show_options(back: String = "menu") -> void:
 	_toggle(v, "Always show touch buttons", "force_touch_ui", back)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); act.emit(back, null)))
 
+## One option row: name on the left in Garamond, its value as a bronze button on the right.
+func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: bool = true) -> void:
+	var h := UIKit.hbox(12)
+	var l := UIKit.label(label, 19, UIKit.TEXT)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(l)
+	var b := UIKit.button(value, cb, 46)
+	b.custom_minimum_size.x = 230
+	b.add_theme_font_size_override("font_size", 17)
+	b.add_theme_color_override("font_color", UIKit.GOLD if on else UIKit.DIM)
+	h.add_child(b)
+	v.add_child(h)
+
 func _toggle(v: VBoxContainer, label: String, key: String, back: String) -> void:
 	var on := bool(Save.opt(key))
-	v.add_child(UIKit.button("%s: %s" % [label, "On" if on else "Off"], func(): Save.set_opt(key, not on); act.emit("options_changed", null); show_options(back), 52))
+	_opt_row(v, label, "On" if on else "Off", func(): Save.set_opt(key, not on); act.emit("options_changed", null); show_options(back), on)
 
 func _cycle(v: VBoxContainer, label: String, key: String, names: Array, back: String) -> void:
 	var cur := int(Save.opt(key))
-	v.add_child(UIKit.button("%s: %s" % [label, names[cur % names.size()]], func(): Save.set_opt(key, (cur + 1) % names.size()); act.emit("options_changed", null); show_options(back), 52))
+	_opt_row(v, label, names[cur % names.size()], func(): Save.set_opt(key, (cur + 1) % names.size()); act.emit("options_changed", null); show_options(back))
 
 func _slider(v: VBoxContainer, label: String, key: String, lo: float, hi: float, _back_s: String) -> void:
-	var h := UIKit.hbox()
-	var l := UIKit.label("%s: %d%%" % [label, int(float(Save.opt(key)) * 100)], 20)
-	l.custom_minimum_size = Vector2(260, 0)
+	var h := UIKit.hbox(12)
+	var l := UIKit.label("%s  %d%%" % [label, int(float(Save.opt(key)) * 100)], 19)
+	l.custom_minimum_size = Vector2(250, 0)
 	h.add_child(l)
 	var s := HSlider.new()
 	s.min_value = lo; s.max_value = hi; s.step = 0.05
 	s.value = float(Save.opt(key))
 	s.custom_minimum_size = Vector2(0, 48)
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	s.value_changed.connect(func(x: float): Save.set_opt(key, x); l.text = "%s: %d%%" % [label, int(x * 100)])
+	s.value_changed.connect(func(x: float): Save.set_opt(key, x); l.text = "%s  %d%%" % [label, int(x * 100)])
 	h.add_child(s)
 	v.add_child(h)
 
 # ================================================================= in-run overlays
 func show_levelup(w: World) -> void:
-	var v := _open(900)
-	_title(v, "Level %d" % w.lvl, "Choose one.")
+	var v := _open(1180)
+	var portrait := get_viewport_rect().size.x < 820.0
+	_title(v, "Level %d" % w.lvl, "The rift offers a gift. Choose one.")
 	var choices := w.make_choices()
-	for c in choices:
-		var tx := w.choice_text(c)
-		var b := UIKit.button("%s\n%s\n%s" % [tx.tag, tx.name, tx.d], func(): act.emit("pick", c), 110)
-		b.add_theme_color_override("font_color", Content.col(tx.col))
-		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(b)
+	_choices = choices
+	var row: BoxContainer = UIKit.vbox(10) if portrait else UIKit.hbox(16)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(row)
+	for i in choices.size():
+		row.add_child(_choice_card(w, choices[i], i, portrait))
 	# weapon + gem overview so links are visible while choosing
+	v.add_child(_section("Your arsenal"))
 	var o := ""
 	for id in w.weapons:
 		var wd: Dictionary = w.weapons[id]
-		o += "%s %s%d  [%s]\n" % [Content.WEAPONS[id].name, "EVO " if wd.evo else "Lv", wd.lv, ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name)) if not wd.gems.is_empty() else "no links"]
-	v.add_child(UIKit.label(o, 16, UIKit.DIM, true))
+		o += "%s %s%d   %s\n" % [Content.WEAPONS[id].name, "Evolved " if wd.evo else "Lv ", wd.lv, ("Linked: " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else "no links"]
+	var al := UIKit.label(o.strip_edges(), 16, UIKit.DIM, true, "italic")
+	al.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(al)
+
+## An ornate card: silver frame tinted by the reward type, a gem, small-caps tag, carved name, lore-face description.
+func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool) -> Button:
+	var tx := w.choice_text(c)
+	var col := Content.col(tx.col)
+	if col.s < 0.15: col = Color("d8b878")              # plain perks: aged gold instead of white
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 150) if portrait else Vector2(260, 296)
+	if portrait: b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var frame := Color(0.78, 0.76, 0.74).lerp(col, 0.45)
+	var pad := Vector4(20, 22, 20, 22)
+	b.add_theme_stylebox_override("normal", UIKit.nine("card", 46, pad, frame))
+	b.add_theme_stylebox_override("hover", UIKit.nine("card", 46, pad, frame.lightened(0.35)))
+	b.add_theme_stylebox_override("pressed", UIKit.nine("card", 46, pad, Color("f2c76a")))
+	b.add_theme_stylebox_override("focus", UIKit.nine("card", 46, pad, frame.lightened(0.2)))
+	b.pressed.connect(func(): act.emit("pick", c))
+	var v := UIKit.vbox(6)
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 22; v.offset_right = -22; v.offset_top = 26; v.offset_bottom = -24
+	v.alignment = BoxContainer.ALIGNMENT_BEGIN if not portrait else BoxContainer.ALIGNMENT_CENTER
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	if not portrait:
+		var gem := Gem.new()
+		gem.col = col
+		gem.kind = String(c.kind)
+		gem.custom_minimum_size = Vector2(0, 64)
+		v.add_child(gem)
+	var tag := UIKit.label(String(tx.tag).to_upper(), 13, col.lerp(UIKit.TEXT, 0.25), true, "display")
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(tag)
+	var nm := UIKit.label(String(tx.name), 23, UIKit.TEXT, true, "display")
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(nm)
+	var dv := UIKit.divider()
+	dv.custom_minimum_size = Vector2(0, 16)
+	v.add_child(dv)
+	var ds := UIKit.label(String(tx.d), 17, Color("cfc5b0"), true, "body")
+	ds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(ds)
+	if not portrait and not UIKit.is_touch():
+		var sp := Control.new()
+		sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		v.add_child(sp)
+		var key := UIKit.label(str(idx + 1), 16, UIKit.DIM, false, "num")
+		key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(key)
+	for n in v.get_children(): (n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
 
 func show_pause(w: World) -> void:
 	var v := _open(700)
@@ -315,36 +596,72 @@ func show_pause(w: World) -> void:
 	v.add_child(UIKit.button("Gear & Crafting", func(): show_stash(true)))
 	v.add_child(UIKit.button("Options", func(): show_options("resume_pause")))
 	v.add_child(UIKit.button("Abandon run", func(): act.emit("abandon", null)))
+	v.add_child(_section("Your build"))
 	var build := ""
 	for id in w.weapons:
-		build += "%s Lv%d %s\n" % [Content.WEAPONS[id].name, w.weapons[id].lv, w.weapons[id].gems]
-	for id in w.perks:
-		build += "%s %d   " % [Content.PERKS[id].name, w.perks[id]]
-	v.add_child(UIKit.label(build, 15, UIKit.DIM, true))
+		var wd: Dictionary = w.weapons[id]
+		build += "%s  %s%d%s\n" % [Content.WEAPONS[id].name, "Evolved " if wd.evo else "Lv ", wd.lv,
+			("  \u00b7  " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else ""]
+	var perks := []
+	for id in w.perks: perks.append("%s %d" % [Content.PERKS[id].name, w.perks[id]])
+	if not perks.is_empty(): build += "  \u00b7  ".join(perks)
+	var bl := UIKit.label(build.strip_edges(), 16, UIKit.DIM, true, "italic")
+	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(bl)
 
 func show_end(w: World) -> void:
-	var v := _open(800)
-	var title := "Victory" if w.won else "You fell"
-	_title(v, title, ("Slain by " + w.killer) if not w.won and w.killer != "" else "")
-	var rows := [["Time", Hud._fmt(w.t)], ["Kills", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Gold earned", str(int(w.gold))],
-		["Items found", str(w.loot_run.size())], ["Reactions triggered", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
+	var v := _open(820)
+	var won: bool = w.won
+	var tl := UIKit.title("Victory" if won else "You have fallen", 44)
+	(tl.get_child(0) as Label).add_theme_color_override("font_color", UIKit.GOLD if won else Color("d23a34"))
+	v.add_child(tl)
+	var sub := ""
+	if not won and w.killer != "": sub = "Slain by " + w.killer
+	elif won: sub = "The rift is sealed, for now."
+	else: sub = "The rift claims another exile."
+	var sl := UIKit.label(sub, 19, UIKit.DIM, true, "italic")
+	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(sl)
+	var rows := [["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Gold", str(int(w.gold))],
+		["Items", str(w.loot_run.size())], ["Reactions", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
 	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
+	var g := _grid(3 if get_viewport_rect().size.x >= 820.0 else 2, 10)
 	for r in rows:
-		var h := UIKit.hbox()
-		var a := UIKit.label(r[0], 20, UIKit.DIM)
-		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		h.add_child(a)
-		h.add_child(UIKit.label(r[1], 20, UIKit.TEXT))
-		v.add_child(h)
+		var pv := UIKit.vbox(0)
+		pv.alignment = BoxContainer.ALIGNMENT_CENTER
+		var val := UIKit.label(r[1], 30, Color("f4e2b8"), false, "num_heavy")
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pv.add_child(val)
+		var key := UIKit.label(String(r[0]).to_upper(), 13, Color("b89a6a"), false, "label")
+		key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pv.add_child(key)
+		var pc := PanelContainer.new()
+		pc.add_theme_stylebox_override("panel", UIKit.nine("tile", 24, Vector4(12, 10, 12, 10), Color(0.7, 0.62, 0.52)))
+		pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pc.add_child(pv)
+		g.add_child(pc)
+	v.add_child(g)
 	var ev := ""
 	for e in w.director.history: ev += Content.EVENTS[e[1]].name + ", "
-	if ev != "": v.add_child(UIKit.label("Events: " + ev.trim_suffix(", "), 16, Color("e0c8ff"), true))
+	if ev != "":
+		v.add_child(_section("Happenings"))
+		var el := UIKit.label(ev.trim_suffix(", "), 17, Color("d9c7ff"), true, "italic")
+		el.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(el)
 	var best := ""
 	for it in w.loot_run:
 		if int(it.rarity) >= Content.Rarity.RARE: best += Items.name_of(it) + ", "
-	if best != "": v.add_child(UIKit.label("Notable loot: " + best.trim_suffix(", "), 16, UIKit.GOLD, true))
-	v.add_child(UIKit.button("Play again", func(): act.emit("retry", null)))
-	v.add_child(UIKit.button("Menu", func(): act.emit("menu", null)))
+	if best != "":
+		v.add_child(_section("Notable loot"))
+		var bl := UIKit.label(best.trim_suffix(", "), 17, UIKit.GOLD, true, "display")
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(bl)
+	var row := _grid(2, 10)
+	for pair in [["Play again", "retry"], ["Return to menu", "menu"]]:
+		var bt := UIKit.button(pair[0], func(): act.emit(pair[1], null), 58)
+		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(bt)
+	v.add_child(row)
 
 func show_merchant(w: World) -> void:
 	var v := _open(700)
@@ -359,6 +676,33 @@ func show_merchant(w: World) -> void:
 	v.add_child(UIKit.button("Leave", func(): act.emit("resume", null)))
 
 
+## A faceted gem drawn for a level-up card: diamond for weapons, star for evolutions, round for perks,
+## hexagon for gems, a split keystone for keystones.
+class Gem extends Control:
+	var col := Color.WHITE
+	var kind := "p"
+	func _draw() -> void:
+		var c := size / 2.0
+		var r := minf(size.x, size.y) * 0.42
+		draw_circle(c, r * 1.25, Color(col.r, col.g, col.b, 0.12))
+		draw_circle(c, r * 0.95, Color(col.r, col.g, col.b, 0.16))
+		var n := {"w": 4, "e": 8, "p": 24, "g": 6, "key": 5}.get(kind, 24) as int
+		var pts := PackedVector2Array()
+		for i in n:
+			var a := -PI / 2.0 + TAU * float(i) / float(n)
+			var rr := r if kind != "e" or i % 2 == 0 else r * 0.55
+			pts.append(c + Vector2(cos(a), sin(a)) * rr * (0.82 if kind == "p" else 1.0))
+		draw_colored_polygon(pts, col.darkened(0.45))
+		# facets: light from the top-left
+		for i in n:
+			var a2 := pts[i]; var b2 := pts[(i + 1) % n]
+			var m := (a2 + b2) * 0.5 - c
+			var lit := clampf(0.5 - m.normalized().dot(Vector2(0.6, 0.8)) * 0.5, 0.0, 1.0)
+			draw_colored_polygon(PackedVector2Array([c, a2, b2]), col.darkened(0.5).lerp(col.lightened(0.35), lit))
+		pts.append(pts[0])
+		draw_polyline(pts, Color("d9b46a"), 2.0, true)
+		draw_circle(c + Vector2(-r * 0.25, -r * 0.3), r * 0.12, Color(1, 1, 1, 0.7))
+
 ## Atlas node map: lattice of nodes with edges, drawn in a Control.
 class AtlasView extends Control:
 	signal picked(id: int)
@@ -368,23 +712,53 @@ class AtlasView extends Control:
 		var pad := Vector2(40, 30)
 		var cell := (size - pad * 2) / Vector2(Content.ATLAS_W - 1, Content.ATLAS_H - 1)
 		return pad + Vector2(int(n.x), int(n.y)) * cell
+	var font: Font
+	func _ready() -> void:
+		font = UIKit.font("display")
 	func _draw() -> void:
-		var font := ThemeDB.fallback_font
+		var bronze := Color("b98a4a")
 		for e in atlas.edges:
 			var a: Dictionary = atlas.nodes[int(e) / 1000]
 			var b: Dictionary = atlas.nodes[int(e) % 1000]
 			var lit: bool = (a.done or b.done)
-			draw_line(_pos(a), _pos(b), Color(0.6, 0.55, 0.9, 0.8) if lit else Color(0.3, 0.3, 0.4, 0.5), 3.0 if lit else 1.5)
+			draw_line(_pos(a), _pos(b), Color(0, 0, 0, 0.6), 6.0 if lit else 4.0, true)
+			draw_line(_pos(a), _pos(b), Color(bronze, 0.85) if lit else Color(0.36, 0.32, 0.34, 0.6), 2.5 if lit else 1.5, true)
+		var t := Time.get_ticks_msec() * 0.001
 		for n in atlas.nodes:
 			var p := _pos(n)
 			var col := Content.col(Content.STAGES[int(n.biome)].acc)
-			var r := 16.0 + float(n.tier)
-			if not n.open: col = Color(0.25, 0.25, 0.3)
-			if n.kind == "citadel": draw_rect(Rect2(p - Vector2(r, r), Vector2(r, r) * 2), Color(0.77, 0.54, 1.0, 0.35))
-			if n.kind == "corrupted": draw_circle(p, r + 6.0, Color(1, 0.2, 0.2, 0.3))
-			draw_circle(p, r, col.darkened(0.5) if not n.done else col)
-			draw_arc(p, r, 0, TAU, 32, Color.WHITE if int(n.id) == selected else col, 3.0 if int(n.id) == selected else 1.5)
-			draw_string(font, p + Vector2(-6, 6), str(n.tier), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
+			var r := 15.0 + float(n.tier) * 1.2
+			var open: bool = n.open
+			if n.kind == "citadel":
+				var q := r + 9.0
+				var dia := PackedVector2Array([p + Vector2(0, -q), p + Vector2(q, 0), p + Vector2(0, q), p + Vector2(-q, 0)])
+				draw_colored_polygon(dia, Color(0.45, 0.25, 0.7, 0.45))
+				dia.append(dia[0])
+				draw_polyline(dia, Color("c48aff"), 2.0, true)
+			if n.kind == "corrupted":
+				var pts := PackedVector2Array()
+				for i in 25:
+					var ang := TAU * float(i) / 24.0
+					pts.append(p + Vector2(cos(ang), sin(ang)) * (r + 6.0 + (3.0 if i % 2 == 0 else 0.0)))
+				draw_polyline(pts, Color(0.85, 0.15, 0.12, 0.85), 2.0, true)
+			if n.done:
+				draw_circle(p, r + 9.0, Color(col, 0.18))
+			draw_circle(p, r + 2.0, Color(0, 0, 0, 0.8))
+			var fill: Color = col.darkened(0.15) if n.done else (col.darkened(0.62) if open else Color(0.12, 0.11, 0.12))
+			draw_circle(p, r, fill)
+			draw_circle(p + Vector2(-r * 0.25, -r * 0.3), r * 0.45, Color(1, 1, 1, 0.07))
+			var ring := Color("f2c76a") if n.done else (bronze if open else Color(0.3, 0.28, 0.28))
+			draw_arc(p, r, 0, TAU, 40, ring, 2.0, true)
+			if int(n.id) == selected:
+				draw_arc(p, r + 5.0 + sin(t * 4.0) * 1.5, 0, TAU, 40, Color.WHITE, 2.0, true)
+			var txt := str(n.tier)
+			var fs := 17
+			var tw := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			var tp := p + Vector2(-tw * 0.5, fs * 0.36)
+			draw_string_outline(font, tp, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.9))
+			draw_string(font, tp, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("f4ead2") if open else Color(0.5, 0.47, 0.45))
+	func _process(_dt: float) -> void:
+		if selected >= 0: queue_redraw()
 	func _gui_input(ev: InputEvent) -> void:
 		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
 			var best := -1
