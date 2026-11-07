@@ -27,10 +27,15 @@ OUT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "godot", "models", "p
 PROPS = {
     "crystal": {"height": 30.0, "tris": 2000, "glow": "crystal"},
     "pillar":  {"height": 48.0, "tris": 2600, "glow": "crystal"},
-    "tree":    {"height": 69.0, "tris": 2000, "sway_above": 0.42},
+    "tree":    {"height": 69.0, "tris": 5000, "sway_above": 0.42},     # thin branches need the triangles
     "rock":    {"height": 16.0, "tris": 1000, "glow": "crystal"},
-    "bones":   {"height": 7.0, "tris": 1200},
+    "bones":   {"height": 7.0, "tris": 2600},
 }
+
+
+def to_linear(c):
+    """Texture pixels are sRGB; vertex colours are linear. Writing one as the other washes colours out."""
+    return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
 
 
 def sampler(mat):
@@ -98,7 +103,7 @@ def build(name, cfg, src):
         for li, c in zip(poly.loop_indices, cols):
             l = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
             g = [max(0.0, min(1.0, (l + (x - l) * 0.85) * 0.85)) for x in c]
-            col.data[li].color = (*g, 1.0)
+            col.data[li].color = (*to_linear(g), 1.0)
             uv2[li].uv = (float(part), 0.0)
     me.color_attributes.active_color = col
     # smooth stone with its real edges kept crisp (flat shading made decimated stone look crumpled)

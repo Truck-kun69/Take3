@@ -94,6 +94,11 @@ def pose(arm, action_name, frame=1):
     bpy.context.view_layer.update()
 
 
+def to_linear(c):
+    """Texture pixels are sRGB; vertex colours are linear. Writing one as the other washes colours out."""
+    return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
+
+
 def image_sampler(mat):
     """Returns f(uv) -> rgb from the material's base-colour texture, or its flat colour."""
     if mat is None or not mat.use_nodes:
@@ -170,7 +175,7 @@ def bake(arm, meshes, weapon=None, eyes_from_dark=False):
                 p = EYE                     # pupils and maw: lit from inside, like the procedural foes' eyes
             face_part.append(p)
             for lo_new, rgb in zip(nf.loops, cols):
-                lo_new[col_l] = (*grade(rgb), 1.0)
+                lo_new[col_l] = (*to_linear(grade(rgb)), 1.0)
         src.free()
     pivots = {}
     for part in (LEG_L, LEG_R, ARM_L, ARM_R, HEAD):
@@ -198,7 +203,7 @@ def bake(arm, meshes, weapon=None, eyes_from_dark=False):
                     face_part.append(part)
                     for lo_new, lo in zip(nf.loops, f.loops):
                         rgb = samp(lo[wuv].uv) if wuv else (0.6, 0.6, 0.6)
-                        lo_new[col_l] = (*grade(rgb), 1.0)
+                        lo_new[col_l] = (*to_linear(grade(rgb)), 1.0)
                 w.free()
     out.faces.ensure_lookup_table()
     return out, face_part, pivots

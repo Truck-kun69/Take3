@@ -170,4 +170,11 @@ act's accent colour, and a tree's upper branches sway. Shading is smooth with cr
 shading made the cut-down stone look crumpled ([pass 1](screenshots/props_trellis_pass1_crumpled.png),
 [pass 2](screenshots/props_trellis.png)).
 
-Done: `crystal`, `pillar`. Queued in `ASSETS`, waiting on fal credit: `tree`, `rock`, `bones`.
+All five slots are generated: `crystal`, `pillar`, `tree`, `rock`, `bones` (about $1.30 in fal credit).
+Second set of critique passes:
+1. Everything imported looked washed out, and the dead tree read pale although its concept is near-black.
+   Texture pixels are sRGB, but vertex colours are linear, and writing one as the other lightens every
+   colour. Both import scripts now convert, which also made the swarm foes properly grim.
+2. Cutting the tree to 2,000 triangles shattered its thin branches, and the bone pile turned to
+   confetti at 1,200. Their budgets are now 5,000 and 2,600
+   ([pass 1](screenshots/props_trellis_pass1_washed_out.png), [pass 2](screenshots/props_trellis_set_and_foes_linear.png)).
