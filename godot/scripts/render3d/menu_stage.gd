@@ -13,6 +13,7 @@ var hero_id := ""
 var crystal: MeshInstance3D
 var crystal_mat: StandardMaterial3D
 var rift_light: OmniLight3D
+var key_light: OmniLight3D
 var braziers: Array[OmniLight3D] = []
 var fog_mat: ShaderMaterial
 var terrain_mat: ShaderMaterial
@@ -111,6 +112,9 @@ func _ready() -> void:
 		braziers.append(_omni(Vector3(x, 50, -11), Color(1.0, 0.6, 0.3), 240.0, 10.0))
 		add_child(_flames(Vector3(x, 34, -15)))
 	add_child(_embers())
+	# warm key light from the camera side and a cool rim from behind, so textured heroes read on the dark stage
+	key_light = _omni(Vector3(HERO_AT.x + 70, 90, HERO_AT.y + 110), Color(1.0, 0.82, 0.62), 260.0, 7.0)
+	_omni(Vector3(HERO_AT.x - 40, 70, HERO_AT.y - 80), Color(0.55, 0.65, 1.0), 200.0, 5.0)
 	fog_mat = ShaderMaterial.new()
 	fog_mat.shader = load("res://shaders/3d/fog.gdshader")
 	fog_mat.set_shader_parameter("fog_col", Color(0.35, 0.33, 0.45))

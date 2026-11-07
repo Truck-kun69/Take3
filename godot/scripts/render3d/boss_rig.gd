@@ -40,9 +40,44 @@ func build(k: String, c: Color, slot: String) -> void:
 		override = load(p).instantiate()
 		add_child(override)
 		anim = override.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		_prepare_override(override)
 		return
 	if k == "herald": _build_herald()
 	else: _build_tyrant()
+
+var _over_flash: ShaderMaterial
+var _glow_over: Array = []         # [material, base energy]
+## Authored bosses: loop idle/walk, hit-flash overlay, and recolour every "glow*" material to this
+## boss's colour, so one tyrant model serves every act (green, ember, pale and neon bosses).
+func _prepare_override(n: Node) -> void:
+	if anim != null:
+		for nm in ["idle", "walk"]:
+			if anim.has_animation(nm): anim.get_animation(nm).loop_mode = Animation.LOOP_LINEAR
+		if anim.has_animation("walk"): anim.play("walk")
+	var sh := Shader.new()
+	sh.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform vec3 tint = vec3(1.0); uniform float flash = 0.0; void fragment(){ ALBEDO = tint * flash; }"
+	_over_flash = ShaderMaterial.new()
+	_over_flash.shader = sh
+	_over_flash.set_shader_parameter("tint", Vector3(1.0, 0.85, 0.75))
+	_tag(n)
+
+func _tag(n: Node) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		mi.material_overlay = _over_flash
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i)
+			if not (m is BaseMaterial3D): continue
+			var d: BaseMaterial3D = m.duplicate()
+			d.rim_enabled = true
+			d.rim = 0.45
+			d.rim_tint = 0.5
+			if String(m.resource_name).begins_with("glow"):
+				d.emission = col.lightened(0.15)
+				d.albedo_color = col.lightened(0.5)
+				_glow_over.append([d, d.emission_energy_multiplier])
+			mi.set_surface_override_material(i, d)
+	for c in n.get_children(): _tag(c)
 
 func _m(c: Color, rough: float = 0.6, metal: float = 0.0, emis: Color = Color.BLACK, ei: float = 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -166,9 +201,20 @@ func animate(st: Dictionary) -> void:
 	_atk = maxf(0.0, _atk - dt * 1.6)
 	var t: float = st.t
 	if override != null:
+		var fl0 := clampf(float(st.flash) * 10.0, 0.0, 1.0)
+		_over_flash.set_shader_parameter("flash", fl0 * fl0 * 0.5)
+		var pulse0 := 0.5 + 0.5 * sin(t * (3.0 + 4.0 * (1.0 - float(st.hp_frac))))
+		for g in _glow_over:
+			(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * (0.7 + 0.6 * pulse0 + _atk * 1.2)
+		light.light_energy = (2.0 + pulse0 * 2.5) * WorldView3D.LIGHT_GAIN
 		if anim != null:
-			var want := "attack" if _atk > 0.3 else "walk"
-			if anim.has_animation(want) and anim.current_animation != want: anim.play(want, 0.2)
+			# an attack plays to the end (wind-up, slam, recover); a hit flinch never interrupts it
+			var busy := anim.current_animation == "attack" and anim.is_playing()
+			var want := "walk"
+			if st.attack: want = "attack"
+			elif fl0 > 0.85 and not busy and anim.current_animation != "hit": want = "hit"
+			elif busy or (anim.current_animation == "hit" and anim.is_playing()): want = anim.current_animation
+			if anim.has_animation(want) and (anim.current_animation != want or not anim.is_playing()): anim.play(want, 0.15)
 		return
 	var fl := clampf(float(st.flash) * 10.0, 0.0, 1.0)
 	for m in char_mats:

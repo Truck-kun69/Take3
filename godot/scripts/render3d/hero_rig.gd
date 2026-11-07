@@ -60,8 +60,42 @@ func build(id: String, c: Color) -> void:
 		override = load(p).instantiate()
 		add_child(override)
 		anim = _find_anim(override)
+		_prepare_override(override)
 		return
 	_build_procedural()
+
+static var _flash_shader: Shader
+## Authored models: loop the locomotion clips, add a red hit-flash overlay, and give every
+## "glow*" material its own copy so casts can flare it (the procedural rig does the same in-shader).
+func _prepare_override(n: Node) -> void:
+	if anim != null:
+		for nm in ["idle", "run", "walk"]:
+			if anim.has_animation(nm): anim.get_animation(nm).loop_mode = Animation.LOOP_LINEAR
+	if _flash_shader == null:
+		_flash_shader = Shader.new()
+		_flash_shader.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform float flash = 0.0; void fragment(){ ALBEDO = vec3(1.0, 0.22, 0.12) * flash; }"
+	var fm := ShaderMaterial.new()
+	fm.shader = _flash_shader
+	_mats.append(fm)
+	_tag_meshes(n, fm)
+
+var _glow_over: Array = []          # [material, base emission energy]
+func _tag_meshes(n: Node, fm: ShaderMaterial) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		mi.material_overlay = fm
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i)
+			if not (m is BaseMaterial3D): continue
+			# per-instance copy with a cool rim light, so the hero separates from dark floors (PoE2 look)
+			var d: BaseMaterial3D = m.duplicate()
+			d.rim_enabled = true
+			d.rim = 0.55
+			d.rim_tint = 0.35
+			mi.set_surface_override_material(i, d)
+			if String(m.resource_name).begins_with("glow"):
+				_glow_over.append([d, d.emission_energy_multiplier])
+	for c in n.get_children(): _tag_meshes(c, fm)
 
 func _find_anim(n: Node) -> AnimationPlayer:
 	if n is AnimationPlayer: return n
@@ -355,12 +389,23 @@ func animate(st: Dictionary, dt: float) -> void:
 		position.y = -_dead * 4.0
 
 func _animate_override(st: Dictionary) -> void:
+	var cast_k := sin(_cast * PI * 0.5)
+	for g in _glow_over:
+		(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * (1.0 + cast_k * 2.5 + 0.12 * sin(float(st.t) * 3.0))
 	if anim == null: return
-	var want := "run" if float(st.mv) > 0.2 else "idle"
-	if float(st.roll) >= 0.0: want = "roll"
+	var mv: float = st.mv
+	var want := "run" if mv > 0.2 else "idle"
+	var roll: float = st.roll
+	if roll >= 0.0: want = "roll"
 	elif _hit > 0.5: want = "hit"
 	elif float(st.cast_age) < 0.3: want = "cast"
 	if st.dead: want = "die"
 	if want != _anim_state and anim.has_animation(want):
 		_anim_state = want
-		anim.play(want, 0.12)
+		anim.play(want, 0.08 if want == "roll" or want == "cast" else 0.15)
+	# the roll follows the simulation's dodge timer exactly; the run cadence follows speed
+	if want == "roll" and anim.has_animation("roll"):
+		anim.speed_scale = 0.0
+		anim.seek(clampf(roll, 0.0, 0.999) * anim.get_animation("roll").length, true)
+	else:
+		anim.speed_scale = lerpf(0.85, 1.25, clampf(mv, 0.0, 1.0)) if want == "run" else 1.0

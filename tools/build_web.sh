@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Web export -> one self-contained HTML file you can double-click, host anywhere, or publish.
-#   tools/build_web.sh   ->  build/shardfall.html (standalone) and build/shardfall_artifact.html (body-only, for hosts that wrap pages)
+#   tools/build_web.sh   ->  build/shardfall.html (standalone) and build/shardfall_artifact.html + _data.js (body-only, game data split out for hosts with a per-file size limit)
 # Needs the web export templates (tools/provision.sh installs Android only; this fetches the web ones if missing).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,4 +15,4 @@ cd "$ROOT/godot"
 "$TOOLS/godot/godot" --headless --path . --import >/dev/null 2>&1 || true
 "$TOOLS/godot/godot" --headless --path . --export-release "Web" "$ROOT/build/web/index.html"
 python3 "$ROOT/tools/pack_web.py" "$ROOT/build/web" "$ROOT/build/shardfall.html"
-python3 "$ROOT/tools/pack_web.py" "$ROOT/build/web" "$ROOT/build/shardfall_artifact.html" --artifact
+python3 "$ROOT/tools/pack_web.py" "$ROOT/build/web" "$ROOT/build/shardfall_artifact.html" --artifact --split   # page + shardfall_artifact_data.js

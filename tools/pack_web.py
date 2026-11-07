@@ -18,6 +18,7 @@ import sys
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 ARTIFACT = "--artifact" in sys.argv     # body-only page for hosts that add their own document skeleton
+SPLIT = "--split" in sys.argv           # game data (.pck) in a sibling <out>_data.js, for hosts with a per-file size limit
 src = pathlib.Path(args[0] if len(args) > 0 else "build/web")
 out = pathlib.Path(args[1] if len(args) > 1 else "build/shardfall.html")
 shell = (src / "index.html").read_text()
@@ -77,7 +78,7 @@ body = f"""<canvas id="canvas" tabindex="-1">Your browser does not support the c
   <div id="err"></div>
 </div>
 <script type="text/plain" id="g-wasm">{wasm}</script>
-<script type="text/plain" id="g-pck">{pck}</script>
+{'<script src="' + out.stem + '_data.js"></script>' if SPLIT else '<script type="text/plain" id="g-pck">' + pck + '</script>'}
 <script>
 // ---- embedded assets -> in-memory responses for Godot's loader -------------------------------
 const WORKLETS = {json.dumps(worklets)};
@@ -97,7 +98,7 @@ function b64bytes(s) {{
   return out;
 }}
 async function gunzip(id) {{
-  const bytes = b64bytes(document.getElementById(id).textContent);
+  const bytes = b64bytes(id === "g-pck" && window.G_PCK ? window.G_PCK : document.getElementById(id).textContent);
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
   return await new Response(stream).arrayBuffer();
 }}
@@ -163,4 +164,8 @@ else:
             + head + "</head>\n<body>\n" + body + "</body>\n</html>\n")
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(page)
+if SPLIT:
+    data = out.with_name(out.stem + "_data.js")
+    data.write_text('window.G_PCK = "' + pck + '";\n')
+    print(f"{data}  {data.stat().st_size / 1e6:.2f} MB")
 print(f"{out}  {out.stat().st_size / 1e6:.2f} MB  (wasm {len(wasm) / 1e6:.1f} MB b64, pck {len(pck) / 1e6:.2f} MB b64)")

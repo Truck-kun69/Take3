@@ -8,6 +8,7 @@ authored models, sounds and textures (`godot/models`, `godot/audio`, `godot/text
 
 * `docs/DESIGN.md` — the 20 enhancements and the three critique cycles with their numbers
 * `docs/GRAPHICS.md` — the 3D renderer (PoE2 direction), models, effects, audio, asset slots, and the UI pass (fonts, logo, tiles)
+* `docs/MODELS.md` — rigged Blender models for heroes and bosses, CC0 textures, AI-generation keys
 * `docs/TOOLCHAIN.md` — provisioning Godot 4 + Android SDK headlessly, compute shader, export pipeline
 * `docs/screenshots/` — cycle-0 bugs, the final build on the Forward Mobile renderer, and the UI pass (`ui_*.png`)
 

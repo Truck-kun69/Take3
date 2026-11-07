@@ -78,6 +78,21 @@ func _ready() -> void:
 				foe_mm.append(mmi)
 			var ex := HeroRig.new(); add_child(ex); ex.build("ember", Color("4a2a2a")); ex.scale = Vector3.ONE * 1.35
 			rigs.append([ex, Vector2(250, 0)])
+		"one", "boss":
+			# close-up of one model in four states: idle (front), run (three-quarter), cast, roll/attack
+			var id := a[2] if a.size() > 2 else "warden"
+			cam.position = Vector3(120, 78, 250) if mode == "one" else Vector3(150, 170, 420)
+			cam.look_at(Vector3(120, 26, 0) if mode == "one" else Vector3(150, 70, 0))
+			for i in 4:
+				if mode == "one":
+					var h := HeroRig.new(); add_child(h)
+					var hi := ["warden", "spark", "ember", "storm"].find(id)
+					h.build(id, Content.col(Content.HEROES[maxi(0, hi)].col))
+					rigs.append([h, Vector2(i * 80.0, 0)])
+				else:
+					var b2 := BossRig.new(); add_child(b2)
+					b2.build("herald" if id == "herald" else "tyrant", Color("ff6a2a"), id)
+					rigs.append([b2, Vector2(i * 100.0, 0)])
 		_:
 			cam.position = Vector3(110, 150, 260); cam.look_at(Vector3(110, 60, 0))
 			var b := BossRig.new(); add_child(b); b.build("tyrant", Color("ff6a2a"), "tyrant"); b.position = Vector3(40, 0, 0)
@@ -88,7 +103,15 @@ func _process(dt: float) -> void:
 	t += dt
 	for i in rigs.size():
 		var r = rigs[i][0]
-		if r is HeroRig:
+		if r is HeroRig and mode == "one":
+			var faces := [Vector2(0.05, 1), Vector2(0.9, 0.6), Vector2(-0.3, 1), Vector2(1, 0.15)]
+			r.animate({"pos": rigs[i][1], "face": faces[i].normalized(), "mv": 1.0 if i == 1 else 0.0, "ph": t * 10.0,
+				"cast_age": fmod(t, 0.9) if i == 2 else 9.0, "cast_dir": faces[i].normalized(), "roll": 0.3 if i == 3 else -1.0,
+				"hit": 0.0, "dead": false, "t": t}, dt)
+		elif r is BossRig and mode == "boss":
+			r.animate({"pos": rigs[i][1], "face": [Vector2(0.05, 1), Vector2(0.9, 0.6), Vector2(-0.3, 1), Vector2(1, 0.15)][i].normalized(), "hp_frac": 1.0,
+				"flash": 0.0, "t": t, "dt": dt, "attack": i == 2 and fmod(t, 1.5) < dt, "phase": 1})
+		elif r is HeroRig:
 			r.animate({"pos": rigs[i][1], "face": Vector2(0.35, 1).normalized(), "mv": 1.0 if i % 2 == 0 else 0.0, "ph": t * 10.0,
 				"cast_age": 9.0 if i < 2 else fmod(t, 0.6), "cast_dir": Vector2(0.35, 1).normalized(), "roll": -1.0, "hit": 0.0, "dead": false, "t": t}, dt)
 		else:
