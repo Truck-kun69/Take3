@@ -26,16 +26,23 @@ ASSETS = {
 }
 
 
-def call(model, payload, timeout=900):
-    req = urllib.request.Request(f"https://fal.run/{model}", data=json.dumps(payload).encode(), method="POST",
-                                 headers={"Content-Type": "application/json"})
-    if os.environ.get("FAL_KEY"):
-        req.add_header("Authorization", "Key " + os.environ["FAL_KEY"])
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise SystemExit(f"{model}: HTTP {e.code}: {e.read()[:400]!r}")
+def call(model, payload, timeout=900, retries=2):
+    """POST to fal's synchronous endpoint. 502 'upstream request failed' is transient on fal's side (and
+    TRELLIS 2 at 1024 failed every time in Nov 2026, so heroes use 512): retried with backoff."""
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(f"https://fal.run/{model}", data=json.dumps(payload).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+        if os.environ.get("FAL_KEY"):
+            req.add_header("Authorization", "Key " + os.environ["FAL_KEY"])
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            body = e.read()[:400]
+            if e.code in (502, 503, 504) and attempt < retries:
+                time.sleep(10 * (attempt + 1))
+                continue
+            raise SystemExit(f"{model}: HTTP {e.code}: {body!r}")
 
 
 def fetch(url, path):
@@ -57,8 +64,78 @@ def gen(out, name, resolution=512):
           f"({os.path.getsize(os.path.join(out, name + '.glb')) / 1e6:.1f} MB)", flush=True)
 
 
+# ---------------------------------------------------------------- realistic heroes
+# Concepts are painted in an A-pose with empty hands so the mesh can be rigged (tools/blender/
+# realistic_heroes.py finds the joints with a pose detector) and the weapon is generated apart.
+HERO_STYLE = ("full body photorealistic 3D character render, standing in a relaxed A-pose with both arms straight and "
+              "angled 35 degrees away from the body, open empty hands, feet shoulder width apart, front view, symmetrical, "
+              "entire body visible from head to toe, plain flat light grey background, soft even studio lighting, "
+              "dark fantasy, grim and grimy, battle-worn, mud-caked, dried blood, scratched and dented, realistic human "
+              "proportions, highly detailed PBR materials, in the style of Path of Exile 2 and Diablo IV, no weapon, no text")
+HEROES = {
+    "warden": "a grizzled armored knight in battered dented steel plate armor over rusted chainmail, a tattered dark red "
+              "tabard, a closed great helm with a narrow visor slit, worn leather straps and belts, a short torn dark red cape",
+    "spark": "a gaunt frost sorcerer in a deep hood and a long dark blue coat with a frayed hem and a fur-trimmed collar, "
+             "frost-rimed leather bracers and boots, a pale hollow face half hidden in the hood's shadow",
+    "ember": "a fierce witch in a crooked wide-brimmed pointed black hat and a long tattered crimson robe, singed and "
+             "soot-stained at the hem, a leather corset with tarnished brass buckles, an ash-smudged face, wild dark red hair",
+    # large areas of tattooed bare skin came back from TRELLIS as dark patches (critique pass 3): armoured instead
+    "storm": "a scarred barbarian storm shaman with a horned brass helmet and a braided beard, a heavy dark fur mantle "
+             "over a dented bronze breastplate and a rusted chainmail shirt, leather bracers etched with glowing violet "
+             "lightning runes, a chainmail and leather kilt, fur boots, grime and old blood",
+}
+WEAPONS = {
+    "warden_sword": "a battered steel longsword with a worn leather grip and a dented crossguard, nicks along the blade, lying flat",
+    "warden_shield": "a dented heater shield of steel and wood with a faded dark red field and a scratched gold border, front view",
+    "spark_staff": "a tall gnarled pale wooden staff topped with jagged glowing ice-blue crystals bound by tarnished silver claws, vertical",
+    "ember_staff": "a tall blackened wooden staff topped with an iron lantern cage holding a glowing ember, soot-stained, vertical",
+    "storm_staff": "a tall dark iron staff topped with a brass two-pronged fork cradling a glowing violet crystal, vertical",
+}
+
+
+def hero_concepts(out, name, seeds=(11, 23)):
+    meta = {}
+    for sd in seeds:
+        r = call("fal-ai/flux/dev", {"prompt": f"{HEROES[name]}, {HERO_STYLE}", "image_size": {"width": 768, "height": 1024},
+                                     "num_inference_steps": 28, "guidance_scale": 3.5, "num_images": 1, "seed": sd,
+                                     "output_format": "jpeg", "enable_safety_checker": True})
+        url = r["images"][0]["url"]
+        fetch(url, os.path.join(out, f"{name}_{sd}.jpg"))
+        meta[str(sd)] = url
+        print(f"CONCEPT {name} seed {sd} -> {out}/{name}_{sd}.jpg", flush=True)
+    json.dump(meta, open(os.path.join(out, f"{name}_concepts.json"), "w"))
+
+
+def model_from(out, name, image_url, resolution=512, decimate=40000, texture=1024):
+    t0 = time.time()
+    res = call("fal-ai/trellis-2", {"image_url": image_url, "resolution": resolution, "seed": 7, "texture_size": texture,
+                                    "decimation_target": decimate, "remesh": True})
+    fetch(res["model_glb"]["url"], os.path.join(out, name + ".glb"))
+    print(f"MODEL {name}: {time.time() - t0:.0f}s -> {out}/{name}.glb ({os.path.getsize(os.path.join(out, name + '.glb')) / 1e6:.1f} MB)", flush=True)
+
+
+def weapon(out, name):
+    img = call("fal-ai/flux/dev", {"prompt": f"{WEAPONS[name]}, {STYLE}", "image_size": "square_hd", "num_inference_steps": 28,
+                                   "num_images": 1, "seed": 5, "output_format": "jpeg"})
+    url = img["images"][0]["url"]
+    fetch(url, os.path.join(out, name + ".jpg"))
+    model_from(out, name, url, resolution=512, decimate=20000, texture=1024)
+
+
 if __name__ == "__main__":
-    out = sys.argv[1]
-    os.makedirs(out, exist_ok=True)
-    for n in sys.argv[2:] or list(ASSETS):
-        gen(out, n)
+    # gen3d.py <out> [props...] | gen3d.py hero-concepts <out> <hero...> | gen3d.py hero-model <out> <hero> <seed>
+    # | gen3d.py weapon <out> <weapon...>
+    if sys.argv[1] == "hero-concepts":
+        out = sys.argv[2]; os.makedirs(out, exist_ok=True)
+        for n in sys.argv[3:] or list(HEROES): hero_concepts(out, n)
+    elif sys.argv[1] == "hero-model":
+        out, n, sd = sys.argv[2], sys.argv[3], sys.argv[4]
+        model_from(out, n, json.load(open(os.path.join(out, f"{n}_concepts.json")))[sd])
+    elif sys.argv[1] == "weapon":
+        out = sys.argv[2]; os.makedirs(out, exist_ok=True)
+        for n in sys.argv[3:] or list(WEAPONS): weapon(out, n)
+    else:
+        out = sys.argv[1]
+        os.makedirs(out, exist_ok=True)
+        for n in sys.argv[2:] or list(ASSETS):
+            gen(out, n)

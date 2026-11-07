@@ -228,6 +228,7 @@ class Rig:
         for pb in self.ob.pose.bones:
             pb.rotation_mode = "QUATERNION"
         self.names = [b[0] for b in bones]
+        self.base = {}      # bone -> (rx, ry, rz) added to every pose: corrects a rest pose that isn't the clips' (A-pose arms)
 
     def clip(self, name, frames, pose_fn, loop=False):
         """pose_fn(t in 0..1) -> {bone: (rx, ry, rz) or ((rx, ry, rz), (x, y, z))} in armature axes."""
@@ -241,6 +242,8 @@ class Rig:
             for pb in ob.pose.bones:
                 v = pose.get(pb.name, (0, 0, 0))
                 rot, loc = (v if isinstance(v[0], (tuple, list)) else (v, (0, 0, 0)))
+                if pb.name in self.base:
+                    rot = tuple(r + o for r, o in zip(rot, self.base[pb.name]))
                 R = self.rest[pb.name]
                 q = (R.inverted() @ Euler(rot, "XYZ").to_matrix() @ R).to_quaternion()
                 pb.rotation_quaternion = q
@@ -427,7 +430,7 @@ def limb_part(kind, a, b, radius, mat, bone, k0=0.0, k1=1.0, seg=10, taper=1.0, 
 
 
 # ------------------------------------------------------------------ clips
-def hero_clips(rig, weapon_side="R", two_hand=False, s=1.0, cape=True):
+def hero_clips(rig, weapon_side="R", two_hand=False, s=1.0, cape=True, stride=0.75):
     W = weapon_side
     O = "L" if W == "R" else "R"
     sgn = {"L": 1.0, "R": -1.0}
@@ -454,7 +457,7 @@ def hero_clips(rig, weapon_side="R", two_hand=False, s=1.0, cape=True):
         kr = 0.3 + 1.1 * max(0.0, S(ph + 0.6))
         return {
             "hips": ((0, 0, -0.12 * sw)), "spine": add(lean(0.16), (0, 0, 0.1 * sw)), "chest": (0, 0, 0.12 * sw), "head": lean(-0.12),
-            "thigh.L": fwd(0.75 * sw + 0.1), "thigh.R": fwd(-0.75 * sw + 0.1), "shin.L": fwd(-kl), "shin.R": fwd(-kr),
+            "thigh.L": fwd(stride * sw + 0.1), "thigh.R": fwd(-stride * sw + 0.1), "shin.L": fwd(-kl), "shin.R": fwd(-kr),
             "foot.L": fwd(0.25 * max(0.0, -sw)), "foot.R": fwd(0.25 * max(0.0, sw)),
             f"upperarm.{O}": add(arm_out(O, 0.15), fwd(-0.55 * sw * sgn[O])), f"forearm.{O}": fwd(0.7),
             f"upperarm.{W}": add(arm_out(W, 0.15), fwd(0.25 + (-0.25 if two_hand else -0.35) * sw * sgn[W])), f"forearm.{W}": fwd(0.8),
@@ -1196,5 +1199,7 @@ BUILDERS = {"warden": build_warden, "spark": build_spark, "ember": build_ember, 
 
 if __name__ == "__main__":
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    for k in (argv or list(BUILDERS)):
+    # The shipped heroes are the realistic ones from tools/blender/realistic_heroes.py; the procedural
+    # heroes here are built only when named, so a default run never overwrites them.
+    for k in (argv or ["tyrant", "guardian", "herald"]):
         BUILDERS[k]()

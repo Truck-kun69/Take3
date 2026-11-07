@@ -18,7 +18,8 @@ import sys
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 ARTIFACT = "--artifact" in sys.argv     # body-only page for hosts that add their own document skeleton
-SPLIT = "--split" in sys.argv           # game data (.pck) in a sibling <out>_data.js, for hosts with a per-file size limit
+SPLIT = "--split" in sys.argv           # game data (.pck) in sibling <out>_data*.js files, each under the host's per-file limit
+PART = 15_000_000                       # characters per data file (the artifact host allows 16 MB per text file)
 src = pathlib.Path(args[0] if len(args) > 0 else "build/web")
 out = pathlib.Path(args[1] if len(args) > 1 else "build/shardfall.html")
 shell = (src / "index.html").read_text()
@@ -35,6 +36,7 @@ wasm = b64gz(src / f"{exe}.wasm")
 pck = b64gz(src / f"{exe}.pck")
 # Worklets as data: URLs: blob: URLs created on a file:// page have an opaque origin and Chromium
 # refuses them as worklet modules; data: URLs load from disk and from any server.
+DATA_FILES = [out.stem + ("_data.js" if i == 0 else f"_data{i + 1}.js") for i in range((len(pck) + PART - 1) // PART)] if SPLIT else []
 worklets = {p.name: "data:text/javascript;base64," + base64.b64encode(p.read_bytes()).decode("ascii") for p in src.glob(f"{exe}.audio*.js")}
 loader = (src / f"{exe}.js").read_text()
 # Loading screen art: the game's own logo and type, so the page matches the title screen.
@@ -78,7 +80,7 @@ body = f"""<canvas id="canvas" tabindex="-1">Your browser does not support the c
   <div id="err"></div>
 </div>
 <script type="text/plain" id="g-wasm">{wasm}</script>
-{'<script src="' + out.stem + '_data.js"></script>' if SPLIT else '<script type="text/plain" id="g-pck">' + pck + '</script>'}
+{"".join('<script src="' + n + '"></script>' for n in DATA_FILES) if SPLIT else '<script type="text/plain" id="g-pck">' + pck + '</script>'}
 <script>
 // ---- embedded assets -> in-memory responses for Godot's loader -------------------------------
 const WORKLETS = {json.dumps(worklets)};
@@ -98,7 +100,7 @@ function b64bytes(s) {{
   return out;
 }}
 async function gunzip(id) {{
-  const bytes = b64bytes(id === "g-pck" && window.G_PCK ? window.G_PCK : document.getElementById(id).textContent);
+  const bytes = b64bytes(id === "g-pck" && window.G_PCK ? window.G_PCK.join("") : document.getElementById(id).textContent);
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
   return await new Response(stream).arrayBuffer();
 }}
@@ -165,7 +167,8 @@ else:
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(page)
 if SPLIT:
-    data = out.with_name(out.stem + "_data.js")
-    data.write_text('window.G_PCK = "' + pck + '";\n')
-    print(f"{data}  {data.stat().st_size / 1e6:.2f} MB")
+    for i, name in enumerate(DATA_FILES):
+        data = out.with_name(name)
+        data.write_text('(window.G_PCK = window.G_PCK || []).push("' + pck[i * PART:(i + 1) * PART] + '");\n')
+        print(f"{data}  {data.stat().st_size / 1e6:.2f} MB")
 print(f"{out}  {out.stat().st_size / 1e6:.2f} MB  (wasm {len(wasm) / 1e6:.1f} MB b64, pck {len(pck) / 1e6:.2f} MB b64)")

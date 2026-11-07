@@ -22,6 +22,7 @@ func _ready() -> void:
 	sv.data.currency.chaos = 3; sv.data.currency.exalt = 1; sv.data.currency.regal = 2
 	sv.data.fragments = {"rupture": 1, "greed": 1, "dread": 1}
 	sv.data.hero = 2
+	if a.size() > 3: sv.data.hero = int(a[3])        # HERO_OVERRIDE: which exile the title stage shows
 	var rng := RandomNumberGenerator.new(); rng.seed = 5
 	for k in 8: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, rng))
 	main = load("res://scenes/main.tscn").instantiate()

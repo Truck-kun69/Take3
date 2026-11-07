@@ -178,3 +178,55 @@ Second set of critique passes:
 2. Cutting the tree to 2,000 triangles shattered its thin branches, and the bone pile turned to
    confetti at 1,200. Their budgets are now 5,000 and 2,600
    ([pass 1](screenshots/props_trellis_pass1_washed_out.png), [pass 2](screenshots/props_trellis_set_and_foes_linear.png)).
+
+## Realistic heroes (FLUX dev, TRELLIS 2, pose-fitted rig)
+
+![The four heroes on the title stage](screenshots/heroes_realistic_title.png)
+
+The shipped heroes replace the primitive-built ones above. They are AI-generated, then rigged here:
+
+```bash
+python3 tools/fal/gen3d.py hero-concepts /tmp/heroes warden spark ember storm   # FLUX dev, two seeds each (~$0.02 an image)
+python3 tools/fal/pose_keypoints.py pose_landmarker_heavy.task /tmp/heroes/warden_23.jpg ...   # joints + silhouette per painting
+python3 tools/fal/gen3d.py hero-model /tmp/heroes warden 23                    # TRELLIS 2 at 512 (~$0.25)
+python3 tools/fal/gen3d.py weapon /tmp/heroes                                   # sword, shield, three staffs (~$0.25 each)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/realistic_heroes.py -- /tmp/heroes
+```
+
+1. **Paintings**: full-body, grim and grimy, battle-worn and mud-caked, in an A-pose with empty hands so
+   the arms can be rigged ([concepts](screenshots/heroes_realistic_concepts.png); the chosen ones are in
+   `tools/fal/concepts/heroes/` with their joints).
+2. **Joints**: MediaPipe Pose finds shoulders, elbows, wrists, hips, knees and ankles in each painting.
+   Thresholds are lowered because helmets and hoods hide the faces its detector leans on.
+3. **Fit**: the joints are mapped onto the TRELLIS mesh through the silhouette's height. Each joint's
+   depth is the middle of the mesh cross-section there, and nose-to-ankle is set to the game's proportions.
+4. **Rig**: the 21-bone skeleton is bound with Blender's heat weights, computed on a watertight
+   voxel-remeshed copy and transferred back by nearest surface. Distance weights, smoothed over the
+   surface, fill in wherever the heat solver gives up. Robes, tabards and capes are then reweighted:
+   cloth below the hips follows the hips with a little of the near thigh, cloth behind the back
+   follows the torso, and neither touches the legs.
+5. **Weapons**: TRELLIS meshes stood up by shape (staff head up, sword crossguard at the hand, shield
+   face out) and bound rigidly to the hand or forearm.
+6. **Clips**: the same six clips as before, with a per-bone offset that brings the painted A-pose arms
+   down to the clips' rest, and a shorter stride for long robes.
+
+Critique passes:
+1. Generated meshes have holes and overlapping shells, so Blender's heat weighting failed outright.
+   Weighting a voxel-remeshed copy fixed it ([pass 1](screenshots/heroes_realistic_pass1_sheets.png):
+   still showing problem 2).
+2. Running looked like a dive. Measuring showed the skeleton was upright but the mesh stood 37 units
+   tall against a 45-unit skeleton: the image-to-mesh scale came from the silhouette's width, which
+   the Warden's floor-spread cape inflates. Scaling by height (with a cleaner silhouette top) fixed
+   the fit, and the heat solver then succeeded on all four. Cloth reweighting stopped the capes
+   tearing into sheets ([pass 2](screenshots/heroes_realistic_pass2_fitted.png)).
+3. The Stormwright's tattooed bare skin came back as dark patches. A re-run with a new seed and a
+   2048 texture did the same, and Blender's extra simplification made it worse, so heroes now keep
+   TRELLIS's own 40k-triangle mesh. The Stormwright was repainted in a bronze breastplate and
+   chainmail under his fur mantle ([before](screenshots/heroes_realistic_pass3_storm_skin.png),
+   [after](screenshots/heroes_realistic_storm_armoured.png)).
+4. TRELLIS 2 at 1024 resolution failed on fal every time (HTTP 502). Heroes use 512, and `gen3d.py`
+   retries 502s twice.
+
+Size: each hero is about 42k triangles with 1024 textures (imported as WebP). The hosted page now
+loads its game data from two files, 15 MB and 1.6 MB ([in the browser](screenshots/heroes_realistic_web.png)).
+fal spend for the heroes: about $3.50, including the failed and repeated runs.
