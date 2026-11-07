@@ -154,3 +154,20 @@ Critique passes for the imports:
    and the blob pack fills the Fractal and its shards ([all nine](screenshots/foes_imported.png)).
 3. In play the creatures read as dark figures with amber eyes and blades
    ([before and after, same moment](screenshots/foes_ingame_before_after.png)).
+
+## Generated props (TRELLIS 2 on fal.ai)
+
+```bash
+python3 tools/fal/gen3d.py /tmp/gen crystal pillar        # FLUX schnell concept -> TRELLIS 2 mesh (fal key needed)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/import_props.py -- /tmp/gen
+```
+
+`gen3d.py` asks FLUX schnell for one isolated object on a plain background (about $0.003), then
+TRELLIS 2 at 512 resolution (about $0.25) returns a textured mesh of about 20k triangles in about
+20 seconds. `import_props.py` stands it up and scales it to the slot. It cuts the mesh to 2,000–2,600
+triangles and samples the texture into vertex colours. Blue-to-violet saturated faces glow in the
+act's accent colour, and a tree's upper branches sway. Shading is smooth with crisp edges; flat
+shading made the cut-down stone look crumpled ([pass 1](screenshots/props_trellis_pass1_crumpled.png),
+[pass 2](screenshots/props_trellis.png)).
+
+Done: `crystal`, `pillar`. Queued in `ASSETS`, waiting on fal credit: `tree`, `rock`, `bones`.

@@ -95,6 +95,17 @@ func _ready() -> void:
 					mm.set_instance_custom_data(j, Color(1.2 + j, 0, 0, 0))
 				mmi.multimesh = mm; mmi.material_override = fm2
 				add_child(mmi)
+		"prop":
+			# props as the scatter draws them: several rotations each, glow in the act accent
+			var kinds3: PackedStringArray = (a[2] if a.size() > 2 else "crystal").split(",")
+			cam.position = Vector3(45.0 * kinds3.size(), 70, 190); cam.look_at(Vector3(45.0 * kinds3.size(), 18, 0))
+			var pmat := ShaderMaterial.new(); pmat.shader = load("res://shaders/3d/prop.gdshader")
+			pmat.set_shader_parameter("tint", Color(0.85, 0.8, 0.82)); pmat.set_shader_parameter("glow_col", Color("b890ff"))
+			for k in kinds3.size():
+				for j in 2:
+					var mi := MeshInstance3D.new(); mi.mesh = Models.prop_mesh(kinds3[k]); mi.material_override = pmat
+					mi.position = Vector3(k * 90.0 + j * 40.0, 0, -j * 50.0); mi.rotation.y = j * 2.1
+					add_child(mi)
 		"one", "boss":
 			# close-up of one model in four states: idle (front), run (three-quarter), cast, roll/attack
 			var id := a[2] if a.size() > 2 else "warden"
