@@ -294,6 +294,7 @@ func _sims() -> void:
 	for h in 4:
 		rows.append(run_bot({"mode": "campaign", "hero": h, "stage": 0, "seed": 100 + h}, 200.0, h))
 	rows.append(run_bot({"mode": "campaign", "hero": 1, "stage": 2, "seed": 77}, 200.0, 5))
+	rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 4, "seed": 55}, 240.0, 7))      # Act V: rising tide, Tide Bishop
 	var at := Atlas.generate(99)
 	var node: Dictionary = at.nodes[0]
 	rows.append(run_bot({"mode": "atlas", "hero": 2, "node": node, "seed": 55}, 200.0, 6))

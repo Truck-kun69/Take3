@@ -33,6 +33,7 @@ const MOTES := [
 	{"col": Color(1.0, 0.55, 0.2), "rise": 28.0, "blink": false},    # Cinder: rising embers
 	{"col": Color(0.8, 0.8, 0.9), "rise": 4.0, "blink": false},      # Crypt: dust motes
 	{"col": Color(0.3, 0.9, 1.0), "rise": 10.0, "blink": true},      # Neon: data sparks
+	{"col": Color(1.0, 0.82, 0.5), "rise": 6.0, "blink": true},      # Drowned Cathedral: candle sparks over the water
 ]
 
 func _ready() -> void:
@@ -130,7 +131,7 @@ func bind(world: World) -> void:
 	motes.clear()
 	var look: Dictionary = WorldView3D.STAGE_LOOK[w.stage]
 	fog_mat.set_shader_parameter("fog_col", (look.fog as Color).lightened(0.25))
-	fog_mat.set_shader_parameter("density", [0.3, 0.26, 0.42, 0.3][w.stage])
+	fog_mat.set_shader_parameter("density", [0.3, 0.26, 0.42, 0.3, 0.5][w.stage])
 	_last_cast = w.cast_t
 
 # ================================================================= per frame

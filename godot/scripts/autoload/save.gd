@@ -29,7 +29,7 @@ func defaults() -> Dictionary:
 	for s in Content.SLOTS:
 		eq[s] = {}
 	return {
-		"version": VERSION, "gold": 0, "hero": 0, "cleared": [false, false, false, false],
+		"version": VERSION, "gold": 0, "hero": 0, "cleared": [false, false, false, false, false],
 		"options": DEFAULT_OPTIONS.duplicate(), "stash": [], "equipped": eq, "currency": cur,
 		"codex": [], "codex_active": [], "bestiary": {}, "lore": [],
 		"fragments": {"rupture": 0, "greed": 0, "dread": 0}, "splinters": 0,
@@ -65,6 +65,7 @@ func _merge(dst: Dictionary, src: Dictionary) -> void:
 
 func _normalise() -> void:
 	data.gold = int(data.gold); data.hero = clampi(int(data.hero), 0, 3)
+	while data.cleared.size() < Content.STAGES.size(): data.cleared.append(false)      # profiles from before Act V
 	data.gr_key = maxi(1, int(data.gr_key)); data.gr_best = int(data.gr_best); data.splinters = int(data.splinters)
 	for c in data.currency: data.currency[c] = int(data.currency[c])
 	for k in data.fragments: data.fragments[k] = int(data.fragments[k])

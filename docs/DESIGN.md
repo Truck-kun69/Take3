@@ -217,3 +217,26 @@ a sky sheen, glints and foam, ice has soft edges, cracks and frost; (2) lava swa
 ([before](screenshots/terrain_combat.png)): now dark crust plates with glowing seams
 ([after](screenshots/terrain_lava_pass2.png)). [Electrified water](screenshots/terrain_electrified.png),
 [2D view](screenshots/terrain_2d.png).
+
+## Act V: the Drowned Cathedral
+
+![The Tide Bishop](screenshots/act5_tide_bishop.png)
+
+* **Ground:** a low flooded nave (`Content.TERRAIN[4]`): shallow water over flagstones, deep aisles cut
+  through it, raised ruins as dry ground. **The tide rises** 16 units over the act (cells reclassify
+  live: dry ground becomes shallows, shallows become deep), a banner marks each third, and it keeps
+  climbing while the boss lives. Cold makes roads across it.
+* **Set pieces** (TRELLIS 2, act-specific prop slots `<kind>_4`): barnacled limestone columns hung with
+  seaweed, rotting black pews, wrought-iron candelabras whose flames glow candle-gold.
+* **Swarm** (free CC0 reskins, foe slots `<kind>_4`): drowned Shardlings (KayKit's hooded rogue
+  skeleton) and fish-men Skitterers (Quaternius' Fish).
+* **The Tide Bishop** (boss slot `tyrant_4`): a towering drowned bishop in rotted gold-and-sea-green
+  vestments, barnacled mitre and nautilus crozier with a sea-green lantern; a FLUX dev painting turned
+  into a TRELLIS 2 mesh and rigged by `realistic_heroes.py` at 2.5x hero scale with the boss clips.
+  Besides the tyrant's volleys, summons and slams he rings **the Tolling Bell** (a wide cold blast
+  telegraphed around the hero, every 9 s, 6 s below half life) and at half life **floods the nave**
+  (+10 tide). He walks on water.
+* Unlocks after Act IV; Act V is also an atlas biome. Profiles from before Act V gain the extra slot.
+* fal spend: about $1.40 (three props, two Bishop paintings, the Bishop and his crozier).
+
+[Concepts](screenshots/act5_concepts.png), [in game](screenshots/act5_ingame.png), [menu](screenshots/act5_menu.png).

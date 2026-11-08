@@ -584,6 +584,7 @@ func _terrain_map() -> void:
 	if T == null: return
 	var cc := Vector2i(floori(w.pp.x / Terrain.CHUNK), floori(w.pp.y / Terrain.CHUNK))
 	if cc == _map_center and T.version == _map_ver: return
+	if T.tide > 0.0 and T.version != _map_ver: _chunk_px.clear()      # the tide changed which cells are water
 	_map_center = cc
 	_map_ver = T.version
 	var n := 7 * Terrain.CN

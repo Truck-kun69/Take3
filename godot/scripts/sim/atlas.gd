@@ -15,7 +15,7 @@ static func generate(seed_v: int) -> Dictionary:
 	for y in H:
 		for x in W:
 			var dist := absi(x - start.x) + absi(y - start.y)
-			var node := {"id": y * W + x, "x": x, "y": y, "tier": 1 + dist, "biome": clampi(dist / 2 + rng.randi_range(0, 1), 0, 3),
+			var node := {"id": y * W + x, "x": x, "y": y, "tier": 1 + dist, "biome": clampi(dist / 2 + rng.randi_range(0, 1), 0, Content.STAGES.size() - 1),
 				"mods": [], "kind": "map", "done": false, "open": dist == 0}
 			var nm := clampi(dist / 2 + rng.randi_range(0, 1), 0, 3)
 			if dist == 0:

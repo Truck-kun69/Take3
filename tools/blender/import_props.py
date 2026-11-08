@@ -29,6 +29,9 @@ PROPS = {
     "pillar":  {"height": 48.0, "tris": 1800, "glow": "crystal"},
     "tree":    {"height": 69.0, "tris": 3000, "sway_above": 0.42},     # thin branches shattered at 2000
     "rock":    {"height": 16.0, "tris": 700, "glow": "crystal"},
+    "pillar_4": {"height": 50.0, "tris": 1800},
+    "rock_4":  {"height": 14.0, "tris": 1000},
+    "tree_4":  {"height": 56.0, "tris": 2200, "glow": "warm"},           # candelabra: the flames glow
     "bones":   {"height": 7.0, "tris": 1600},
 }
 
@@ -95,6 +98,9 @@ def build(name, cfg, src):
         part = 0
         if cfg.get("glow") == "crystal" and ss > 0.32 and vv > 0.28 and 0.5 < hh < 0.92:
             part = 7                 # blue to violet, saturated: crystal
+            glow_n += 1
+        elif cfg.get("glow") == "warm" and vv > 0.7 and (hh < 0.2 or hh > 0.97) and ss > 0.1:
+            part = 7                 # bright yellow to orange: flame
             glow_n += 1
         cz = sum(me.vertices[me.loops[li].vertex_index].co.z for li in poly.loop_indices) / len(poly.loop_indices)
         if "sway_above" in cfg and cz > cfg["sway_above"] * h:

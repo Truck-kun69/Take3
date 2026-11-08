@@ -36,9 +36,12 @@ HEROES = {
     "warden": {"concept": "warden_23", "tris": 28000, "weapons": [("warden_sword", "sword"), ("warden_shield", "shield")]},
     "spark": {"concept": "spark_23", "tris": 28000, "weapons": [("spark_staff", "staff")]},
     "ember": {"concept": "ember_11", "tris": 28000, "weapons": [("ember_staff", "staff")]},
+    # Act V boss, the Tide Bishop: same pipeline at 2.5x a hero, boss clips, saved to the act's boss slot
+    "tyrant_4": {"concept": "tyrant_4_11", "tris": 32000, "weapons": [("tyrant_4_crozier", "staff")], "boss": True, "scale": 2.5},
     "storm": {"concept": "storm_11", "tris": 28000, "weapons": [("storm_staff", "staff")]},
 }
 NOSE_TO_ANKLE = 40.6          # humanoid(50): head 43.2, ankle 2.6
+SC = 1.0                      # size relative to a 50-unit hero (bosses are bigger; set per build)
 
 
 def import_joined(path):
@@ -227,7 +230,7 @@ def fit_joints(ob, pose):
 def normalize(ob, J):
     """Scale so nose-to-ankle matches the game's heroes, feet on 0, centred over the pelvis."""
     ankle_z = (J["ankle.L"].z + J["ankle.R"].z) / 2
-    k = NOSE_TO_ANKLE / max(1e-4, J["head"].z - ankle_z)
+    k = NOSE_TO_ANKLE * SC / max(1e-4, J["head"].z - ankle_z)
     zlo = verts(ob)[:, 2].min()
     T = Matrix.Scale(k, 4) @ Matrix.Translation((-J["pelvis"].x, -J["pelvis"].y, -zlo))
     ob.data.transform(T)
@@ -249,10 +252,10 @@ def skeleton(J):
                   (f"thigh.{sd}", J[f"hip.{sd}"], J[f"knee.{sd}"], "hips"),
                   (f"shin.{sd}", J[f"knee.{sd}"], J[f"ankle.{sd}"], f"thigh.{sd}"),
                   (f"foot.{sd}", J[f"ankle.{sd}"], J[f"toe.{sd}"], f"shin.{sd}")]
-    c0 = J["collar"] + Vector((-4.0, 0, 0.6))
-    bones += [("cape1", c0, c0 + Vector((-0.6, 0, -9)), "chest"),
-              ("cape2", c0 + Vector((-0.6, 0, -9)), c0 + Vector((-1.0, 0, -18)), "cape1"),
-              ("cape3", c0 + Vector((-1.0, 0, -18)), c0 + Vector((-1.2, 0, -27)), "cape2")]
+    c0 = J["collar"] + Vector((-4.0, 0, 0.6)) * SC
+    bones += [("cape1", c0, c0 + Vector((-0.6, 0, -9)) * SC, "chest"),
+              ("cape2", c0 + Vector((-0.6, 0, -9)) * SC, c0 + Vector((-1.0, 0, -18)) * SC, "cape1"),
+              ("cape3", c0 + Vector((-1.0, 0, -18)) * SC, c0 + Vector((-1.2, 0, -27)) * SC, "cape2")]
     return bones
 
 
@@ -275,7 +278,7 @@ def bind_body(rig, ob, deform_names):
     bpy.context.view_layer.objects.active = proxy
     rm = proxy.modifiers.new("remesh", "REMESH")
     rm.mode = "VOXEL"
-    rm.voxel_size = 0.55
+    rm.voxel_size = 0.55 * SC
     rm.use_smooth_shade = True
     bpy.ops.object.modifier_apply(modifier="remesh")
     bpy.ops.object.select_all(action="DESELECT")
@@ -353,9 +356,9 @@ def cloth_weights(ob, J):
     P = verts(ob)
     hip_z = (J["hip.L"].z + J["hip.R"].z) / 2
     knee_z = (J["knee.L"].z + J["knee.R"].z) / 2
-    back_x = min(J["spine"].x, J["pelvis"].x) - 3.2
-    leg_r = 4.2              # armoured shins and fur boots are thick: only cloth well outside the leg counts
-    arm_r = 3.6
+    back_x = min(J["spine"].x, J["pelvis"].x) - 3.2 * SC
+    leg_r = 4.2 * SC         # armoured shins and fur boots are thick: only cloth well outside the leg counts
+    arm_r = 3.6 * SC
     legs = {sd: [(J[f"hip.{sd}"], J[f"knee.{sd}"]), (J[f"knee.{sd}"], J[f"ankle.{sd}"])] for sd in ("L", "R")}
     dleg = {sd: np.minimum(seg_dist(P, *legs[sd][0]), seg_dist(P, *legs[sd][1])) for sd in ("L", "R")}
     darm = np.min(np.stack([seg_dist(P, J[f"{a}.{sd}"], J[f"{b}.{sd}"]) for sd in ("L", "R")
@@ -422,7 +425,7 @@ def place_weapon(path, kind, J, hero_h=50.0):
         if not head_top: ob.data.transform(Matrix.Rotation(math.pi, 4, "X"))
         P = verts(ob)
         L = P[:, 2].max() - P[:, 2].min()
-        k = 54.0 / L
+        k = 54.0 * SC / L
         c = (P.max(0) + P.min(0)) / 2
         hand = J["hand.R"]
         # base near the ground, grip in the hand: shift so the shaft passes through the hand
@@ -447,6 +450,8 @@ def place_weapon(path, kind, J, hero_h=50.0):
 
 
 def build(hero, cfg, gen):
+    global SC
+    SC = float(cfg.get("scale", 1.0))
     B.reset()
     pose = json.load(open(os.path.join(gen, cfg["concept"] + "_pose.json")))
     ob = import_joined(os.path.join(gen, hero + ".glb"))
@@ -473,8 +478,11 @@ def build(hero, cfg, gen):
         d = J[f"elbow.{sd}"] - J[f"shoulder.{sd}"]
         out = math.atan2(abs(d.y), -d.z)
         rig.base[f"upperarm.{sd}"] = (-sign * (out - 0.14), 0.0, 0.0)
-    B.hero_clips(rig, "R", s=1.0, stride=0.55)          # long robes and capes read better with a shorter stride
-    path = os.path.join(MODELS, "heroes", hero + ".gltf")
+    if cfg.get("boss"):
+        B.boss_clips(rig, SC, heavy=1.2)                 # idle, walk, attack (wind-up, slam), hit, die
+    else:
+        B.hero_clips(rig, "R", s=1.0, stride=0.55)      # long robes and capes read better with a shorter stride
+    path = os.path.join(MODELS, "bosses" if cfg.get("boss") else "heroes", hero + ".gltf")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bpy.ops.object.select_all(action="DESELECT")
     rig.ob.select_set(True)

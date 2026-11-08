@@ -137,7 +137,7 @@ func _ambience_loop(stage: int) -> AudioStreamWAV:
 	var n := int(RATE * secs)
 	var bytes := PackedByteArray()
 	bytes.resize(n * 2)
-	var base: float = [55.0, 49.0, 41.2, 65.4][stage % 4]
+	var base: float = [55.0, 49.0, 41.2, 65.4, 36.7][stage % 5]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11 + stage
 	var y := 0.0

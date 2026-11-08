@@ -14,7 +14,7 @@ mkdir -p "$ROOT/build/web"
 cd "$ROOT/godot"
 # Web-only texture budget: hero textures ship at 1024 instead of 2048 (desktop and Android keep 2048).
 # The import setting is changed for the export and restored afterwards.
-WEB_LIMIT=(models/heroes/*_tex/*.import)
+WEB_LIMIT=(models/heroes/*_tex/*.import models/bosses/*_tex/*.import)
 restore() {
   for f in "${WEB_LIMIT[@]}"; do sed -i 's/^process\/size_limit=.*/process\/size_limit=0/' "$f"; done
   "$TOOLS/godot/godot" --headless --path . --import >/dev/null 2>&1 || true

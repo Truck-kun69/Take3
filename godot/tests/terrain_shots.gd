@@ -64,6 +64,17 @@ func _process(dt: float) -> void:
 			main.world.in_move = Vector2.ZERO
 			if t > 0.6:
 				await _snap("stage%d_reactions" % stages[si])
+				if OS.get_environment("SHOT_BOSS") != "":
+					main.world.t = Content.STAGE_TIME - 0.05            # the act's boss arrives
+					phase = 3; t = 0.0
+				else:
+					si += 1; phase = 0; t = 0.0
+		3:
+			main.world.in_move = Vector2(0.3, 0.2)
+			if t > 4.0:
+				await _snap("stage%d_boss" % stages[si])
 				si += 1; phase = 0; t = 0.0
-				if si >= stages.size():
-					get_tree().quit()
+		_:
+			pass
+	if si >= stages.size():
+		get_tree().quit()

@@ -148,6 +148,8 @@ const STAGES := [
 		"g0": "15131f", "g1": "2c2942", "g2": "3a3658", "acc": "cfc9ee", "hp": 2.2, "dmg": 1.4, "spd": 1.1, "gold": 1.7},
 	{"name": "Neon Rift", "blurb": "A torn seam in the grid.", "boss": "Overclock Prime", "boss_col": "ff4fd8",
 		"g0": "081426", "g1": "12365c", "g2": "164070", "acc": "25e0ff", "hp": 3.0, "dmg": 1.7, "spd": 1.15, "gold": 2.2},
+	{"name": "Drowned Cathedral", "blurb": "The tide is rising, and the bells still ring.", "boss": "The Tide Bishop", "boss_col": "7fe0c0",
+		"g0": "10171a", "g1": "26353a", "g2": "3d5052", "acc": "f2c66d", "hp": 4.0, "dmg": 2.0, "spd": 1.2, "gold": 2.8},
 ]
 ## Terrain per stage (scripts/sim/terrain.gd). Heights in world units (a hero is ~50 tall).
 ##   amp: hill height; scale: hill wavelength; terraces: plateau steps (0 = rolling); cliff: max walkable
@@ -161,6 +163,8 @@ const TERRAIN := [
 		"river": 0.0, "detail": 2.5, "shore": 20.0},                                                     # Crypt: sunken pits, ledges, black pools
 	{"amp": 120.0, "scale": 1300.0, "terraces": 4, "cliff": 1.05, "liquid": "void", "level": -78.0, "deep": 999.0,
 		"river": 0.03, "river_scale": 1600.0, "river_depth": 40.0, "detail": 3.0, "shore": 30.0},    # Neon Rift: plateaus over void chasms
+	{"amp": 40.0, "scale": 700.0, "terraces": 3, "cliff": 1.3, "liquid": "water", "level": -8.0, "deep": 22.0,
+		"river": 0.09, "river_scale": 1100.0, "river_depth": 34.0, "detail": 2.0, "shore": 16.0, "tide": 16.0},   # Drowned Cathedral: flooded nave, deep aisles, rising tide
 ]
 
 const STAGE_TIME := 150.0

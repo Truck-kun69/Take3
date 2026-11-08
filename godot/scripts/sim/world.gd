@@ -302,6 +302,8 @@ func step(dt: float) -> void:
 	Sfx.listener = pp
 	terrain.step(dt)
 	terrain.prefetch(pp, 3, 1)
+	if terrain.tide > 0.0:
+		_step_tide()
 	if fmod(t, 7.0) < dt: terrain.trim(pp)
 	buffs.step(dt)
 	_refresh_max_hp()
@@ -405,6 +407,17 @@ func _step_player(dt: float) -> void:
 		_conduit(dt)
 
 var _lava_t := 0.0
+var _tide_step := 0
+
+## Act V: the water climbs over the act (and keeps climbing while its boss lives); a banner marks each third.
+func _step_tide() -> void:
+	var k := clampf(t / Content.STAGE_TIME, 0.0, 1.0)
+	if boss_spawned: k = 1.0 + minf(0.6, (t - Content.STAGE_TIME) / 120.0)
+	terrain.set_level(terrain.level0 + terrain.tide * k)
+	var step := int(k * 3.0)
+	if step > _tide_step and step <= 3:
+		_tide_step = step
+		banner.emit("The tide rises", "Deep water spreads; cold makes a road across it.", Color("7fe0c0"))
 
 func _roll(mvv: Vector2) -> void:
 	roll_dir = mvv.normalized() if mvv.length() > 0.1 else face
@@ -1677,6 +1690,7 @@ func end_run(win: bool) -> void:
 		d.stats.deaths = int(d.stats.deaths) + 1
 		bosses.on_player_death()
 	if win and mode == "campaign":
+		while d.cleared.size() <= stage: d.cleared.append(false)
 		d.cleared[stage] = true
 	Save.mark_dirty()
 	if not headless:

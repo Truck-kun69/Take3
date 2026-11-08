@@ -17,7 +17,7 @@ func _ready() -> void:
 	sv.path = "user://ui_shot_profile.json"
 	sv.data = sv.defaults()
 	sv.data.options.sound = false
-	sv.data.cleared = [true, true, false, false]
+	sv.data.cleared = [true, true, false, false, false]
 	sv.data.gold = 1840; sv.data.gr_key = 7; sv.data.gr_best = 6
 	sv.data.currency.chaos = 3; sv.data.currency.exalt = 1; sv.data.currency.regal = 2
 	sv.data.fragments = {"rupture": 1, "greed": 1, "dread": 1}

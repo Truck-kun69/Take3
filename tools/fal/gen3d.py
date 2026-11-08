@@ -23,6 +23,11 @@ ASSETS = {
     "tree": "a dead gnarled leafless tree with a twisted black trunk and claw-like bare branches, roots gripping a little earth",
     "rock": "a large weathered grey boulder with deep cracks, lichen and a few small crystal shards in the cracks",
     "bones": "a low pile of old human skulls, ribs and scattered long bones lying flat on the ground",
+    # Act V, the Drowned Cathedral (props named <kind>_4 replace that kind in stage 4)
+    "pillar_4": "a broken gothic cathedral column of pale limestone, encrusted with barnacles and hanging dark seaweed, "
+                "a cracked carved capital, rubble at its base",
+    "rock_4": "a broken rotting wooden church pew, waterlogged and black with age, one end collapsed, low and wide",
+    "tree_4": "a tall wrought iron church candelabra with seven lit candles, wax dripping, rusted and crooked, thin and tall",
 }
 
 
@@ -84,19 +89,28 @@ HEROES = {
              "over a dented bronze breastplate and a rusted chainmail shirt, leather bracers etched with glowing violet "
              "lightning runes, a chainmail and leather kilt, fur boots, grime and old blood",
 }
+BOSS_STYLE = HERO_STYLE.replace("realistic human proportions", "towering and gaunt, monstrous proportions")
+BOSSES = {
+    "tyrant_4": "the Tide Bishop, a towering drowned bishop in rotted waterlogged ecclesiastical vestments of faded gold and "
+                "sea green, a tall cracked mitre crusted with barnacles, a pallid bloated face with dead white eyes, seaweed and "
+                "fishing nets tangled on the robes, kelp hanging from the sleeves, water dripping",
+}
 WEAPONS = {
     "warden_sword": "a battered steel longsword with a worn leather grip and a dented crossguard, nicks along the blade, lying flat",
     "warden_shield": "a dented heater shield of steel and wood with a faded dark red field and a scratched gold border, front view",
     "spark_staff": "a tall gnarled pale wooden staff topped with jagged glowing ice-blue crystals bound by tarnished silver claws, vertical",
     "ember_staff": "a tall blackened wooden staff topped with an iron lantern cage holding a glowing ember, soot-stained, vertical",
     "storm_staff": "a tall dark iron staff topped with a brass two-pronged fork cradling a glowing violet crystal, vertical",
+    "tyrant_4_crozier": "a tall corroded bronze bishop's crozier, the crook curled like a nautilus shell, barnacles and green "
+                        "verdigris, a glowing sea-green lantern hanging from the crook, vertical",
 }
 
 
 def hero_concepts(out, name, seeds=(11, 23)):
     meta = {}
+    desc, style = (BOSSES[name], BOSS_STYLE) if name in BOSSES else (HEROES[name], HERO_STYLE)
     for sd in seeds:
-        r = call("fal-ai/flux/dev", {"prompt": f"{HEROES[name]}, {HERO_STYLE}", "image_size": {"width": 768, "height": 1024},
+        r = call("fal-ai/flux/dev", {"prompt": f"{desc}, {style}", "image_size": {"width": 768, "height": 1024},
                                      "num_inference_steps": 28, "guidance_scale": 3.5, "num_images": 1, "seed": sd,
                                      "output_format": "jpeg", "enable_safety_checker": True})
         url = r["images"][0]["url"]
@@ -127,7 +141,7 @@ if __name__ == "__main__":
     # | gen3d.py weapon <out> <weapon...>
     if sys.argv[1] == "hero-concepts":
         out = sys.argv[2]; os.makedirs(out, exist_ok=True)
-        for n in sys.argv[3:] or list(HEROES): hero_concepts(out, n)
+        for n in sys.argv[3:] or list(HEROES): hero_concepts(out, n)       # heroes or BOSSES keys
     elif sys.argv[1] == "hero-model":
         out, n, sd = sys.argv[2], sys.argv[3], sys.argv[4]
         model_from(out, n, json.load(open(os.path.join(out, f"{n}_concepts.json")))[sd])

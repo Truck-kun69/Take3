@@ -15,6 +15,7 @@ const STAGE_LOOK := [
 	{"sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 10, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
 	{"sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 20, "crystal": 1, "pillar": 2.5, "bones": 4}},
 	{"sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 8, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
+	{"sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85), "props": {"tree": 0.9, "rock": 2.5, "grass": 6, "crystal": 0.8, "pillar": 2.2, "bones": 1.5}}
 ]
 const CHUNK := 640.0
 ## Godot's omni falloff is distance^-attenuation in world units. This world is ~60 units per hero,
@@ -250,13 +251,17 @@ func bind(world: World) -> void:
 	RenderingServer.global_shader_parameter_set("terrain_l", Vector4(w.terrain.level, lk, 0, 0))
 	water.visible = lk != 3
 	var wc: Array = [[Color(0.02, 0.07, 0.07), Color(0.12, 0.26, 0.2)], [Color(0.02, 0.01, 0.01), Color(0.2, 0.06, 0.02)],
-		[Color(0.01, 0.015, 0.03), Color(0.06, 0.08, 0.12)], [Color(0, 0, 0), Color(0, 0, 0)]][mini(w.stage, 3)]
+		[Color(0.01, 0.015, 0.03), Color(0.06, 0.08, 0.12)], [Color(0, 0, 0), Color(0, 0, 0)],
+		[Color(0.02, 0.06, 0.06), Color(0.14, 0.27, 0.25)]][mini(w.stage, 4)]
 	water_mat.set_shader_parameter("deep_col", wc[0])
 	water_mat.set_shader_parameter("shallow_col", wc[1])
 	water_mat.set_shader_parameter("glow_col", Content.col(s.acc).lerp(Color(1.0, 0.45, 0.1), 0.6))
 	_tex_center = Vector2i(1 << 30, 0)
 	_ts_ver = -1
 	_cam_y = w.terrain.height(w.pp)
+	_liquid_kind = lk
+	for k in Models.FOE_KINDS.size():                # act-specific swarm variants (models/foes/<kind>_<stage>)
+		_foe_mm[k].multimesh.mesh = Models.foe_mesh(Models.FOE_KINDS[k], w.stage)
 	_cam_pos = Vector3(w.pp.x, 0, w.pp.y)
 	_cam_target = _cam_pos
 	_kind_col.clear()
@@ -379,8 +384,11 @@ var _tex_center := Vector2i(1 << 30, 0)
 var _ts_ver := -1
 var _ts_t := 0.0
 
+var _liquid_kind := 3
 func _terrain_tex(dt: float) -> void:
 	var T := w.terrain
+	if T.tide > 0.0:
+		RenderingServer.global_shader_parameter_set("terrain_l", Vector4(T.level, _liquid_kind, 0, 0))
 	var cc := Vector2i(floori(w.pp.x / Terrain.CHUNK), floori(w.pp.y / Terrain.CHUNK))
 	var n := TEX_CHUNKS * Terrain.CN
 	var half := TEX_CHUNKS / 2
@@ -452,7 +460,7 @@ func _build_cell(c: Vector2i) -> Node3D:
 		var pmi := MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = Models.prop_mesh(kind)
+		mm.mesh = Models.prop_mesh(kind, w.stage)
 		mm.instance_count = list.size()
 		for i in list.size(): mm.set_instance_transform(i, list[i])
 		mm.custom_aabb = AABB(lo, Vector3(CHUNK, 600.0, CHUNK)).grow(60.0)
@@ -645,7 +653,10 @@ func _bosses(dt: float) -> void:
 			add_child(rig)
 			var guardian := (w.sw.flags[i] & Swarm.F_RIFTG) != 0
 			var c := Color("c48aff") if k == Content.E.HERALD else (Color("ff4fd8") if guardian else Content.col(Content.STAGES[w.stage].boss_col))
-			rig.build("herald" if k == Content.E.HERALD else "tyrant", c, "herald" if k == Content.E.HERALD else ("guardian" if guardian else "tyrant"))
+			var slot := "herald" if k == Content.E.HERALD else ("guardian" if guardian else "tyrant")
+			if slot == "tyrant" and Models.find_asset("bosses", "tyrant_%d" % w.stage) != "":
+				slot = "tyrant_%d" % w.stage                  # an act's own boss model (Act V: the Tide Bishop)
+			rig.build("herald" if k == Content.E.HERALD else "tyrant", c, slot)
 			rig.scale = Vector3.ONE * (w.sw.rad[i] / 36.0)
 			boss_rigs[u] = rig
 		var st: Dictionary = w.bosses.bstate.get(u, {})

@@ -34,6 +34,10 @@ var charged := {}                # Vector2i cell -> seconds left
 var steam := {}                  # Vector2i cell -> seconds left (renderer feed: puffs)
 var version := 0                 # bumps when ice/charge change, so the renderer re-uploads its state texture
 var generated := 0
+var tide := 0.0                  # Act V: how far the liquid rises over the act (cells reclassify live)
+var level0 := 0.0
+var deep_d := 9.0
+var _lv_mark := 0.0
 
 func _init(stage_i: int, seed_i: int, profile: Dictionary, flat_radius: float = 260.0) -> void:
 	stage = stage_i
@@ -43,6 +47,10 @@ func _init(stage_i: int, seed_i: int, profile: Dictionary, flat_radius: float = 
 	level = float(prof.get("level", -30.0))
 	flat_r = flat_radius
 	flat_h = level + float(prof.get("shore", 22.0)) if liquid != "none" else 0.0
+	tide = float(prof.get("tide", 0.0))
+	level0 = level
+	_lv_mark = level
+	deep_d = float(prof.get("deep", 9.0))
 	for n in [_base, _ramp, _river, _detail]:
 		n.noise_type = FastNoiseLite.TYPE_PERLIN
 	_base.seed = tseed
@@ -156,7 +164,12 @@ func cell_type(cx: int, cy: int) -> int:
 	if c != _lc:                                      # most queries in a frame hit the same chunk
 		_lch = chunk(c)
 		_lc = c
-	return (_lch[1] as PackedByteArray)[(cy - c.y * CN) * CN + (cx - c.x * CN)]
+	var k := (cy - c.y * CN) * CN + (cx - c.x * CN)
+	var t: int = (_lch[1] as PackedByteArray)[k]
+	if tide > 0.0 and t != CLIFF:                     # rising water: classify against the current level
+		var h: float = (_lch[0] as PackedFloat32Array)[k]
+		t = LAND if h >= level else (SHALLOW if level - h < deep_d else DEEP)
+	return t
 
 ## Ground height: bilinear between cell centres (the shaders do the same with the height texture).
 func height(p: Vector2) -> float:
@@ -292,6 +305,13 @@ func step(dt: float) -> void:
 			if d[c] <= 0.0: gone.append(c)
 		for c in gone: d.erase(c)
 		if not gone.is_empty() and d != steam: version += 1
+
+## Raises (or lowers) the liquid surface; the renderer re-reads it every frame.
+func set_level(l: float) -> void:
+	level = l
+	if absf(level - _lv_mark) >= 1.0:
+		_lv_mark = level
+		version += 1
 
 ## Prop placement rules for the renderer's scatter.
 func prop_ok(kind: String, p: Vector2) -> bool:

@@ -140,10 +140,10 @@ func _journey(j: VBoxContainer, d: Dictionary, wide: bool) -> void:
 	var sg := _grid(1 if wide else 2, 8)
 	for i in Content.STAGES.size():
 		var s: Dictionary = Content.STAGES[i]
-		var open: bool = i == 0 or bool(d.cleared[i - 1])
+		var open: bool = i == 0 or (i - 1 < d.cleared.size() and bool(d.cleared[i - 1]))
 		var t2 := UIKit.tile("%s  %s" % [["I", "II", "III", "IV", "V", "VI"][i], s.name], s.blurb if open else "Sealed until the previous act falls", func(): act.emit("campaign", i), Content.col(s.acc), false, th)
 		_lock(t2, not open)
-		if bool(d.cleared[i]):
+		if i < d.cleared.size() and bool(d.cleared[i]):
 			_cleared_mark(t2)
 			t2.tooltip_text = "Cleared"
 		sg.add_child(t2)

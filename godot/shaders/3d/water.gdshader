@@ -36,7 +36,7 @@ void fragment() {
 		// against dark ground (critique 1)
 		float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
 		float glint = smoothstep(0.7, 0.95, vn(p / 5.0 + vec2(time * 0.8, -time * 0.5))) * smoothstep(0.55, 0.8, vn(p / 31.0 - time * 0.1));
-		col += vec3(0.22, 0.3, 0.36) * (0.35 + fres) + vec3(0.6, 0.7, 0.75) * glint * 0.6;
+		col += vec3(0.13, 0.18, 0.22) * (0.25 + fres) + vec3(0.6, 0.7, 0.75) * glint * 0.5;   // (Act V pass: 0.22/0.35 read as ice)
 		float foam = smoothstep(4.0, 0.0, depth) * smoothstep(0.4, 0.7, vn(p / 7.0 + time * 0.6));
 		col += vec3(0.55, 0.6, 0.6) * foam * 0.8;
 		if (st.r > 0.01) {                       // ice sheet: pale, cracked, opaque, rough

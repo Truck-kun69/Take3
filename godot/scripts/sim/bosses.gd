@@ -74,6 +74,20 @@ func _tyrant(i: int, st: Dictionary, dt: float, guardian: bool) -> void:
 		st.sl = 6.0 if half else 8.5
 		w.add_tele(0, w.pp, 96.0, 1.0, 0.0, 18.0, true, false, -1, Color(1, 0.25, 0.3, 0.55), "a slam")
 		st.atk_t = w.t
+	if w.stage == 4 and not guardian:
+		# the Tide Bishop: a tolling bell (a wide cold blast telegraphed around the hero) and, below half
+		# life, the nave floods for good
+		st.tb = float(st.get("tb", 4.0)) - dt
+		if st.tb <= 0.0:
+			st.tb = 6.0 if half else 9.0
+			w.add_tele(0, w.pp, 150.0, 1.3, 0.0, 14.0, true, false, Content.El.COLD, Color(0.5, 0.95, 0.85, 0.5), "the tolling bell")
+			st.atk_t = w.t
+			Sfx.play("boss")
+		if half and not st.get("flood", false):
+			st.flood = true
+			w.terrain.tide += 10.0
+			w.banner.emit("The nave floods", "The Tide Bishop calls the sea in.", Color("7fe0c0"))
+			w.shake = 0.7
 	if guardian and fmod(w.t, 9.0) < dt:
 		var z := w.add_tele(2, p, 0.0, 1.0, 3.5, 6.0, true, false, -1, Color(1, 0.3, 0.9, 0.45), "the guardian's beam")
 		z.length = 620.0; z.width = 36.0; z.dir = (w.pp - p).normalized(); z.spin = 0.9; z.tick = 0.25

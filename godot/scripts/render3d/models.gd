@@ -42,7 +42,10 @@ static func _first_mesh(n: Node) -> Mesh:
 		if m != null: return m
 	return null
 
-static func foe_mesh(kind: String) -> Mesh:
+## stage >= 0 prefers an act-specific variant: res://models/foes/<kind>_<stage>.glb (props likewise).
+static func foe_mesh(kind: String, stage: int = -1) -> Mesh:
+	if stage >= 0 and find_asset("foes", "%s_%d" % [kind, stage]) != "":
+		kind = "%s_%d" % [kind, stage]
 	var key := "foe:" + kind
 	if _cache.has(key): return _cache[key]
 	var p := find_asset("foes", kind)
@@ -50,7 +53,9 @@ static func foe_mesh(kind: String) -> Mesh:
 	_cache[key] = m
 	return m
 
-static func prop_mesh(kind: String) -> Mesh:
+static func prop_mesh(kind: String, stage: int = -1) -> Mesh:
+	if stage >= 0 and find_asset("props", "%s_%d" % [kind, stage]) != "":
+		kind = "%s_%d" % [kind, stage]
 	var key := "prop:" + kind
 	if _cache.has(key): return _cache[key]
 	var p := find_asset("props", kind)
