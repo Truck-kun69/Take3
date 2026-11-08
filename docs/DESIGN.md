@@ -240,3 +240,27 @@ a sky sheen, glints and foam, ice has soft edges, cracks and frost; (2) lava swa
 * fal spend: about $1.40 (three props, two Bishop paintings, the Bishop and his crozier).
 
 [Concepts](screenshots/act5_concepts.png), [in game](screenshots/act5_ingame.png), [menu](screenshots/act5_menu.png).
+
+## The Shard Web (passive tree) and Torment tiers
+
+![The Shard Web](screenshots/shard_web.png)
+
+* **Echoes** are earned at the end of every run: kills / 250, +2 for a win, +1 per 3 rift levels and
+  the Torment tier's bonus on a win (at most 12 a run). Each node costs one; resetting the web refunds all.
+* **The web** (`Content.PASSIVES`, 33 nodes): four branches from Exile's Spark, each with minors, a
+  notable and a keystone. Might (damage, criticals; *Executioner*: crits 50% harder, 20% rarer),
+  Arcana (area, cooldowns, reactions; *Cascade Theory*: one deeper cascade; *Tidecaller*: your ice lasts
+  twice as long, chains leap once more), Fortitude (life, regeneration, armour; *Undying Vow*: leech
+  and % regeneration for 6% speed), Fortune (gold, quantity, rarity, pickup, experience; *Gambler's
+  Shard*: +25% quantity for 8% less damage). Taken nodes feed the stat pipeline as one source.
+* **Torment I-VI** (`Content.TORMENT`) for the campaign, atlas and pinnacle: foe life x1.6 to x10.5,
+  damage x1.25 to x3, +15% to +100% loot and +20% to +125% gold, extra Echoes. Winning on your highest
+  tier unlocks the next. Rifts ignore Torment (they scale by level). Selector on the title screen,
+  shown on the results screen.
+* Tests: adjacency, reachability of every node, passive stats applied, torment scaling and unlock,
+  Echo rewards.
+
+Critique pass: [the first layout](screenshots/shard_web_pass1_cramped.png) scaled the graph by height,
+crowding the side branches and colliding labels, with the Take button below the fold; the graph now uses
+the full width, side-branch labels sit above their nodes, and details and actions live in a side column.
+[Menu and results](screenshots/torment_menu_end.png).

@@ -167,6 +167,81 @@ const TERRAIN := [
 		"river": 0.09, "river_scale": 1100.0, "river_depth": 34.0, "detail": 2.0, "shore": 16.0, "tide": 16.0},   # Drowned Cathedral: flooded nave, deep aisles, rising tide
 ]
 
+# ---------------------------------------------------------------- the Shard Web (passive tree) and Torment
+## Permanent passives bought with Echoes (earned at the end of every run). Four branches from the centre:
+## Might (up), Arcana (right), Fortitude (down), Fortune (left); minors, a notable, then a keystone.
+## x, y: layout in [-1, 1]; links are undirected; a node can be taken when it touches a taken node.
+const PASSIVES := {
+	"start": {"name": "Exile's Spark", "kind": "start", "x": 0.0, "y": 0.0, "links": ["m1", "a1", "f1", "o1"], "mods": [], "d": "Where every exile begins."},
+	# Might
+	"m1": {"name": "Whetted", "kind": "minor", "x": 0.0, "y": -0.2, "links": ["m2", "m3"], "mods": [["damage", "inc", 0.04]], "d": "+4% damage"},
+	"m2": {"name": "Keen Eye", "kind": "minor", "x": -0.12, "y": -0.36, "links": ["m4"], "mods": [["crit_chance", "add", 0.01]], "d": "+1% critical chance"},
+	"m3": {"name": "Heavy Hand", "kind": "minor", "x": 0.12, "y": -0.36, "links": ["m5"], "mods": [["damage", "inc", 0.04]], "d": "+4% damage"},
+	"m4": {"name": "Cruel Edge", "kind": "minor", "x": -0.14, "y": -0.54, "links": ["m6"], "mods": [["crit_mult", "add", 0.1]], "d": "+10% critical damage"},
+	"m5": {"name": "Keen Eye", "kind": "minor", "x": 0.14, "y": -0.54, "links": ["m6"], "mods": [["crit_chance", "add", 0.01]], "d": "+1% critical chance"},
+	"m6": {"name": "Butcher's Rhythm", "kind": "notable", "x": 0.0, "y": -0.68, "links": ["m7"], "mods": [["damage", "inc", 0.12], ["crit_mult", "add", 0.25]], "d": "+12% damage, +25% critical damage"},
+	"m7": {"name": "Whetstone", "kind": "minor", "x": 0.0, "y": -0.82, "links": ["m8"], "mods": [["damage", "inc", 0.05]], "d": "+5% damage"},
+	"m8": {"name": "Executioner", "kind": "keystone", "x": 0.0, "y": -0.97, "links": [], "mods": [["crit_mult", "more", 1.5], ["crit_chance", "more", 0.8]], "d": "Criticals hit 50% harder, but you crit 20% less often"},
+	# Arcana
+	"a1": {"name": "Wide Sigils", "kind": "minor", "x": 0.2, "y": 0.0, "links": ["a2", "a3"], "mods": [["area", "inc", 0.05]], "d": "+5% area"},
+	"a2": {"name": "Quickened", "kind": "minor", "x": 0.36, "y": -0.12, "links": ["a4"], "mods": [["cooldown", "inc", -0.04]], "d": "4% faster cooldowns"},
+	"a3": {"name": "Volatile Mix", "kind": "minor", "x": 0.36, "y": 0.12, "links": ["a5"], "mods": [["reaction_damage", "inc", 0.1]], "d": "+10% reaction damage"},
+	"a4": {"name": "Wide Sigils", "kind": "minor", "x": 0.54, "y": -0.14, "links": ["a6"], "mods": [["area", "inc", 0.05]], "d": "+5% area"},
+	"a5": {"name": "Quickened", "kind": "minor", "x": 0.54, "y": 0.14, "links": ["a6"], "mods": [["cooldown", "inc", -0.04]], "d": "4% faster cooldowns"},
+	"a6": {"name": "Cascade Theory", "kind": "notable", "x": 0.68, "y": 0.0, "links": ["a7"], "mods": [["react_depth", "add", 1.0], ["reaction_damage", "inc", 0.2]], "d": "Reactions cascade one step deeper, +20% reaction damage"},
+	"a7": {"name": "Volatile Mix", "kind": "minor", "x": 0.82, "y": 0.0, "links": ["a8"], "mods": [["reaction_damage", "inc", 0.1]], "d": "+10% reaction damage"},
+	"a8": {"name": "Tidecaller", "kind": "keystone", "x": 0.97, "y": 0.0, "links": [], "mods": [["ice_dur", "more", 2.0], ["chain", "add", 1.0]], "d": "Your ice lasts twice as long; chains leap once more"},
+	# Fortitude
+	"f1": {"name": "Thick Hide", "kind": "minor", "x": 0.0, "y": 0.2, "links": ["f2", "f3"], "mods": [["max_hp", "add", 15.0]], "d": "+15 life"},
+	"f2": {"name": "Mending", "kind": "minor", "x": 0.12, "y": 0.36, "links": ["f4"], "mods": [["regen", "add", 1.0]], "d": "+1 life per second"},
+	"f3": {"name": "Plated", "kind": "minor", "x": -0.12, "y": 0.36, "links": ["f5"], "mods": [["armor", "add", 10.0]], "d": "+10 armour"},
+	"f4": {"name": "Thick Hide", "kind": "minor", "x": 0.14, "y": 0.54, "links": ["f6"], "mods": [["max_hp", "add", 15.0]], "d": "+15 life"},
+	"f5": {"name": "Mending", "kind": "minor", "x": -0.14, "y": 0.54, "links": ["f6"], "mods": [["regen", "add", 1.0]], "d": "+1 life per second"},
+	"f6": {"name": "Iron Pilgrim", "kind": "notable", "x": 0.0, "y": 0.68, "links": ["f7"], "mods": [["max_hp", "inc", 0.12], ["armor", "add", 25.0]], "d": "+12% life, +25 armour"},
+	"f7": {"name": "Thick Hide", "kind": "minor", "x": 0.0, "y": 0.82, "links": ["f8"], "mods": [["max_hp", "add", 20.0]], "d": "+20 life"},
+	"f8": {"name": "Undying Vow", "kind": "keystone", "x": 0.0, "y": 0.97, "links": [], "mods": [["leech", "add", 0.02], ["regen_pct", "add", 0.005], ["move_speed", "more", 0.94]], "d": "Leech 2% of damage and regenerate 0.5% life per second, but move 6% slower"},
+	# Fortune
+	"o1": {"name": "Gilded", "kind": "minor", "x": -0.2, "y": 0.0, "links": ["o2", "o3"], "mods": [["gold_find", "inc", 0.08]], "d": "+8% gold"},
+	"o2": {"name": "Long Reach", "kind": "minor", "x": -0.36, "y": -0.12, "links": ["o4"], "mods": [["pickup", "inc", 0.15]], "d": "+15% pickup radius"},
+	"o3": {"name": "Plunder", "kind": "minor", "x": -0.36, "y": 0.12, "links": ["o5"], "mods": [["item_quantity", "inc", 0.05]], "d": "+5% item quantity"},
+	"o4": {"name": "Quick Study", "kind": "minor", "x": -0.54, "y": -0.14, "links": ["o6"], "mods": [["xp_gain", "inc", 0.05]], "d": "+5% experience"},
+	"o5": {"name": "Gilded", "kind": "minor", "x": -0.54, "y": 0.14, "links": ["o6"], "mods": [["gold_find", "inc", 0.08]], "d": "+8% gold"},
+	"o6": {"name": "Scavenger's Eye", "kind": "notable", "x": -0.68, "y": 0.0, "links": ["o7"], "mods": [["item_rarity", "inc", 0.2], ["item_quantity", "inc", 0.05]], "d": "+20% item rarity, +5% quantity"},
+	"o7": {"name": "Plunder", "kind": "minor", "x": -0.82, "y": 0.0, "links": ["o8"], "mods": [["item_quantity", "inc", 0.05]], "d": "+5% item quantity"},
+	"o8": {"name": "Gambler's Shard", "kind": "keystone", "x": -0.97, "y": 0.0, "links": [], "mods": [["item_quantity", "inc", 0.25], ["damage", "more", 0.92]], "d": "+25% item quantity, but 8% less damage"},
+}
+
+## Torment: optional difficulty tiers for the campaign, atlas and pinnacle (rifts scale on their own).
+## Winning a run on a tier unlocks the next.
+const TORMENT := [
+	{"name": "Normal", "hp": 1.0, "dmg": 1.0, "loot": 0.0, "gold": 0.0, "echo": 0},
+	{"name": "Torment I", "hp": 1.6, "dmg": 1.25, "loot": 0.15, "gold": 0.2, "echo": 1},
+	{"name": "Torment II", "hp": 2.4, "dmg": 1.5, "loot": 0.3, "gold": 0.4, "echo": 2},
+	{"name": "Torment III", "hp": 3.6, "dmg": 1.8, "loot": 0.45, "gold": 0.6, "echo": 3},
+	{"name": "Torment IV", "hp": 5.2, "dmg": 2.15, "loot": 0.6, "gold": 0.8, "echo": 4},
+	{"name": "Torment V", "hp": 7.4, "dmg": 2.55, "loot": 0.8, "gold": 1.0, "echo": 5},
+	{"name": "Torment VI", "hp": 10.5, "dmg": 3.0, "loot": 1.0, "gold": 1.25, "echo": 6},
+]
+
+static func passive_mods(taken: Array) -> Array:
+	var out: Array = []
+	for id in taken:
+		if PASSIVES.has(id): out.append_array(PASSIVES[id].mods)
+	return out
+
+## Undirected neighbours of a node.
+static func passive_links(id: String) -> Array:
+	var out: Array = (PASSIVES[id].links as Array).duplicate()
+	for k in PASSIVES:
+		if (PASSIVES[k].links as Array).has(id) and not out.has(k): out.append(k)
+	return out
+
+static func passive_can_take(id: String, taken: Array) -> bool:
+	if taken.has(id) or not PASSIVES.has(id): return false
+	for n in passive_links(id):
+		if taken.has(n): return true
+	return false
+
 const STAGE_TIME := 150.0
 
 # ---------------------------------------------------------------- items

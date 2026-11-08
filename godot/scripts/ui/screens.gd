@@ -121,8 +121,9 @@ func show_menu() -> void:
 	_journey(j, d, wide)
 	if wide:
 		v.add_child(_spacer(4))
-	var row := _grid(3, 8)
-	for pair in [["Gear & Cube", "stash"], ["Codex", "codex"], ["Options", "options"]]:
+	var row := _grid(2, 8)
+	var unspent := int(d.get("echoes", 0))
+	for pair in [["Gear & Cube", "stash"], ["Shard Web" + ("  (%d)" % unspent if unspent > 0 else ""), "web"], ["Codex", "codex"], ["Options", "options"]]:
 		var b3 := UIKit.button(pair[0], func(): act.emit(pair[1], null), 52)
 		b3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(b3)
@@ -148,6 +149,21 @@ func _journey(j: VBoxContainer, d: Dictionary, wide: bool) -> void:
 			t2.tooltip_text = "Cleared"
 		sg.add_child(t2)
 	j.add_child(sg)
+	# torment: optional difficulty for the campaign, atlas and pinnacle
+	var tm := int(d.get("torment", 0))
+	var tmax := int(d.get("torment_max", 0))
+	var trow := UIKit.hbox(6)
+	var tdec := UIKit.button("\u2212", func(): Save.data.torment = maxi(0, int(Save.data.torment) - 1); Save.mark_dirty(); show_menu(), 52)
+	tdec.custom_minimum_size.x = 48
+	tdec.disabled = tm <= 0
+	var T: Dictionary = Content.TORMENT[tm]
+	var tsub := ("+%d%% loot  \u00b7  foes x%.1f life" % [int(float(T.loot) * 100), float(T.hp)]) if tm > 0 else ("Win a run to unlock Torment I" if tmax == 0 else "Foes and loot as intended")
+	var tt := UIKit.tile(String(T.name), tsub, func(): pass, Color("b3242c") if tm > 0 else Color(0.7, 0.68, 0.66), tm > 0, 52)
+	var tinc := UIKit.button("+", func(): Save.data.torment = mini(int(Save.data.torment_max), int(Save.data.torment) + 1); Save.mark_dirty(); show_menu(), 52)
+	tinc.custom_minimum_size.x = 48
+	tinc.disabled = tm >= tmax
+	for c in [tdec, tt, tinc]: trow.add_child(c)
+	j.add_child(trow)
 	j.add_child(_section("Endgame"))
 	var unlocked := bool(d.cleared[0])
 	var eg := _grid(1 if wide else 2, 8)
@@ -403,6 +419,65 @@ func show_stash(in_run: bool = false) -> void:
 	_back(v, "resume_pause" if in_run else "menu")
 
 # ================================================================= codex
+# ================================================================= the Shard Web (passive tree)
+var _sel_passive := "start"
+
+func show_web() -> void:
+	var v := _open(1180)
+	var d: Dictionary = Save.data
+	var taken: Array = d.passives
+	var portrait := get_viewport_rect().size.x < 820.0
+	_title(v, "The Shard Web", "Echoes from every run buy permanent passives. Take a node that touches one you own.")
+	var body: BoxContainer = UIKit.vbox(10) if portrait else UIKit.hbox(18)
+	v.add_child(body)
+	var view := WebView.new()
+	view.taken = taken
+	view.selected = _sel_passive
+	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(700, mini(480, int(get_viewport_rect().size.y) - 250))
+	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view.picked.connect(func(id: String): _sel_passive = id; show_web())
+	body.add_child(view)
+	# side column (landscape): echoes, the selected node, actions
+	var side := UIKit.vbox(10)
+	side.custom_minimum_size.x = 0 if portrait else 300
+	side.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_child(side)
+	var info := UIKit.hbox(10)
+	info.alignment = BoxContainer.ALIGNMENT_CENTER
+	info.add_child(UIKit.label("%d" % int(d.echoes), 34, UIKit.GOLD, false, "num_heavy"))
+	var il := UIKit.label("Echoes to spend\n%d of %d taken" % [taken.size() - 1, Content.PASSIVES.size() - 1], 16, UIKit.DIM, false, "italic")
+	info.add_child(il)
+	side.add_child(info)
+	side.add_child(UIKit.divider())
+	var P: Dictionary = Content.PASSIVES[_sel_passive]
+	var nm := UIKit.label(String(P.name).to_upper(), 22, WebView.branch_col(_sel_passive) if _sel_passive != "start" else UIKit.GOLD, true, "display")
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	side.add_child(nm)
+	var kd := UIKit.label(String(P.kind).capitalize() + ("  \u00b7  taken" if taken.has(_sel_passive) else ""), 14, UIKit.DIM, false, "label")
+	kd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	side.add_child(kd)
+	var ds := UIKit.label(P.d, 18, UIKit.TEXT, true, "body")
+	ds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	side.add_child(ds)
+	var can := Content.passive_can_take(_sel_passive, taken) and int(d.echoes) > 0
+	var take := UIKit.button("Taken" if taken.has(_sel_passive) else ("Take  \u00b7  1 Echo" if Content.passive_can_take(_sel_passive, taken) else "Not yet reachable"), func():
+		if Content.passive_can_take(_sel_passive, Save.data.passives) and int(Save.data.echoes) > 0:
+			Save.data.passives.append(_sel_passive)
+			Save.data.echoes = int(Save.data.echoes) - 1
+			Save.mark_dirty()
+			Sfx.play("craft")
+		show_web(), 54)
+	take.disabled = not can
+	side.add_child(take)
+	var reset := UIKit.button("Reset web  (refund all)", func():
+		Save.data.echoes = int(Save.data.echoes) + Save.data.passives.size() - 1
+		Save.data.passives = ["start"]
+		Save.mark_dirty()
+		show_web(), 48)
+	reset.disabled = taken.size() <= 1
+	side.add_child(reset)
+	side.add_child(UIKit.button("Back", func(): act.emit("menu", null), 48))
+
 func show_codex() -> void:
 	var v := _open(1100)
 	_title(v, "Codex")
@@ -626,6 +701,8 @@ func show_end(w: World) -> void:
 	var rows := [["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Gold", str(int(w.gold))],
 		["Items", str(w.loot_run.size())], ["Reactions", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
 	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
+	rows.append(["Echoes", "+%d" % w.echoes_run])
+	if w.torment > 0: rows.append(["Difficulty", String(Content.TORMENT[w.torment].name)])
 	var g := _grid(3 if get_viewport_rect().size.x >= 820.0 else 2, 10)
 	for r in rows:
 		var pv := UIKit.vbox(0)
@@ -676,6 +753,74 @@ func show_merchant(w: World) -> void:
 		v.add_child(b)
 	v.add_child(UIKit.button("Leave", func(): act.emit("resume", null)))
 
+
+## The Shard Web drawn as a constellation: links, then nodes (taken bright, takeable pulsing, the rest dim).
+class WebView extends Control:
+	signal picked(id: String)
+	var taken: Array = []
+	var selected := ""
+	var font: Font
+	static func branch_col(id: String) -> Color:
+		match id.substr(0, 1):
+			"m": return Color("e0623a")
+			"a": return Color("9a86ff")
+			"f": return Color("6fc46a")
+			"o": return Color("e8b54e")
+		return Color("e8b54e")
+	func _ready() -> void:
+		font = UIKit.font("display")
+	func _pos(id: String) -> Vector2:
+		var P: Dictionary = Content.PASSIVES[id]
+		return size * 0.5 + Vector2(float(P.x) * (size.x * 0.5 - 70.0), float(P.y) * (size.y * 0.5 - 44.0))
+	func _process(_dt: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		var t := Time.get_ticks_msec() * 0.001
+		for id in Content.PASSIVES:
+			for l in Content.PASSIVES[id].links:
+				var both: bool = taken.has(id) and taken.has(l)
+				var col := branch_col(l if id == "start" else id)
+				draw_line(_pos(id), _pos(l), Color(0, 0, 0, 0.7), 6.0, true)
+				draw_line(_pos(id), _pos(l), col if both else Color(0.35, 0.32, 0.33, 0.6), 3.0 if both else 1.5, true)
+		for id in Content.PASSIVES:
+			var P: Dictionary = Content.PASSIVES[id]
+			var p := _pos(id)
+			var r := {"start": 15.0, "minor": 9.0, "notable": 15.0, "keystone": 20.0}[P.kind] as float
+			var col := branch_col(id)
+			var own := taken.has(id)
+			var can := Content.passive_can_take(id, taken)
+			draw_circle(p, r + 3.0, Color(0, 0, 0, 0.8))
+			if P.kind == "keystone":
+				var pts := PackedVector2Array()
+				for k in 9: pts.append(p + Vector2.from_angle(TAU * k / 8.0 + PI / 8.0) * r)
+				draw_colored_polygon(pts, col.darkened(0.2) if own else Color(0.12, 0.11, 0.12))
+				draw_polyline(pts, col if (own or can) else Color(0.35, 0.33, 0.33), 2.5, true)
+			else:
+				draw_circle(p, r, col.darkened(0.15) if own else Color(0.12, 0.11, 0.12))
+				draw_arc(p, r, 0, TAU, 32, col if (own or can) else Color(0.35, 0.33, 0.33), 2.5 if P.kind != "minor" else 1.6, true)
+			if own: draw_circle(p + Vector2(-r * 0.3, -r * 0.3), r * 0.3, Color(1, 1, 1, 0.25))
+			if can and not own:
+				draw_arc(p, r + 5.0 + sin(t * 4.0) * 1.5, 0, TAU, 32, Color(col, 0.7), 1.5, true)
+			if id == selected:
+				draw_arc(p, r + 8.0, 0, TAU, 40, Color.WHITE, 2.0, true)
+			if P.kind == "notable" or P.kind == "keystone":
+				var nm := String(P.name)
+				var fs := 13
+				var tw := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+				var horizontal := absf(float(P.y)) < 0.05             # side branches: label above, clear of the next node
+				var tp := p + (Vector2(-tw * 0.5, -r - 9.0) if horizontal else Vector2(r + 10.0, 5.0))      # vertical branches: label to the right
+				draw_string_outline(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.9))
+				draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col.lightened(0.3) if own else Color(0.7, 0.66, 0.6))
+	func _gui_input(ev: InputEvent) -> void:
+		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
+			var best := ""
+			var bd := 30.0
+			for id in Content.PASSIVES:
+				var dd := _pos(id).distance_to(ev.position)
+				if dd < bd: bd = dd; best = id
+			if best != "":
+				picked.emit(best)
+				accept_event()
 
 ## A faceted gem drawn for a level-up card: diamond for weapons, star for evolutions, round for perks,
 ## hexagon for gems, a split keystone for keystones.

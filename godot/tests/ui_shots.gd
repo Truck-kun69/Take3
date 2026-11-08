@@ -22,6 +22,8 @@ func _ready() -> void:
 	sv.data.currency.chaos = 3; sv.data.currency.exalt = 1; sv.data.currency.regal = 2
 	sv.data.fragments = {"rupture": 1, "greed": 1, "dread": 1}
 	sv.data.hero = 2
+	sv.data.echoes = 7; sv.data.torment_max = 2; sv.data.torment = 1
+	sv.data.passives = ["start", "m1", "m3", "m5", "a1", "a2", "a4", "f1", "o1", "o3"]
 	if a.size() > 3: sv.data.hero = int(a[3])        # HERO_OVERRIDE: which exile the title stage shows
 	var rng := RandomNumberGenerator.new(); rng.seed = 5
 	for k in 8: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, rng))
@@ -56,5 +58,6 @@ func _process(dt: float) -> void:
 			main._pause()
 		7: await _snap("u7_pause"); main._resume(); main.world.end_run(false)
 		8: pass
-		9: await _snap("u8_end"); get_tree().quit()
+		9: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
+		10: await _snap("u9_web"); get_tree().quit()
 	step += 1

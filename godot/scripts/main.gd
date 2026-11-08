@@ -235,6 +235,7 @@ func _on_act(what: String, arg) -> void:
 			start({"mode": "pinnacle"})
 		"stash": screens.show_stash(false)
 		"codex": screens.show_codex()
+		"web": screens.show_web()
 		"options": screens.show_options("menu")
 		"options_changed":
 			if world != null:

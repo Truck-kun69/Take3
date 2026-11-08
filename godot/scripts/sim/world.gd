@@ -66,6 +66,8 @@ var rng := RandomNumberGenerator.new()
 var headless := false         # tests: no profile writes beyond the in-memory dict
 var view_r := VIEW_R_DEFAULT
 var terrain: Terrain = null      # set by setup(); heights, water and passability
+var torment := 0                 # difficulty tier (Content.TORMENT); 0 in rifts, which scale by level
+var echoes_run := 0              # Echoes earned (set at the end of the run)
 var colorblind := false
 var aim_mode := 0
 
@@ -194,6 +196,7 @@ func setup(cfg: Dictionary) -> void:
 		stage = int(node.biome)
 	season = cfg.get("season", Save.season().id)
 	headless = cfg.get("headless", false)
+	torment = 0 if mode == "rift" else clampi(int(cfg.get("torment", Save.data.get("torment", 0))), 0, Content.TORMENT.size() - 1)
 	if cfg.has("seed"):
 		rng.seed = int(cfg.seed)
 	else:
@@ -247,7 +250,13 @@ func _apply_meta() -> void:
 	if mode == "rift":
 		mm.append(["item_rarity", "inc", 0.04 * gr_level])
 		mm.append(["xp_gain", "more", 0.6])     # cycle 3: dense rift spawns out-levelled the +17%/level curve
+	var T: Dictionary = Content.TORMENT[torment]
+	if torment > 0:
+		mm.append(["item_quantity", "inc", float(T.loot)])
+		mm.append(["item_rarity", "inc", float(T.loot) * 0.7])
+		mm.append(["gold_find", "inc", float(T.gold)])
 	stats.set_source("map", mm)
+	stats.set_source("passives", Content.passive_mods(Save.data.get("passives", [])))
 
 func has_leg(id: String) -> bool:
 	if Save.data.codex_active.has(id):
@@ -274,7 +283,7 @@ func hp_mult() -> float:
 		m = (1.0 + 0.35 * (int(node.tier) - 1) * minf(1.0, 0.4 + t / 100.0)) * (1.0 + t / 110.0)
 	if mode == "rift": m = 1.5 * float(s.hp) * Content.gr_hp_mult(gr_level) * (1.0 + t / 240.0)
 	if has_mod("hardened"): m *= 1.4
-	return m
+	return m * float(Content.TORMENT[torment].hp)
 
 func dmg_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
@@ -282,7 +291,7 @@ func dmg_mult() -> float:
 	if mode == "atlas": m = (1.0 + 0.12 * (int(node.tier) - 1)) * (1.0 + t / 300.0)
 	if mode == "rift": m *= Content.gr_dmg_mult(gr_level)
 	if has_mod("lethal"): m *= 1.3
-	return m
+	return m * float(Content.TORMENT[torment].dmg)
 
 func spd_mult() -> float:
 	return float(Content.STAGES[stage].spd) * (1.0 + minf(0.25, t / 600.0)) * (1.2 if has_mod("swift") else 1.0)
@@ -995,7 +1004,7 @@ func _terrain_react(i: int, em: int) -> void:
 	if not terrain.is_liquid(fp):
 		return
 	if (em & (1 << Content.El.COLD)) != 0:
-		if terrain.freeze(fp, 60.0, 6.0) > 0:
+		if terrain.freeze(fp, 60.0, 6.0 * stats.value("ice_dur", 1.0)) > 0:
 			metrics.terrain.freeze += 1
 			fx.append({"k": "ring", "pos": fp, "r": 0.0, "max": 70.0, "col": Color("c8f4ff"), "life": 0.35, "t": 0.0})
 	if (em & (1 << Content.El.LIGHT)) != 0 and terrain.liquid == "water" and not terrain.is_frozen(fp) and t - _shock_water_t > 0.3:
@@ -1692,6 +1701,11 @@ func end_run(win: bool) -> void:
 	if win and mode == "campaign":
 		while d.cleared.size() <= stage: d.cleared.append(false)
 		d.cleared[stage] = true
+	# Echoes for the Shard Web: a share of kills, a win bonus, rift depth and the torment tier
+	echoes_run = mini(12, kills / 250 + (2 if win else 0) + (gr_level / 3 if mode == "rift" else 0) + (int(Content.TORMENT[torment].echo) if win else 0))
+	d.echoes = int(d.get("echoes", 0)) + echoes_run
+	if win and mode != "rift" and torment >= int(d.get("torment_max", 0)) and torment < Content.TORMENT.size() - 1:
+		d.torment_max = torment + 1                  # beating a tier opens the next
 	Save.mark_dirty()
 	if not headless:
 		Save.flush()

@@ -23,6 +23,7 @@ func _ready() -> void:
 	if "unit" in args:
 		_unit()
 		_terrain_tests()
+		_meta_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -245,6 +246,49 @@ func _terrain_tests() -> void:
 		if (w.sw.flags[i] & (Swarm.F_BOSS | Swarm.F_HERALD)) == 0 and not w.terrain.passable(w.sw.pos[i]): stuck += 1
 	ok(stuck <= 2, "foes stay on walkable ground (%d inside walls)" % stuck)
 	ok(w.terrain.passable(w.pp), "the hero stays on walkable ground")
+
+# ================================================================= Shard Web and Torment
+func _meta_tests() -> void:
+	print("== shard web / torment")
+	var taken := ["start"]
+	ok(Content.passive_can_take("m1", taken) and not Content.passive_can_take("m6", taken), "only nodes touching the web can be taken")
+	ok(not Content.passive_can_take("start", taken), "a node is taken once")
+	var all_linked := true
+	for id in Content.PASSIVES:
+		for l in Content.PASSIVES[id].links:
+			if not Content.PASSIVES.has(l): all_linked = false
+	ok(all_linked, "every web link points at a real node")
+	# every node is reachable from the centre
+	var seen := ["start"]
+	var grow := true
+	while grow:
+		grow = false
+		for id in Content.PASSIVES:
+			if not seen.has(id) and Content.passive_can_take(id, seen): seen.append(id); grow = true
+	ok(seen.size() == Content.PASSIVES.size(), "the whole web is reachable (%d/%d)" % [seen.size(), Content.PASSIVES.size()])
+	var keep: Array = Save.data.passives
+	Save.data.passives = ["start"]
+	var w0 := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 3})
+	Save.data.passives = ["start", "m1", "m3", "f1"]
+	var w1 := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 3})
+	ok(w1.stats.value("damage", 10.0) > w0.stats.value("damage", 10.0) * 1.07, "passives raise damage")
+	ok(w1.max_hp >= w0.max_hp + 14.0, "passives raise life")
+	Save.data.passives = keep
+	var t0 := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 3, "torment": 0})
+	var t3 := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 3, "torment": 3})
+	ok(is_equal_approx(t3.hp_mult() / t0.hp_mult(), float(Content.TORMENT[3].hp)), "torment scales foe life")
+	ok(t3.stats.value("item_quantity", 1.0) > t0.stats.value("item_quantity", 1.0), "torment raises loot")
+	var tr := _world({"mode": "rift", "hero": 0, "seed": 3, "gr": 4, "torment": 3})
+	ok(tr.torment == 0, "rifts ignore torment (they scale by level)")
+	var tmax0: int = Save.data.torment_max
+	var e0: int = Save.data.echoes
+	Save.data.torment_max = 0
+	t0.kills = 600
+	t0.end_run(true)
+	ok(Save.data.torment_max == 1, "a win unlocks the next torment")
+	ok(Save.data.echoes - e0 == t0.echoes_run and t0.echoes_run == 600 / 250 + 2, "echoes: kills / 250 + 2 for a win (%d)" % t0.echoes_run)
+	Save.data.torment_max = tmax0
+	Save.data.echoes = e0
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

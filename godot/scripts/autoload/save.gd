@@ -33,6 +33,7 @@ func defaults() -> Dictionary:
 		"options": DEFAULT_OPTIONS.duplicate(), "stash": [], "equipped": eq, "currency": cur,
 		"codex": [], "codex_active": [], "bestiary": {}, "lore": [],
 		"fragments": {"rupture": 0, "greed": 0, "dread": 0}, "splinters": 0,
+		"passives": ["start"], "echoes": 0, "torment": 0, "torment_max": 0,
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
 		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0},
 	}
@@ -66,6 +67,13 @@ func _merge(dst: Dictionary, src: Dictionary) -> void:
 func _normalise() -> void:
 	data.gold = int(data.gold); data.hero = clampi(int(data.hero), 0, 3)
 	while data.cleared.size() < Content.STAGES.size(): data.cleared.append(false)      # profiles from before Act V
+	data.echoes = int(data.echoes); data.torment_max = clampi(int(data.torment_max), 0, Content.TORMENT.size() - 1)
+	data.torment = clampi(int(data.torment), 0, int(data.torment_max))
+	var pv: Array = []
+	for id in data.passives:
+		if Content.PASSIVES.has(String(id)) and not pv.has(String(id)): pv.append(String(id))
+	if not pv.has("start"): pv.push_front("start")
+	data.passives = pv
 	data.gr_key = maxi(1, int(data.gr_key)); data.gr_best = int(data.gr_best); data.splinters = int(data.splinters)
 	for c in data.currency: data.currency[c] = int(data.currency[c])
 	for k in data.fragments: data.fragments[k] = int(data.fragments[k])
