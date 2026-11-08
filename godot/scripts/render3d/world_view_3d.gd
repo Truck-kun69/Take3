@@ -48,7 +48,7 @@ var _cam_target := Vector3.ZERO
 var _foe_mm: Array[MultiMeshInstance3D] = []
 var _foe_n := PackedInt32Array()
 const GROUND_SIZE := 3000.0
-const GROUND_Q := 20.0
+var GROUND_Q := 20.0            # ground grid spacing, set per graphics tier (Quality.ground_q)
 var water: MeshInstance3D
 var water_mat: ShaderMaterial
 var _cam_y := 0.0
@@ -117,7 +117,7 @@ func _ready() -> void:
 	key_light.light_energy = 1.6 * LIGHT_GAIN
 	key_light.light_specular = 0.6
 	add_child(key_light)
-	for i in 8:
+	for i in 14:
 		var l := OmniLight3D.new()
 		l.omni_range = 160.0
 		l.omni_attenuation = LIGHT_ATT
@@ -130,11 +130,7 @@ func _ready() -> void:
 	# elevation pass: a grid of 20-unit quads that follows the camera (snapped to whole quads so it never
 	# swims) and is displaced by the terrain height texture in the vertex shader
 	ground = MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(GROUND_SIZE, GROUND_SIZE)
-	pm.subdivide_width = int(GROUND_SIZE / GROUND_Q) - 1
-	pm.subdivide_depth = int(GROUND_SIZE / GROUND_Q) - 1
-	ground.mesh = pm
+	_ground_mesh()
 	ground.material_override = terrain_mat
 	ground.custom_aabb = AABB(Vector3(-GROUND_SIZE * 0.5, -300, -GROUND_SIZE * 0.5), Vector3(GROUND_SIZE, 600, GROUND_SIZE))
 	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON      # hills shade the valleys
@@ -205,15 +201,24 @@ void fragment() {
 	_aura_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_aura_mm)
 
+func _ground_mesh() -> void:
+	GROUND_Q = Quality.ground_q()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(GROUND_SIZE, GROUND_SIZE)
+	pm.subdivide_width = int(GROUND_SIZE / GROUND_Q) - 1
+	pm.subdivide_depth = int(GROUND_SIZE / GROUND_Q) - 1
+	ground.mesh = pm
+
 func bind(world: World) -> void:
 	w = world
+	if GROUND_Q != Quality.ground_q(): _ground_mesh()
 	var s: Dictionary = Content.STAGES[w.stage]
 	_look = STAGE_LOOK[w.stage]
 	terrain_mat.set_shader_parameter("c0", Content.col(s.g0))
 	terrain_mat.set_shader_parameter("c1", Content.col(s.g1))
 	terrain_mat.set_shader_parameter("c2", Content.col(s.g2))
 	terrain_mat.set_shader_parameter("acc", Content.col(s.acc))
-	terrain_mat.set_shader_parameter("octaves", 3 if int(Save.opt("quality")) == 0 else 5)
+	terrain_mat.set_shader_parameter("octaves", [3, 5, 6][Quality.tier()])
 	var tex_path := "res://textures/terrain/%d.png" % w.stage
 	terrain_mat.set_shader_parameter("has_tex", ResourceLoader.exists(tex_path))
 	if ResourceLoader.exists(tex_path): terrain_mat.set_shader_parameter("albedo_tex", load(tex_path))
@@ -226,7 +231,7 @@ func bind(world: World) -> void:
 	env.ambient_light_color = _look.amb
 	env.fog_light_color = _look.fog
 	sun.light_color = _look.sun
-	var hq := int(Save.opt("quality")) != 0
+	var hq := Quality.tier() >= 1
 	sun.shadow_enabled = hq
 	for k in _foe_mm.size():
 		_foe_mm[k].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if hq else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -444,7 +449,7 @@ func _build_cell(c: Vector2i) -> Node3D:
 	rng.seed = hash(Vector3i(c.x, c.y, w.stage))
 	var lo := Vector3(c.x * CHUNK, -200.0, c.y * CHUNK)
 	for kind in Models.PROP_KINDS:
-		var n := float(dens.get(kind, 0.0)) * (w.terrain.density(kind, c) if w.terrain != null else 1.0)
+		var n := float(dens.get(kind, 0.0)) * (w.terrain.density(kind, c) if w.terrain != null else 1.0) * Quality.prop_density()
 		var cnt := int(n) + (1 if rng.randf() < n - floorf(n) else 0)
 		var list := []
 		for i in cnt:
@@ -676,9 +681,10 @@ func _bosses(dt: float) -> void:
 func _assign_lights() -> void:
 	var cand: Array = fx.light_candidates()
 	cand.sort_custom(func(a, b): return a[2] > b[2])
+	var nl := Quality.lights()
 	for i in light_pool.size():
 		var l := light_pool[i]
-		if i < cand.size():
+		if i < cand.size() and i < nl:
 			var c: Array = cand[i]
 			l.visible = true
 			l.position = c[0] + Vector3(0, ground_y(Vector2(c[0].x, c[0].z)), 0)

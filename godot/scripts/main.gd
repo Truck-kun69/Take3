@@ -56,7 +56,6 @@ func _ready() -> void:
 	get_tree().root.size_changed.connect(_on_resize)
 	# level of detail switches a little earlier than the 1 px default: the camera is high above the
 	# battlefield, so the coarser meshes are indistinguishable (optimisation pass: -4% triangles)
-	get_viewport().mesh_lod_threshold = 1.5
 	_render_scale()
 	_ui_scale()
 	_menu()
@@ -76,13 +75,22 @@ func _render_scale() -> void:
 	var opt := int(Save.opt("render_scale"))
 	var s := 1.0
 	match opt:
-		0: s = 0.75 if (OS.has_feature("mobile") or OS.has_feature("web")) else 1.0
+		0:
+			s = 0.75 if (OS.has_feature("mobile") or OS.has_feature("web")) else 1.0
+			if Quality.high() and OS.has_feature("mobile"): s = 0.85        # High on a phone: closer to native, FSR sharpened
 		2: s = 0.75
 		3: s = 0.5
 	var vp := get_viewport()
 	vp.scaling_3d_scale = s
 	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if (compat or s >= 1.0) else Viewport.SCALING_3D_MODE_FSR
+	# the graphics tier (Quality): LOD bias, MSAA and the sun's shadow atlas
+	var hi := Quality.high()
+	vp.mesh_lod_threshold = 1.0 if hi else 1.5
+	vp.msaa_3d = Viewport.MSAA_2X if (hi and not compat) else Viewport.MSAA_DISABLED
+	if not compat:
+		RenderingServer.directional_shadow_atlas_set_size(4096 if hi else 2048, true)
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if hi else RenderingServer.SHADOW_QUALITY_HARD)
 
 func _on_resize() -> void:
 	_ui_scale()
@@ -197,8 +205,69 @@ func _resume() -> void:
 	state = "play"
 	screens.close()
 
+# ================================================================= benchmark
+## Options > Benchmark: a fixed, invulnerable 23 s rift (3 s warm-up, 20 s measured) with the swarm
+## held at ~400 foes and every effect weapon evolved, walking a circle so terrain and props stream.
+## The result screen is meant to be screenshotted and sent back to tune the tiers on a real phone.
+const BENCH_WARM := 3.0
+const BENCH_LEN := 20.0
+var _bench_t := 0.0
+var _bench_ms: PackedFloat32Array = PackedFloat32Array()
+var _bench_acc := {}
+
+func start_bench() -> void:
+	start({"mode": "rift", "gr": 3, "seed": 7, "moon": -1.0})
+	state = "bench"
+	_bench_t = 0.0
+	_bench_ms = PackedFloat32Array()
+	_bench_acc = {"draws": 0.0, "tris": 0.0, "foes": 0.0, "n": 0}
+	world.stats.set_source("bench", [["invuln", "add", 1.0], ["max_hp", "add", 1e6]])
+	for id in ["bolt", "nova", "orbit"]:
+		world.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+		world.wlocal[id] = Stats.new()
+	hud.visible = true
+	touch.visible = false
+
+func _bench_step(dt: float) -> void:
+	_bench_t += dt
+	var a := world.t * 0.35
+	world.in_move = Vector2(-sin(a), cos(a))                 # a slow circle of radius ~ speed / 0.35
+	while world.sw.n < 400 and not world.sw.full():
+		world.spawn_foe([Content.E.GRUNT, Content.E.RUNNER, Content.E.BRUTE, Content.E.SPITTER][world.sw.n % 4], world.ring_point(), 0, 0, 30.0)
+	world.progress = 0.0
+	world.pending = 0
+	world.whisper_offer = []
+	world.light = 0.6
+	world.step(minf(dt, 0.05))
+	if _bench_t > BENCH_WARM:
+		_bench_ms.append(dt * 1000.0)
+		_bench_acc.draws += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		_bench_acc.tris += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+		_bench_acc.foes += world.sw.n
+		_bench_acc.n += 1
+	if _bench_t >= BENCH_WARM + BENCH_LEN:
+		var ms := _bench_ms.duplicate()
+		ms.sort()
+		var tot := 0.0
+		for m in ms: tot += m
+		var n := maxi(1, ms.size())
+		var res := {"fps": 1000.0 * n / maxf(1.0, tot), "ms": tot / n, "low1": 1000.0 / maxf(0.1, ms[mini(ms.size() - 1, int(ms.size() * 0.99))]) if ms.size() > 0 else 0.0,
+			"draws": int(_bench_acc.draws / maxf(1, _bench_acc.n)), "ktris": int(_bench_acc.tris / maxf(1, _bench_acc.n) / 1000.0),
+			"foes": int(_bench_acc.foes / maxf(1, _bench_acc.n)), "tier": Quality.NAMES[Quality.tier()], "scale": int(get_viewport().scaling_3d_scale * 100.0),
+			"gpu": RenderingServer.get_video_adapter_name(), "renderer": RenderingServer.get_current_rendering_method(),
+			"res": "%dx%d" % [get_viewport().size.x, get_viewport().size.y], "device": OS.get_model_name()}
+		Save.data["bench"] = res
+		Save.mark_dirty()
+		Save.flush()
+		print("BENCH ", res)
+		_menu()
+		screens.show_bench(res)
+
 func _process(dt: float) -> void:
 	if world == null:
+		return
+	if state == "bench":
+		_bench_step(dt)
 		return
 	if state == "play":
 		if not bot_drive:
@@ -241,6 +310,7 @@ func _on_act(what: String, arg) -> void:
 		"codex": screens.show_codex()
 		"web": screens.show_web()
 		"options": screens.show_options("menu")
+		"bench": start_bench()
 		"options_changed":
 			if world != null:
 				world.colorblind = bool(Save.opt("colorblind"))

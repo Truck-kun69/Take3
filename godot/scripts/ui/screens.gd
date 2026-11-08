@@ -553,12 +553,42 @@ func show_options(back: String = "menu") -> void:
 	_toggle(v, "Haptics", "haptics", back)
 	_toggle(v, "Auto-equip upgrades", "auto_equip", back)
 	_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
-	_cycle(v, "Effects quality", "quality", ["Low", "High"], back)
+	_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
 	_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
 	_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
 	_toggle(v, "Show FPS", "show_fps", back)
 	_toggle(v, "Always show touch buttons", "force_touch_ui", back)
+	if back == "menu":
+		var bb := UIKit.button("Run benchmark (23 s)", func(): Save.flush(); act.emit("bench", null), 50)
+		bb.tooltip_text = "A fixed 400-foe scene; screenshot the result to compare graphics settings."
+		v.add_child(bb)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); act.emit(back, null)))
+
+## Benchmark result: big FPS figure, then the detail rows to screenshot and send back.
+func show_bench(r: Dictionary) -> void:
+	var v := _open(760)
+	_title(v, "Benchmark", "%s graphics  \u00b7  3D at %d%%  \u00b7  %s" % [r.tier, r.scale, r.res])
+	var big := UIKit.label("%d FPS" % roundi(r.fps), 54, UIKit.GOLD, false, "num_heavy")
+	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(big)
+	var rows := [["Average frame", "%.1f ms" % r.ms], ["1% low", "%d FPS" % roundi(r.low1)], ["Foes on screen", str(r.foes)],
+		["Draw calls", str(r.draws)], ["Triangles", "%dk" % r.ktris], ["Device", String(r.device)], ["GPU", String(r.gpu)], ["Renderer", String(r.renderer)]]
+	for row in rows:
+		var h := UIKit.hbox(12)
+		var k := UIKit.label(row[0], 18, UIKit.DIM, false, "body")
+		k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(k)
+		h.add_child(UIKit.label(row[1], 18, UIKit.TEXT, false, "body"))
+		v.add_child(h)
+	var tip := UIKit.label("Screenshot this and send it over. Try Options > Graphics Medium / High and 3D resolution to compare.", 15, UIKit.DIM, true, "italic")
+	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(tip)
+	var row2 := _grid(2, 10)
+	for pair in [["Run again", "bench"], ["Back", "menu"]]:
+		var b := UIKit.button(pair[0], func(): act.emit(pair[1], null), 54)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row2.add_child(b)
+	v.add_child(row2)
 
 ## One option row: name on the left in Garamond, its value as a bronze button on the right.
 func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: bool = true) -> void:

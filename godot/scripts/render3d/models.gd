@@ -7,6 +7,8 @@ extends RefCounted
 ##   res://models/bosses/<boss|herald|guardian>.(tscn|glb)      -> replaces a boss rig
 ##   res://models/foes/<grunt|runner|...>.(glb|tscn|tres)       -> first mesh found is instanced for the swarm
 ##   res://models/props/<rock|tree|crystal|pillar|bones|grass>.(glb|tscn|tres)
+##   res://models/foes_hi/, props_hi/: denser variants used on the High graphics tier (Quality); the web
+##   export leaves them out (export_presets.cfg exclude_filter)
 ## Authored hero/boss scenes may contain an AnimationPlayer with any of: idle, run, cast, roll, hit, die.
 ## The rigs then play those instead of the procedural animation (see HeroRig.attach_override).
 
@@ -46,9 +48,10 @@ static func _first_mesh(n: Node) -> Mesh:
 static func foe_mesh(kind: String, stage: int = -1) -> Mesh:
 	if stage >= 0 and find_asset("foes", "%s_%d" % [kind, stage]) != "":
 		kind = "%s_%d" % [kind, stage]
-	var key := "foe:" + kind
+	var hi := Quality.high() and find_asset("foes_hi", kind) != ""     # High tier: the detailed variant
+	var key := ("foe_hi:" if hi else "foe:") + kind
 	if _cache.has(key): return _cache[key]
-	var p := find_asset("foes", kind)
+	var p := find_asset("foes_hi" if hi else "foes", kind)
 	var m: Mesh = mesh_from_asset(p) if p != "" else _build_foe(kind)
 	_cache[key] = m
 	return m
@@ -56,9 +59,10 @@ static func foe_mesh(kind: String, stage: int = -1) -> Mesh:
 static func prop_mesh(kind: String, stage: int = -1) -> Mesh:
 	if stage >= 0 and find_asset("props", "%s_%d" % [kind, stage]) != "":
 		kind = "%s_%d" % [kind, stage]
-	var key := "prop:" + kind
+	var hi := Quality.high() and find_asset("props_hi", kind) != ""
+	var key := ("prop_hi:" if hi else "prop:") + kind
 	if _cache.has(key): return _cache[key]
-	var p := find_asset("props", kind)
+	var p := find_asset("props_hi" if hi else "props", kind)
 	var m: Mesh = mesh_from_asset(p) if p != "" else _build_prop(kind)
 	_cache[key] = m
 	return m

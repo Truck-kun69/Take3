@@ -137,7 +137,7 @@ func bind(world: World) -> void:
 	_map_center = Vector2i(1 << 30, 0)
 
 func pcap() -> int:
-	return PCAP_LO if int(Save.opt("quality")) == 0 else PCAP_HI
+	return PCAP_LO if Quality.tier() == 0 else PCAP_HI
 
 # ================================================================= per frame
 func _process(dt: float) -> void:

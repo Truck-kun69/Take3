@@ -279,13 +279,13 @@ func boss_death(p: Vector3, c: Color) -> void:
 		_spark(p + Vector3(0, 50, 0), Vector3(randf_range(-1, 1), randf_range(-0.2, 1.5), randf_range(-1, 1)) * 420.0, c.lightened(0.3), randf_range(0.5, 1.2), randf_range(6.0, 14.0))
 
 func _spark(p: Vector3, v: Vector3, c: Color, life: float, size: float) -> void:
-	var cap := SPARK_CAP if int(Save.opt("quality")) != 0 else SPARK_CAP / 3
+	var cap := SPARK_CAP if Quality.tier() >= 1 else SPARK_CAP / 3
 	if s_n >= cap: return
 	s_pos[s_n] = p; s_vel[s_n] = v; s_life[s_n] = life; s_max[s_n] = life; s_col[s_n] = c; s_size[s_n] = size
 	s_n += 1
 
 func _debris(p: Vector3, v: Vector3, c: Color, size: float) -> void:
-	var cap := DEBRIS_CAP if int(Save.opt("quality")) != 0 else DEBRIS_CAP / 3
+	var cap := DEBRIS_CAP if Quality.tier() >= 1 else DEBRIS_CAP / 3
 	if d_n >= cap: return
 	d_pos[d_n] = p; d_vel[d_n] = v; d_rot[d_n] = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
 	d_spin[d_n] = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12)); d_life[d_n] = randf_range(1.4, 2.4)

@@ -27,6 +27,10 @@ from mathutils import Euler, Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "godot", "models", "foes")
+# --hi: the High graphics tier's variants (Quality.high: Android, desktop) -> models/foes_hi, at HI x the budget
+HI = 2.0
+if "--hi" in sys.argv:
+    OUT += "_hi"
 KK = "KayKit-Character-Pack-Skeletons-1.0/addons/kaykit_character_pack_skeletons"
 QB = "quaternius_monsters/Big/Blends"
 QL = "quaternius_monsters/Blob/glTF"
@@ -314,7 +318,7 @@ def build(kind, cfg, packs):
     grow_crystals(bm, face_part, cfg.get("crystals", 0), cfg["height"], hash(kind) & 0xffff)
     # drop the source scene, keep only the baked result
     for o in list(bpy.data.objects): bpy.data.objects.remove(o)
-    ob = split_decimate_join(bm, face_part, pivots, cfg["tris"], kind)
+    ob = split_decimate_join(bm, face_part, pivots, int(cfg["tris"] * (HI if "--hi" in sys.argv else 1.0)), kind)
     tris = sum(len(p.vertices) - 2 for p in ob.data.polygons)
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, kind + ".glb")
@@ -327,7 +331,7 @@ def build(kind, cfg, packs):
 
 
 if __name__ == "__main__":
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    argv = [a for a in (sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []) if a != "--hi"]
     packs = argv[0]
     for k in (argv[1:] or list(FOES)):
         build(k, FOES[k], packs)

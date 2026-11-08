@@ -217,3 +217,39 @@ What changed:
 * **Show FPS** now reads frame time, draw calls, triangles, foe count and 3D resolution.
 * **Web build**: hero textures at 1024 (desktop and Android keep 2048). Page 35 → 30 MB; the rest is
   the 13 MB engine and the four hero meshes, which all ship because the pack is downloaded whole.
+
+## Graphics tiers (scripts/render3d/quality.gd)
+
+Android and desktop are now the main target. The web artifact is a lighter preview. Tiers change
+only visuals: the simulation, spawns and balance are the same on every tier.
+
+| | Low | Medium (web default) | High (Android / desktop default) |
+|---|---|---|---|
+| Sun shadows | off | 2 splits, 2048 atlas, hard | 2 splits, 4096 atlas, soft |
+| MSAA | off | off | 2x (cheap on tile-based phone GPUs) |
+| Terrain grid | 24 units | 20 units | 12 units (~2.8x the vertices) |
+| Terrain noise octaves | 3 | 5 | 6 |
+| Prop density | 0.7x | 1x | 1.3x |
+| Dynamic lights | 4 | 8 | 14 |
+| Prop meshes | models/props | same | models/props_hi (2.5x the triangles) |
+| LOD threshold | 1.5 px | 1.5 px | 1 px |
+| Auto 3D resolution | 75% on phones/web | 75% on phones/web | 85% on phones (FSR), 100% desktop |
+| Particles | 1/3 | full | full |
+
+Options > Graphics: Auto (High, except Medium on the web), Low, Medium, High. The web export
+excludes `models/*_hi` (export_presets.cfg), so only the APK carries them.
+
+The high-detail variants are rebuilt by passing `--hi` to the import scripts:
+
+    blender -b --factory-startup --python tools/blender/import_props.py -- <gen dir> --hi
+    blender -b --factory-startup --python tools/blender/import_packs.py -- <packs dir> --hi   (not shipped: see below)
+
+Benchmark triangles per frame (400 foes, including shadow passes): Medium 1.4M, High 3.5M. High
+detail foes (`foes_hi`, 2x the triangles) added another 1.4M. Foes are about 30 px tall at this camera
+distance, so they are not shipped; Models still loads `models/foes_hi` if it exists.
+
+**Benchmark.** Options > Run benchmark runs a fixed, invulnerable 23 s rift: 3 s warm-up, then 20 s
+measured. It holds about 400 foes, evolves every effect weapon, and walks a circle so terrain and
+props stream in. The result screen shows average FPS, the 1% low, frame time, draw calls,
+triangles, device, GPU and renderer. The last result is saved in the profile under `bench`.
+`tests/bench_run.tscn` runs it headless for screenshots.

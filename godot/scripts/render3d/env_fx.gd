@@ -170,7 +170,7 @@ func _pushers() -> void:
 	fog_mat.set_shader_parameter("pushers", pushers)
 
 func puff(p: Vector3, v: Vector3, c: Color, life: float, size: float, glow: float = 0.0) -> void:
-	var cap := SMOKE_CAP if int(Save.opt("quality")) != 0 else SMOKE_CAP / 3
+	var cap := SMOKE_CAP if Quality.tier() >= 1 else SMOKE_CAP / 3
 	if m_n >= cap: return
 	m_pos[m_n] = p; m_vel[m_n] = v; m_life[m_n] = life; m_max[m_n] = life
 	m_col[m_n] = c; m_size[m_n] = size

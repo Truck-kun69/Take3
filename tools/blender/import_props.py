@@ -22,6 +22,10 @@ from mathutils import Matrix
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "godot", "models", "props")
+# --hi: the High graphics tier's variants (Quality.high: Android, desktop) -> models/props_hi, at HI x the budget
+HI = 2.5
+if "--hi" in sys.argv:
+    OUT += "_hi"
 
 # name -> height (matches the procedural prop), triangle budget, which faces glow / sway
 PROPS = {
@@ -76,9 +80,10 @@ def build(name, cfg, src):
     k = cfg["height"] / max(1e-4, max(zs) - min(zs))
     ob.data.transform(Matrix.Scale(k, 4) @ Matrix.Translation((-(min(xs) + max(xs)) / 2, -(min(ys) + max(ys)) / 2, -min(zs))))
     tris = sum(len(p.vertices) - 2 for p in ob.data.polygons)
-    if tris > cfg["tris"]:
+    budget = int(cfg["tris"] * (HI if "--hi" in sys.argv else 1.0))
+    if tris > budget:
         d = ob.modifiers.new("dec", "DECIMATE")
-        d.ratio = cfg["tris"] / tris
+        d.ratio = budget / tris
         d.use_collapse_triangulate = True
         bpy.ops.object.modifier_apply(modifier="dec")
     me = ob.data
@@ -127,7 +132,7 @@ def build(name, cfg, src):
 
 
 if __name__ == "__main__":
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    argv = [a for a in (sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []) if a != "--hi"]
     src = argv[0]
     for n in (argv[1:] or [p for p in PROPS if os.path.exists(os.path.join(src, p + ".glb"))]):
         build(n, PROPS[n], src)
