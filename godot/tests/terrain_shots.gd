@@ -45,6 +45,10 @@ func _process(dt: float) -> void:
 				main.start({"mode": "campaign", "stage": stages[si]})
 				main.world.stats.set_source("shot", [["max_hp", "add", 1e6]])
 				main.world.pp = _lake_spot(main.world.terrain)
+				if OS.get_environment("SHOT_WHISPER") != "":     # the Whisperer beside the hero, the lantern low
+					main.world.director.objects.append({"pos": main.world.pp + Vector2(130, -50), "kind": "whisper", "id": "whisper", "life": 30.0})
+					main.world.director.whisper_t = 1e9
+					main.world.light = float(OS.get_environment("SHOT_WHISPER"))
 				phase = 1; t = 0.0
 		1:
 			main.world.in_move = Vector2.ZERO

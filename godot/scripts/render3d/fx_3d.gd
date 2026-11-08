@@ -655,6 +655,15 @@ func _make_obj(kind: String, col: Color) -> Node3D:
 			k.add("sphere", Vector3(2, 42, 0), Vector3(12, 12, 12), Color(0.85, 0.72, 0.55))
 			k.add("sphere", Vector3(-8, 24, 0), Vector3(18, 20, 18), Color(0.5, 0.36, 0.2))
 			k.add("sphere", Vector3(10, 30, 10), Vector3(5, 5, 5), Color(1, 0.8, 0.4), MeshKit.PART_GLOW)
+		"whisper":            # a hooded, faceless figure with two violet eyes and orbiting shards
+			k.add("cone", Vector3(0, 26, 0), Vector3(30, 52, 30), Color(0.05, 0.04, 0.07), 0, 0, Vector3.ZERO, 12)
+			k.add("sphere", Vector3(0, 52, 0), Vector3(17, 19, 17), Color(0.06, 0.05, 0.08))
+			k.add("sphere", Vector3(3.5, 52, 6.5), Vector3(11, 12, 6), Color(0.0, 0.0, 0.0))
+			k.add("sphere", Vector3(-2.2, 53, 9.2), Vector3(2.2, 1.4, 1.2), col, MeshKit.PART_GLOW)
+			k.add("sphere", Vector3(2.2, 53, 9.2), Vector3(2.2, 1.4, 1.2), col, MeshKit.PART_GLOW)
+			for i in 5:
+				var a := TAU * i / 5.0
+				k.add("prism", Vector3(cos(a) * 30.0, 30 + 8.0 * sin(a * 2.0), sin(a) * 30.0), Vector3(4, 12, 4), col, MeshKit.PART_GLOW)
 		"ritual":
 			k.add("cyl", Vector3(0, 6, 0), Vector3(40, 12, 40), Color(0.3, 0.27, 0.27), 0, 0, Vector3.ZERO, 6)
 			for i in 5:
@@ -691,6 +700,11 @@ func _event_props(dt: float) -> void:
 		if not objs.has(key2): objs[key2] = _make_obj(o.kind, Content.col(Content.BUFFS[o.id].col))
 		objs[key2].position = Vector3(o.pos.x, view.ground_y(o.pos), o.pos.y)
 		if o.kind == "pylon": objs[key2].rotation.y += dt * 0.8
+		elif o.kind == "whisper":       # turns to watch the hero, bobs, and fades in its last seconds
+			var to: Vector2 = w.pp - o.pos
+			objs[key2].rotation.y = lerp_angle(objs[key2].rotation.y, atan2(to.x, to.y), minf(1.0, dt * 2.0))
+			objs[key2].position.y += 6.0 + sin(time * 1.7) * 3.0
+			objs[key2].scale = Vector3.ONE * clampf(float(o.life) / 3.0, 0.2, 1.0)
 	for key3 in objs.keys():
 		if not want.has(key3):
 			objs[key3].queue_free()

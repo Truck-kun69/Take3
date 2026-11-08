@@ -9,10 +9,12 @@ var w: World
 var rng := RandomNumberGenerator.new()
 var greedy := true
 var skill := 1.0                 # 0..1: how reliably it dodges
+var bot_seed := 1
 
 func _init(world: World, s: int = 1) -> void:
 	w = world
 	rng.seed = s
+	bot_seed = s
 
 func think() -> void:
 	var push := Vector2.ZERO
@@ -55,6 +57,10 @@ func think() -> void:
 				goal = p.pos
 		if goal != Vector2.INF:
 			mv = (mv * 0.4 + (goal - w.pp).normalized()).normalized()
+	# the Whisperer: bots that bargain walk to it whatever the crowd
+	if bot_seed % 2 == 0:
+		for o in w.director.objects:
+			if o.kind == "whisper": mv = (mv * 0.3 + (o.pos - w.pp).normalized()).normalized()
 	# engage a live boss that is far away (a kiting bot otherwise never meets it)
 	var bf := -1
 	for u in w.boss_uids:
@@ -71,6 +77,13 @@ func think() -> void:
 	if w.hp < w.max_hp * 0.5: w.in_flask[0] = true
 	if c > 15: w.in_flask[1] = true
 	if w.ult >= 100.0 and c > 10: w.in_ult = true
+
+## The Whisperer: bots on odd seeds refuse; the rest take the bargain they rate least risky.
+static func bargain(offer: Array, bot_seed: int) -> String:
+	if bot_seed % 2 == 1 or offer.is_empty(): return ""
+	for id in ["hollow_hours", "gilded_tongue", "ember_pact", "quickened_grave", "long_night", "glass_crown", "blood_price"]:
+		if offer.has(id): return id
+	return offer[0]
 
 static func pick(choices: Array, w: World) -> Dictionary:
 	var best: Dictionary = choices[0]

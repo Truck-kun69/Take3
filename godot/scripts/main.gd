@@ -136,12 +136,16 @@ func start(cfg: Dictionary) -> void:
 	menu_stage.hide_stage()
 	last_cfg = cfg.duplicate()
 	cfg["hero"] = int(Save.data.hero)
+	if not cfg.has("moon"):
+		cfg["moon"] = Moon.now()
+		cfg["sky_date"] = Moon.today()
 	world = World.new()
 	world.crowd = crowd
 	world.setup(cfg)
 	world.level_up.connect(_on_level)
 	world.ended.connect(_on_end)
 	world.merchant_open.connect(func(): if state == "play": state = "merchant"; screens.show_merchant(world))
+	world.whisper_open.connect(func(): if state == "play": state = "whisper"; Sfx.play("event"); screens.show_whisper(world))
 	_bind_view()
 	hud.bind(world)
 	touch.world = world
@@ -265,6 +269,9 @@ func _on_act(what: String, arg) -> void:
 			Sfx.play("click")
 			if world.pending > 0: screens.show_levelup(world)
 			else: _resume()
+		"bargain":
+			world.accept_bargain(String(arg))
+			_resume()
 		"resume": _resume()
 		"resume_pause":
 			if world != null and state == "pause": screens.show_pause(world)

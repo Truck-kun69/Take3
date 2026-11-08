@@ -24,6 +24,7 @@ func _ready() -> void:
 		_unit()
 		_terrain_tests()
 		_meta_tests()
+		_sky_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -290,6 +291,82 @@ func _meta_tests() -> void:
 	Save.data.torment_max = tmax0
 	Save.data.echoes = e0
 
+func _sky_tests() -> void:
+	print("== sky, lantern and the Whisperer")
+	# Moon: 2026-11-09 07:02 UTC was a new moon, 2026-11-24 14:53 UTC a full moon
+	var nm := Moon.phase_at(1794207720.0)
+	ok(nm < 0.03 or nm > 0.97, "moon: known new moon reads as new (%.3f)" % nm)
+	var fm := Moon.phase_at(1795532000.0)
+	ok(absf(fm - 0.5) < 0.03 and Moon.phase_id(fm) == "full", "moon: known full moon reads as full (%.3f)" % fm)
+	ok(Moon.phase_name(0.25) == "First Quarter" and Moon.phase_name(0.85) == "Waning Crescent", "moon: phase names")
+	ok(Moon.omen_id([10, 31]) == "veil" and Moon.omen_id([1, 2]) == "longnight" and Moon.omen_id([12, 25]) == "longnight" and Moon.omen_id([3, 3]) == "", "calendar omens, incl. across the new year")
+	var wn := _world({"mode": "campaign", "hero": 0, "seed": 4, "moon": 0.0})
+	var wf := _world({"mode": "campaign", "hero": 0, "seed": 4, "moon": 0.5})
+	var w0 := _world({"mode": "campaign", "hero": 0, "seed": 4})
+	ok(wn.stats.value("item_rarity", 1.0) > w0.stats.value("item_rarity", 1.0), "new moon: rarer loot")
+	ok(wn.stats.value("dark_rate", 1.0) > 1.0 and wf.stats.value("dark_rate", 1.0) < 1.0, "new moon darkens faster, full moon slower")
+	ok(Moon.eclipse_weight(0.0) > Moon.eclipse_weight(0.5) and wf.spawn_rate() > w0.spawn_rate(), "new moon: more eclipses; full moon: thicker packs")
+	# the lantern
+	for i in 120: w0.step(1.0 / 20.0)
+	ok(w0.light < 1.0, "the light fades over time (%.2f)" % w0.light)
+	w0.light = 0.1
+	w0.step(0.05)
+	ok(w0.engulfed() > 0.0 and w0.gloom() > 0.8, "below the line the hero is engulfed")
+	var d_lit := w0.dmg_mult()
+	w0.light = 0.0
+	ok(w0.dmg_mult() > d_lit * 1.05, "foes hit harder in the dark")
+	var i0 := w0.spawn_foe(Content.E.GRUNT, w0.pp + Vector2(60, 0), 0)
+	var before := w0.light
+	w0.sw.take(i0, 1e9)
+	w0._reap()
+	ok(w0.light > before, "kills relight the lantern")
+	w0.light = 0.05
+	w0.relight(1.0)
+	ok(is_equal_approx(w0.light, 1.0), "shrines refill it")
+	# the Whisperer
+	var ww := _world({"mode": "campaign", "hero": 0, "seed": 9})
+	ww.offer_whisper()
+	ok(ww.whisper_offer.size() == 2 and ww.whisper_offer[0] != ww.whisper_offer[1], "the Whisperer offers two different bargains")
+	var hp0 := ww.max_hp
+	ww.accept_bargain("glass_crown")
+	ok(ww.has_bargain("glass_crown") and ww.max_hp < hp0 * 0.65 and ww.stats.value("crit_chance", 0.0) >= 0.25, "Glass Crown: crit up, life down")
+	ok(ww.whisper_offer.is_empty(), "accepting closes the offer")
+	ww.accept_bargain("long_night")
+	ww.light = 1.0
+	ww.step(0.05)
+	ok(ww.light <= 0.5, "The Long Night caps the light at half")
+	ww.light = 0.0
+	ww.step(0.05)
+	ok(ww.stats.value("damage", 1.0) > 1.6, "and pays in damage in the dark")
+	ww.accept_bargain("blood_price")
+	ww.hp = ww.max_hp * 0.5
+	ww.flasks[0].c = 60.0
+	var hot := ww.heal_hot
+	ww.use_flask(0)
+	ok(ww.heal_hot == hot and ww.flasks[0].c < 60.0, "Blood Price: the life flask no longer heals")
+	ww.accept_bargain("")
+	ok(ww.bargains.size() == 3, "refusing takes nothing")
+	var e0: int = Save.data.echoes
+	ww.kills = 0
+	ww.end_run(false)
+	ok(ww.echoes_run == 3, "each bargain pays an Echo (%d)" % ww.echoes_run)
+	Save.data.echoes = e0
+	var wp := _world({"mode": "campaign", "hero": 0, "seed": 9})
+	wp.director.whisper_t = 0.0
+	wp.step(0.05)
+	var found := false
+	for o in wp.director.objects:
+		if o.kind == "whisper":
+			found = true
+			wp.pp = o.pos
+	ok(found, "the Director places the Whisperer")
+	wp.step(0.05)
+	ok(wp.whisper_offer.size() == 2, "touching it opens the offer")
+	var pin := _world({"mode": "pinnacle", "hero": 0, "seed": 9})
+	pin.director.whisper_t = 0.0
+	pin.step(0.05)
+	ok(pin.director.objects.filter(func(o): return o.kind == "whisper").is_empty() and pin.light == 1.0, "no Whisperer and no dark in the pinnacle")
+
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true
 	cfg["season"] = cfg.get("season", "")
@@ -316,6 +393,8 @@ func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
 		worst = maxi(worst, el)
 		frames += 1
 		hp_low = minf(hp_low, w.hp / w.max_hp)
+		if not w.whisper_offer.is_empty():
+			w.accept_bargain(Bot.bargain(w.whisper_offer, bot_seed))
 		while w.pending > 0:
 			var ch := w.make_choices()
 			w.apply_choice(Bot.pick(ch, w))
@@ -329,7 +408,8 @@ func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
 		"texts_per_s": snappedf(float(w.metrics.texts) / maxf(1.0, w.t), 0.1), "peak_foes": w.metrics.peak_foes,
 		"perfect": w.metrics.perfect, "events": w.metrics.events, "items": w.metrics.items, "dmg_taken": int(w.metrics.dmg_taken),
 		"ms_avg": snappedf(us / 1000.0 / maxf(1, frames), 0.01), "ms_worst": snappedf(worst / 1000.0, 0.01),
-		"lvl10_t": lvl_t.get(10, -1), "progress": snappedf(w.progress, 0.1), "gold": int(w.gold)}
+		"lvl10_t": lvl_t.get(10, -1), "progress": snappedf(w.progress, 0.1), "gold": int(w.gold),
+		"light_avg": snappedf(float(w.metrics.get("light_sum", 0.0)) / maxf(1.0, w.t), 0.01), "dark_s": int(w.metrics.get("dark_s", 0.0)), "bargains": w.bargains}
 
 func _sims() -> void:
 	print("== sim (bot-played runs)")
@@ -348,8 +428,8 @@ func _sims() -> void:
 	rows.append(run_bot({"mode": "rift", "hero": 2, "gr": 25, "seed": 34}, 320.0, 11))
 	rows.append(run_bot({"mode": "pinnacle", "hero": 0, "seed": 13}, 300.0, 9))
 	for r in rows:
-		print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%4d dps=%5d react=%4d drop=%3d casc=%d txt/s=%5s foes=%3d ms=%5s/%6s hp_low=%s killer=%s ev=%s" % [
-			r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.reactions, r.react_dropped, r.cascade_max, r.texts_per_s, r.peak_foes, r.ms_avg, r.ms_worst, r.hp_low, r.killer, r.events])
+		print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%4d dps=%5d react=%4d drop=%3d casc=%d txt/s=%5s foes=%3d ms=%5s/%6s hp_low=%s killer=%s light=%s dark=%ds pact=%s ev=%s" % [
+			r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.reactions, r.react_dropped, r.cascade_max, r.texts_per_s, r.peak_foes, r.ms_avg, r.ms_worst, r.hp_low, r.killer, r.light_avg, r.dark_s, r.bargains, r.events])
 	report["sim"] = rows
 
 # ================================================================= stress benchmark

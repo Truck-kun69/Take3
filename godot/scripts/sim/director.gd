@@ -27,11 +27,18 @@ var exile_spawned := false
 var history: Array = []            # [time, id] for tests and the end screen
 var _uid := 1000
 var _pending_drops: Array = []     # [time, pos, kind, data]
+var whisper_t := 60.0              # next Whisperer appearance (run time)
+var whispers := 0                  # appearances this run
+const WHISPER_MAX := 3
+
+func _whisper_gap() -> float:
+	return w.rng.randf_range(70.0, 95.0) * Moon.whisper_mult(w.sky_date)
 
 func _init(world: World) -> void:
 	w = world
 	if w.has_mod("breached"):
 		next_t = 18.0
+	whisper_t = w.rng.randf_range(50.0, 70.0) * Moon.whisper_mult(w.sky_date)
 
 func rate_mult() -> float:
 	var m := 1.0
@@ -81,6 +88,12 @@ func step(dt: float) -> void:
 	if w.t >= shrine_t:
 		shrine_t = w.t + w.rng.randf_range(40.0, 65.0)
 		_place_object()
+	if w.t >= whisper_t and w.mode != "pinnacle" and not w.boss_spawned and whispers < WHISPER_MAX + (1 if Moon.whisper_mult(w.sky_date) < 1.0 else 0) \
+			and w.bargains.size() < Content.WHISPER_IDS.size() - 1:
+		whisper_t = w.t + _whisper_gap()
+		whispers += 1
+		objects.append({"pos": _near_point(200.0), "kind": "whisper", "id": "whisper", "life": 30.0})
+		w.banner.emit("A voice in the dark", "Something wants to bargain. Find it before it fades.", Color("9a6bff"))
 	_step_objects(dt)
 	var k := active.size() - 1
 	while k >= 0:
@@ -118,6 +131,7 @@ func pick() -> String:
 		var wt := float(def.weight)
 		if id == "goblin" and w.has_leg("greed"): wt *= 2.0
 		if id == "breach" and w.has_mod("breached"): wt *= 10.0
+		if id == "eclipse": wt *= Moon.eclipse_weight(w.moon)
 		cand.append([id, wt])
 		tot += wt
 	if cand.is_empty():
@@ -430,7 +444,17 @@ func _step_objects(dt: float) -> void:
 	while k >= 0:
 		var o: Dictionary = objects[k]
 		o.life -= dt
+		if o.kind == "whisper":
+			if w.pp.distance_to(o.pos) < 34.0:
+				objects.remove_at(k)
+				w.offer_whisper()
+			elif o.life <= 0.0:
+				objects.remove_at(k)
+				w.toast.emit("The voice falls silent", Color("9a6bff"))
+			k -= 1
+			continue
 		if w.pp.distance_to(o.pos) < 30.0:
+			w.relight(1.0)
 			w.buffs.add(o.id)
 			var def: Dictionary = Content.BUFFS[o.id]
 			w.banner.emit(def.name, _buff_desc(o.id), Content.col(def.col))

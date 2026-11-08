@@ -54,10 +54,15 @@ func _process(dt: float) -> void:
 		5: await _snap("u5_levelup"); main.screens.close(); main.state = "play"; main.world.pending = 0
 		6:
 			for k in 60: main.world.step(0.033)
+			main.world.light = 0.12               # show the lantern below the Engulfed line
 			await _snap("u6_hud")
 			main._pause()
-		7: await _snap("u7_pause"); main._resume(); main.world.end_run(false)
-		8: pass
-		9: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
-		10: await _snap("u9_web"); get_tree().quit()
+		7:
+			await _snap("u7_pause"); main._resume()
+			main.world.whisper_offer = ["blood_price", "long_night"]; main.state = "whisper"; main.screens.show_whisper(main.world)
+		8:
+			await _snap("u7b_whisper"); main._on_act("bargain", "ember_pact"); main.world.end_run(false)
+		9: pass
+		10: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
+		11: await _snap("u9_web"); get_tree().quit()
 	step += 1

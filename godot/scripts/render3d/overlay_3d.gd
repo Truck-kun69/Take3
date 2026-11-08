@@ -25,14 +25,18 @@ func _ready() -> void:
 	_vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sm := ShaderMaterial.new()
 	var sh := Shader.new()
-	sh.code = "shader_type canvas_item; void fragment(){ vec2 d = (UV - 0.5) * vec2(1.2, 1.0); COLOR = vec4(0.0, 0.0, 0.02, smoothstep(0.45, 0.85, length(d)) * 0.55); }"
+	# gloom (the lantern running low) pulls the dark ring in toward the hero
+	sh.code = "shader_type canvas_item; uniform float gloom = 0.0; void fragment(){ vec2 d = (UV - 0.5) * vec2(1.2, 1.0); float r = length(d); float a = smoothstep(0.45, 0.85, r) * 0.55; a = max(a, smoothstep(0.46 - 0.18 * gloom, 0.85 - 0.2 * gloom, r) * 0.8 * gloom); COLOR = vec4(0.0, 0.0, 0.03, a); }"
 	sm.shader = sh
 	_vig.material = sm
 	add_child(_vig)
 
 func _process(_dt: float) -> void:
 	visible = view != null and view.w != null and view.visible
-	if visible: queue_redraw()
+	if visible:
+		queue_redraw()
+		var g := 0.0 if view.w.director.eclipse() else view.w.gloom()     # eclipse already has its own look
+		(_vig.material as ShaderMaterial).set_shader_parameter("gloom", g)
 
 func _text(p: Vector2, txt: String, col: Color, size: int, outline: int = 5, f: Font = null) -> void:
 	if f == null: f = f_tag

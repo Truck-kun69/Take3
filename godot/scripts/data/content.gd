@@ -339,6 +339,7 @@ const BUFFS := {
 	"diamond": {"name": "Diamond", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "e0faff", "mods": [["crit_chance", "add", 0.3]]},
 	"frenzy": {"name": "Overclock", "dur": 12.0, "policy": Stack.REFRESH, "col": "ff8a2b", "mods": [["cooldown", "more", 0.5]]},
 	"aegis": {"name": "Aegis", "dur": 12.0, "policy": Stack.UNIQUE, "col": "ffd24a", "mods": [["invuln", "add", 1.0], ["move_speed", "inc", 0.3]]},
+	"whisper": {"name": "The Whisperer", "dur": 0.0, "policy": Stack.REFRESH, "col": "9a6bff", "mods": []},   # a ground object, never applied
 	"vital": {"name": "Vital Surge", "dur": 10.0, "policy": Stack.REFRESH, "col": "5dff6b", "mods": [["regen_pct", "add", 0.05]]},
 	"cyclone": {"name": "Blade Cyclone", "dur": 6.0, "policy": Stack.REFRESH, "col": "f0b94d", "mods": []},
 	"thunderdome": {"name": "Thunderdome", "dur": 4.0, "policy": Stack.REFRESH, "col": "b890ff", "mods": []},
@@ -373,6 +374,28 @@ const SEASONS := [
 	{"id": "blight", "name": "Season of Blight", "d": "Foes leave poison clouds on death. +25% item quantity."},
 	{"id": "mirrored", "name": "Season of Mirrors", "d": "Elites spawn with a twin. +40% elite rewards."},
 ]
+
+# ---------------------------------------------------------------- the Whisperer's bargains
+# A hooded voice appears mid-run (Director object "whisper"); touching it offers two of these. Each is
+# a boon and a price, applied as one stat source for the rest of the run. Accepted bargains mark the
+# run (end screen) and pay +1 Echo each. "flag" bargains change a rule in World (see has_bargain).
+const WHISPERS := {
+	"blood_price": {"name": "Blood Price", "boon": "+50% more damage", "cost": "Your life flask no longer heals: it bursts into poison around you",
+		"mods": [["damage", "more", 1.5]], "flag": true},
+	"glass_crown": {"name": "Glass Crown", "boon": "+25% critical chance, +60% critical damage", "cost": "40% less maximum life",
+		"mods": [["crit_chance", "add", 0.25], ["crit_mult", "inc", 0.6], ["max_hp", "more", 0.6]]},
+	"ember_pact": {"name": "Ember Pact", "boon": "+2 projectiles", "cost": "The light fades three times as fast",
+		"mods": [["proj_count", "add", 2.0], ["dark_rate", "more", 3.0]]},
+	"gilded_tongue": {"name": "Gilded Tongue", "boon": "+100% item rarity and gold", "cost": "Foes have 35% more life",
+		"mods": [["item_rarity", "inc", 1.0], ["gold_find", "inc", 1.0], ["foe_hp", "more", 1.35]]},
+	"quickened_grave": {"name": "Quickened Grave", "boon": "+30% movement, 30% faster cooldowns", "cost": "Foes deal 40% more damage",
+		"mods": [["move_speed", "more", 1.3], ["cooldown", "more", 0.7], ["foe_dmg", "more", 1.4]]},
+	"hollow_hours": {"name": "Hollow Hours", "boon": "+60% experience", "cost": "You cannot regenerate life",
+		"mods": [["xp_gain", "more", 1.6], ["regen", "more", 0.0], ["regen_pct", "more", 0.0]]},
+	"long_night": {"name": "The Long Night", "boon": "Up to +80% more damage the darker it is", "cost": "The light never rises above half",
+		"mods": [], "flag": true},
+}
+const WHISPER_IDS := ["blood_price", "glass_crown", "ember_pact", "gilded_tongue", "quickened_grave", "hollow_hours", "long_night"]
 
 # ---------------------------------------------------------------- events (happenings) for the Director
 # weight: base pick weight; cd: per-event cooldown seconds; min_t: earliest run time

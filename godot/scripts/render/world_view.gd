@@ -157,8 +157,9 @@ func _process(dt: float) -> void:
 	ground_mat.set_shader_parameter("time", time)
 	swarm_mat.set_shader_parameter("time", time)
 	_terrain_map()
-	var ecl := w.director.eclipse()
-	var target := Color(0.18, 0.16, 0.3) if ecl else Color.WHITE
+	var gl := w.gloom()
+	var ecl := gl > 0.6
+	var target := Color.WHITE.lerp(Color(0.18, 0.16, 0.3), gl)
 	modulate_node.color = modulate_node.color.lerp(target, minf(1.0, dt * 2.0))
 	light.enabled = modulate_node.color.r < 0.95
 	light.position = w.pp

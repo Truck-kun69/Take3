@@ -289,6 +289,44 @@ func _draw() -> void:
 		var inner := PackedVector2Array([at + dir * 11.0, at + n * 7.0 - dir * 3.0, at + dir * 1.0, at - n * 7.0 - dir * 3.0])
 		draw_colored_polygon(inner, col)
 		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color("c99a50"), 1.5)
+	_lantern()
+
+## The lantern (World.light): a flame and a bar left of the timer plate. Gold while lit, guttering
+## toward violet as it fades; below the Engulfed line it pulses and the flame shrinks to an ember.
+func _lantern() -> void:
+	if w.mode == "pinnacle": return
+	var tp := top_plate.position
+	var th := top_plate.get_combined_minimum_size().y
+	var wid := 150.0
+	var at := Vector2(tp.x - wid - 28.0, tp.y + th * 0.5 + 6.0)
+	if at.x < 230.0: at = Vector2(tp.x + top_plate.get_combined_minimum_size().x * 0.5 - wid * 0.5 + 10.0, tp.y + th + 8.0)   # narrow screens: under the plate
+	var l: float = w.light
+	var eng := l < World.LIGHT_ENGULF
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.009)
+	var col := Color("6a4fb0").lerp(Color("ffc45a"), clampf(l / 0.7, 0.0, 1.0))
+	if eng: col = col.lerp(Color("b48aff"), pulse * 0.6)
+	var bar := Rect2(at + Vector2(0, -6), Vector2(wid, 12))
+	draw_rect(bar.grow(2.0), Color(0.03, 0.02, 0.03, 0.85))
+	draw_rect(Rect2(bar.position, Vector2(wid * w.light_cap, 12)), Color(0.12, 0.1, 0.12, 0.9))
+	draw_rect(Rect2(bar.position, Vector2(wid * l, 12)), col)
+	var ex := bar.position.x + wid * World.LIGHT_ENGULF
+	draw_line(Vector2(ex, bar.position.y - 2), Vector2(ex, bar.end.y + 2), Color(0.8, 0.7, 1.0, 0.7), 1.5)
+	draw_rect(bar.grow(2.0), Color("c99a50"), false, 1.2)
+	# the flame: a teardrop that shrinks and dims with the light
+	var fc := Vector2(at.x - 17.0, at.y + 4.0)
+	var fh := lerpf(7.0, 21.0, clampf(l / 0.6, 0.0, 1.0)) * (1.0 + 0.08 * sin(Time.get_ticks_msec() * 0.021))
+	var fl := PackedVector2Array()
+	for i in 13:
+		var a := PI * i / 12.0
+		fl.append(fc + Vector2(cos(a) * 7.5, sin(a) * 5.5))
+	fl.append(fc + Vector2(0, -fh))
+	draw_colored_polygon(fl, Color(0.02, 0.01, 0.02, 0.8))
+	var fi := PackedVector2Array()
+	for p in fl: fi.append(fc + (p - fc) * 0.72)
+	draw_colored_polygon(fi, col.lightened(0.25))
+	if eng:
+		var f2 := UIKit.font("label")
+		draw_string(f2, Vector2(bar.position.x, bar.end.y + 15.0), "ENGULFED", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))
 
 
 ## Liquid globe with the bronze frame and a value in the num face.

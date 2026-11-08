@@ -264,3 +264,55 @@ Critique pass: [the first layout](screenshots/shard_web_pass1_cramped.png) scale
 crowding the side branches and colliding labels, with the Take button below the fold; the graph now uses
 the full width, side-branch labels sit above their nodes, and details and actions live in a side column.
 [Menu and results](screenshots/torment_menu_end.png).
+
+## The lantern, the Whisperer and the real sky
+
+Three systems that make a run feel watched.
+
+**The lantern** (`World._step_light`). `World.light` goes from 1 to 0. It fades at
+0.018/s at the start of a run, rising to 0.045/s by the boss, and is scaled by the `dark_rate` stat.
+Kills relight it: +0.003 for an ordinary foe, +0.05 for an elite, +0.5 for a boss or exile. Pylons and
+shrines refill it. The Eclipse event drains it 2.5× as fast. Below 0.2 the hero is **Engulfed**:
+foes deal up to +30% damage and loot rolls +30% rarity. Both renderers dim by `World.gloom()`
+(0 when lit, 1 when dark; an eclipse counts as 1):
+- sun, ambient and fog;
+- a vignette closing in;
+- foes beyond the lantern's reach are not drawn.
+
+The HUD shows a flame and a bar left of the timer, with the Engulfed line marked. In bot sims the
+average light is 0.35–0.9 depending on how fast the hero kills. A kiting Warden spends about a minute
+Engulfed. The pinnacle arena is always lit.
+
+**The Whisperer** (`Director` object kind `whisper`, `Content.WHISPERS`). From about 60 s, a hooded figure
+appears near the hero every 70–95 s, at most three times a run, and never once the boss is out.
+It lasts 30 s. Touching it opens two bargains, each a boon paired with a price, applied as one
+stat source for the rest of the run:
+
+| Bargain | Boon | Price |
+|---|---|---|
+| Blood Price | +50% more damage | the life flask no longer heals; it releases a poison nova and cloud |
+| Glass Crown | +25% crit chance, +60% crit damage | 40% less life |
+| Ember Pact | +2 projectiles | the light fades 3× as fast |
+| Gilded Tongue | +100% rarity and gold | foes have 35% more life |
+| Quickened Grave | +30% movement, 30% faster cooldowns | foes deal 40% more damage |
+| Hollow Hours | +60% experience | no life regeneration |
+| The Long Night | up to +80% damage the darker it is | the light never rises above half |
+
+Each accepted bargain pays +1 Echo at the end of the run, and the end screen lists them under
+"Marked by the Whisperer".
+
+**The real sky** (`scripts/sim/moon.gd`). The Moon's phase comes from the system clock, using the
+mean synodic month from a known new moon, which is accurate to within about a day. The title screen
+draws the disc at its true phase with its name and percent lit. The phase applies effects:
+- **New moon** (±1.5 days): eclipses ×3, dark ×1.25, +20% rarity.
+- **Full moon**: dark ×0.6, +15% spawns, +15% quantity, eclipses ×0.5.
+- **Waxing**: +5% XP.
+- **Waning**: +10% gold.
+
+Calendar omens:
+- **The Veil is Thin** (Oct 24 – Nov 2): the Whisperer comes sooner and one extra time.
+- **The Longest Night** (Dec 18 – Jan 3): dark ×1.25, +20% gold.
+- **Midsummer** (Jun 18 – 25): dark ×0.6.
+
+`main.start` passes `moon` and `sky_date` in the run cfg. Tests and sims omit them, which gives no
+sky effects and keeps them deterministic.

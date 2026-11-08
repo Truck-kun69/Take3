@@ -329,19 +329,18 @@ func _camera(dt: float) -> void:
 	w.view_r = clampf(r, 400.0, 1400.0)
 
 func _lighting(dt: float) -> void:
-	var ecl := w.director.eclipse()
-	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7)
+	var gl := w.gloom()            # 0 lit .. 1 dark (eclipse or the lantern running out)
+	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7) + 0.25 * gl * sin(time * 3.1) * sin(time * 17.0)
 	var gy := ground_y(w.pp)
 	torch.position = Vector3(w.pp.x, 52.0 + gy, w.pp.y)
 	var to_cam := (cam.global_position - Vector3(w.pp.x, 0, w.pp.y))
 	to_cam.y = 0.0
 	key_light.position = Vector3(w.pp.x, 46.0 + gy, w.pp.y) + to_cam.normalized() * 55.0
-	var tgt_sun := 0.06 if ecl else 0.7
-	sun.light_energy = lerpf(sun.light_energy, tgt_sun, minf(1.0, dt * 2.0))
-	env.ambient_light_energy = lerpf(env.ambient_light_energy, 0.08 if ecl else 0.3, minf(1.0, dt * 2.0))
-	torch.light_energy = (4.5 if ecl else 3.2) * flick * LIGHT_GAIN
-	torch.omni_range = 260.0 if ecl else 300.0
-	env.fog_density = lerpf(env.fog_density, 0.0014 if ecl else 0.0007, minf(1.0, dt))
+	sun.light_energy = lerpf(sun.light_energy, lerpf(0.7, 0.06, gl), minf(1.0, dt * 2.0))
+	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(0.3, 0.08, gl), minf(1.0, dt * 2.0))
+	torch.light_energy = lerpf(3.2, 4.5, gl) * flick * LIGHT_GAIN
+	torch.omni_range = lerpf(300.0, 260.0, gl)
+	env.fog_density = lerpf(env.fog_density, lerpf(0.0007, 0.0014, gl), minf(1.0, dt))
 
 # ================================================================= props
 ## Props are batched per 640-unit chunk and kind (optimisation pass): a cell off screen is frustum-culled
@@ -483,7 +482,8 @@ func _foes() -> void:
 		_fb.resize(span * _foe_mm.size())
 	_foe_n.fill(0)
 	var cull := w.view_r + 60.0
-	var ecl := w.director.eclipse()
+	var gl := w.gloom()
+	var dark_r := lerpf(2000.0, 280.0, gl) if gl > 0.05 else INF     # beyond the lantern's reach, foes are unseen
 	for i in sw.n:
 		var k := sw.kind[i]
 		if k == Content.E.BOSS or k == Content.E.HERALD or k == Content.E.EXILE:
@@ -492,7 +492,7 @@ func _foes() -> void:
 		var dpl := p.distance_to(w.pp)
 		if dpl > cull: continue
 		var f := sw.flags[i]
-		if ecl and dpl > 280.0 and (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) == 0: continue
+		if dpl > dark_r and (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) == 0: continue
 		var dir := (w.pp - p) / maxf(0.001, dpl)
 		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
 		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]

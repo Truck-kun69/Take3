@@ -11,6 +11,7 @@ signal toast(text: String, col: Color)
 signal banner(title: String, sub: String, col: Color)
 signal ended(win: bool)
 signal merchant_open
+signal whisper_open          # the hero touched the Whisperer: whisper_offer holds two bargain ids
 signal item_found(item: Dictionary, upgrade: bool)
 
 class Proj:
@@ -68,6 +69,13 @@ var view_r := VIEW_R_DEFAULT
 var terrain: Terrain = null      # set by setup(); heights, water and passability
 var torment := 0                 # difficulty tier (Content.TORMENT); 0 in rifts, which scale by level
 var echoes_run := 0              # Echoes earned (set at the end of the run)
+var moon := -1.0                 # real-world lunar phase 0..1 (0 new, 0.5 full); < 0 = no sky (tests)
+var sky_date: Array = []         # [month, day] for the calendar omens
+var light := 1.0                 # the lantern: fades over time, kills relight it (see _step_light)
+var light_cap := 1.0
+var bargains: Array = []         # the Whisperer's bargains accepted this run (Content.WHISPERS ids)
+var whisper_offer: Array = []    # two ids while the bargain screen is open
+var _night_q := -1
 var colorblind := false
 var aim_mode := 0
 
@@ -195,6 +203,8 @@ func setup(cfg: Dictionary) -> void:
 	if not node.is_empty():
 		stage = int(node.biome)
 	season = cfg.get("season", Save.season().id)
+	moon = float(cfg.get("moon", -1.0))
+	sky_date = cfg.get("sky_date", [])
 	headless = cfg.get("headless", false)
 	torment = 0 if mode == "rift" else clampi(int(cfg.get("torment", Save.data.get("torment", 0))), 0, Content.TORMENT.size() - 1)
 	if cfg.has("seed"):
@@ -257,6 +267,7 @@ func _apply_meta() -> void:
 		mm.append(["gold_find", "inc", float(T.gold)])
 	stats.set_source("map", mm)
 	stats.set_source("passives", Content.passive_mods(Save.data.get("passives", [])))
+	stats.set_source("sky", Moon.mods(moon, sky_date))
 
 func has_leg(id: String) -> bool:
 	if Save.data.codex_active.has(id):
@@ -283,7 +294,7 @@ func hp_mult() -> float:
 		m = (1.0 + 0.35 * (int(node.tier) - 1) * minf(1.0, 0.4 + t / 100.0)) * (1.0 + t / 110.0)
 	if mode == "rift": m = 1.5 * float(s.hp) * Content.gr_hp_mult(gr_level) * (1.0 + t / 240.0)
 	if has_mod("hardened"): m *= 1.4
-	return m * float(Content.TORMENT[torment].hp)
+	return m * float(Content.TORMENT[torment].hp) * stats.value("foe_hp", 1.0)
 
 func dmg_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
@@ -291,7 +302,7 @@ func dmg_mult() -> float:
 	if mode == "atlas": m = (1.0 + 0.12 * (int(node.tier) - 1)) * (1.0 + t / 300.0)
 	if mode == "rift": m *= Content.gr_dmg_mult(gr_level)
 	if has_mod("lethal"): m *= 1.3
-	return m * float(Content.TORMENT[torment].dmg)
+	return m * float(Content.TORMENT[torment].dmg) * stats.value("foe_dmg", 1.0) * (1.0 + 0.3 * engulfed())
 
 func spd_mult() -> float:
 	return float(Content.STAGES[stage].spd) * (1.0 + minf(0.25, t / 600.0)) * (1.2 if has_mod("swift") else 1.0)
@@ -315,6 +326,7 @@ func step(dt: float) -> void:
 		_step_tide()
 	if fmod(t, 7.0) < dt: terrain.trim(pp)
 	buffs.step(dt)
+	_step_light(dt)
 	_refresh_max_hp()
 	shake = maxf(0.0, shake - dt * 1.8)
 	flash = maxf(0.0, flash - dt)
@@ -486,6 +498,14 @@ func use_flask(f: int) -> void:
 	var fl: Dictionary = flasks[f]
 	if fl.c < fl.cost:
 		return
+	if f == 0 and has_bargain("blood_price"):          # the Whisperer's price: the flask is poison now
+		fl.c -= fl.cost
+		Sfx.play("flask")
+		nova_at(pp, 190.0, weapon_damage_base() * 6.0, 1 << Content.El.CHAOS, Color("7dff6b"), 260.0)
+		var pz := add_tele(0, pp, 150.0, 0.0, 4.0, weapon_damage_base() * 0.9, false, true, Content.El.CHAOS, Color(0.45, 1.0, 0.4, 0.45), "ground")
+		pz.follow = true
+		pz.tick = 0.4
+		return
 	if f == 0 and stats.value("flask_heal", 1.0) <= 0.0:
 		return
 	fl.c -= fl.cost
@@ -557,7 +577,7 @@ func spawn_rate() -> float:
 	if mode == "pinnacle": r = 1.8 if bosses.herald_uid < 0 else (0.6 if bosses.herald_phase() < 3 else 1.4)
 	if boss_spawned and mode != "rift": r *= 0.5
 	if has_mod("packed"): r *= 1.4
-	return r
+	return r * Moon.spawn_mult(moon)
 
 func foe_cap() -> int:
 	return mini(Swarm.CAP - 60, 190 + stage * 25 + (40 if mode == "rift" else 0))
@@ -1515,6 +1535,7 @@ func _on_kill(i: int) -> void:
 	if deaths.size() < 48:
 		deaths.append([at, _foe_col(k), sw.rad[i], elite or (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) != 0, k, (pp - at).normalized(), sw.uid[i]])
 	gain_flask(4.0 if elite else 1.0)
+	relight(0.5 if (f & (Swarm.F_BOSS | Swarm.F_EXILE | Swarm.F_RIFTG)) != 0 else (0.05 if elite else LIGHT_PER_KILL))
 	_burst(at, _foe_col(k), 14 if elite else 5, 200.0 if elite else 120.0)
 	director.on_kill(i, at)
 	if (f & (Swarm.F_BOSS | Swarm.F_HERALD | Swarm.F_RIFTG | Swarm.F_EXILE | Swarm.F_GOBLIN)) != 0:
@@ -1702,7 +1723,9 @@ func end_run(win: bool) -> void:
 		while d.cleared.size() <= stage: d.cleared.append(false)
 		d.cleared[stage] = true
 	# Echoes for the Shard Web: a share of kills, a win bonus, rift depth and the torment tier
-	echoes_run = mini(12, kills / 250 + (2 if win else 0) + (gr_level / 3 if mode == "rift" else 0) + (int(Content.TORMENT[torment].echo) if win else 0))
+	echoes_run = mini(12, kills / 250 + (2 if win else 0) + (gr_level / 3 if mode == "rift" else 0) + (int(Content.TORMENT[torment].echo) if win else 0) + bargains.size())
+	if not bargains.is_empty():
+		d.stats["bargains"] = int(d.stats.get("bargains", 0)) + bargains.size()
 	d.echoes = int(d.get("echoes", 0)) + echoes_run
 	if win and mode != "rift" and torment >= int(d.get("torment_max", 0)) and torment < Content.TORMENT.size() - 1:
 		d.torment_max = torment + 1                  # beating a tier opens the next
@@ -1711,6 +1734,81 @@ func end_run(win: bool) -> void:
 		Save.flush()
 	Sfx.play("win" if win else "lose")
 	ended.emit(win)
+
+# ================================================================= the lantern (darkness meter)
+## Light fades over the run and kills relight it: a hero who keeps killing keeps the dark back;
+## one who kites or stalls watches the world close in. Below LIGHT_ENGULF the hero is Engulfed:
+## foes hit 30% harder and drop 30% rarer loot. Pylons and shrines refill it; the Eclipse
+## event drains it 2.5x as fast; the Moon, the calendar and some bargains scale the rate (dark_rate).
+const LIGHT_PER_KILL := 0.003
+const LIGHT_ENGULF := 0.2
+
+func _step_light(dt: float) -> void:
+	light_cap = 0.5 if has_bargain("long_night") else 1.0
+	if mode == "pinnacle":
+		light = light_cap
+	else:
+		var rate := (0.018 + 0.027 * minf(1.0, t / Content.STAGE_TIME)) * stats.value("dark_rate", 1.0)
+		if director.eclipse(): rate *= 2.5
+		var was := light
+		light = clampf(light - rate * dt, 0.0, light_cap)
+		if was >= LIGHT_ENGULF and light < LIGHT_ENGULF:
+			banner.emit("Engulfed", "The dark closes in. Foes hit harder; their loot is richer. Kill to relight.", Color("6a5a9a"))
+			stats.set_source("engulfed", [["item_rarity", "inc", 0.3]])
+		elif was < LIGHT_ENGULF and light >= LIGHT_ENGULF:
+			stats.clear_source("engulfed")
+	if light < LIGHT_ENGULF: metrics.dark_s = float(metrics.get("dark_s", 0.0)) + dt
+	metrics.light_sum = float(metrics.get("light_sum", 0.0)) + light * dt
+	if has_bargain("long_night"):
+		var q := int(gloom() * 10.0)
+		if q != _night_q:
+			_night_q = q
+			stats.set_source("night", [["damage", "more", 1.0 + 0.08 * q]])
+
+func relight(v: float) -> void:
+	light = minf(light_cap, light + v)
+
+## 0 in full light, 1 in full dark (Eclipse counts as full dark). The renderers dim by this.
+func gloom() -> float:
+	if director.eclipse(): return 1.0
+	return clampf((0.6 - light) / 0.6, 0.0, 1.0)
+
+## 0..1: how far below the Engulfed line the light has fallen.
+func engulfed() -> float:
+	return clampf((LIGHT_ENGULF - light) / LIGHT_ENGULF, 0.0, 1.0) if light < LIGHT_ENGULF else 0.0
+
+# ================================================================= the Whisperer
+func has_bargain(id: String) -> bool:
+	return bargains.has(id)
+
+## Called by the Director when the hero touches the Whisperer: two bargains not yet taken.
+func offer_whisper() -> void:
+	var pool: Array = []
+	for id in Content.WHISPER_IDS:
+		if not bargains.has(id): pool.append(id)
+	if pool.size() < 2:
+		return
+	whisper_offer = []
+	for k in 2:
+		var j := rng.randi_range(0, pool.size() - 1)
+		whisper_offer.append(pool[j])
+		pool.remove_at(j)
+	whisper_open.emit()
+
+## Accept one of the offered bargains ("" refuses). The boon and the price apply for the rest of the run.
+func accept_bargain(id: String) -> void:
+	whisper_offer = []
+	if id == "" or bargains.has(id) or not Content.WHISPERS.has(id):
+		toast.emit("The whisper fades, unanswered", Color("9a6bff"))
+		return
+	bargains.append(id)
+	var B: Dictionary = Content.WHISPERS[id]
+	stats.set_source("whisper:" + id, B.mods)
+	_refresh_max_hp()
+	if id == "long_night": light = minf(light, 0.5)
+	metrics.bargains = bargains.duplicate()
+	banner.emit(B.name, "%s.  %s." % [B.boon, B.cost], Color("b48aff"))
+	Sfx.play("event")
 
 # ================================================================= breakables (urns and barrels)
 ## Clusters of 3-5 appear near the hero every 18-30 s (never more than 10 nearby). Any skill area or

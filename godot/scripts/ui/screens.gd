@@ -101,6 +101,7 @@ func show_menu() -> void:
 	sd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sh.add_child(sd)
 	v.add_child(sh)
+	v.add_child(_sky_row())
 	v.add_child(_resources(d))
 	if Save.has_nemesis():
 		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, UIKit.EMBER, true, "italic")
@@ -685,6 +686,81 @@ func show_pause(w: World) -> void:
 	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(bl)
 
+## The real sky: tonight's Moon (drawn to its true phase) and any calendar omen, with what they change.
+func _sky_row() -> HBoxContainer:
+	var ph := Moon.now()
+	var md := Moon.today()
+	var row := UIKit.hbox(10)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var disc := MoonDisc.new()
+	disc.phase = ph
+	disc.custom_minimum_size = Vector2(34, 34)
+	row.add_child(disc)
+	var tv := UIKit.vbox(0)
+	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var P: Dictionary = Moon.PHASES[Moon.phase_id(ph)]
+	tv.add_child(UIKit.label("%s  \u00b7  %d%% LIT" % [Moon.phase_name(ph).to_upper(), roundi(Moon.illumination(ph) * 100.0)], 14, Color("d8dcef"), false, "label"))
+	tv.add_child(UIKit.label(String(P.d), 15, Color("a9aec4"), true, "italic"))
+	var o := Moon.omen_id(md)
+	if o != "":
+		tv.add_child(UIKit.label("%s: %s" % [Moon.OMENS[o].name, Moon.OMENS[o].d], 15, Color("c9a2ff"), true, "italic"))
+	row.add_child(tv)
+	return row
+
+## The Whisperer's offer: two bargains, each a boon and its price, or walk away.
+func show_whisper(w: World) -> void:
+	var v := _open(900)
+	var portrait := get_viewport_rect().size.x < 820.0
+	var tl := UIKit.title("The Whisperer", 40)
+	(tl.get_child(0) as Label).add_theme_color_override("font_color", Color("b48aff"))
+	v.add_child(tl)
+	var q := UIKit.label("\u201cEvery gift has a price, exile. Choose one, or walk on and wonder.\u201d", 18, Color("b9aed6"), true, "italic")
+	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(q)
+	var row: BoxContainer = UIKit.vbox(10) if portrait else UIKit.hbox(16)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(row)
+	for id in w.whisper_offer:
+		var B: Dictionary = Content.WHISPERS[id]
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(0, 170) if portrait else Vector2(330, 250)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var frame := Color("8a6bd0")
+		var pad := Vector4(20, 22, 20, 22)
+		b.add_theme_stylebox_override("normal", UIKit.nine("card", 46, pad, frame))
+		b.add_theme_stylebox_override("hover", UIKit.nine("card", 46, pad, frame.lightened(0.35)))
+		b.add_theme_stylebox_override("pressed", UIKit.nine("card", 46, pad, Color("d9c2ff")))
+		b.add_theme_stylebox_override("focus", UIKit.nine("card", 46, pad, frame.lightened(0.2)))
+		b.pressed.connect(func(): act.emit("bargain", id))
+		var cv := UIKit.vbox(8)
+		cv.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		cv.offset_left = 24; cv.offset_right = -24; cv.offset_top = 26; cv.offset_bottom = -24
+		cv.alignment = BoxContainer.ALIGNMENT_CENTER
+		b.add_child(cv)
+		var nm := UIKit.label(String(B.name), 25, UIKit.TEXT, true, "display")
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cv.add_child(nm)
+		var dv := UIKit.divider()
+		dv.custom_minimum_size = Vector2(0, 14)
+		cv.add_child(dv)
+		var bl := UIKit.label(String(B.boon), 19, UIKit.GOLD, true, "body")
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cv.add_child(bl)
+		var cl := UIKit.label("but " + String(B.cost).substr(0, 1).to_lower() + String(B.cost).substr(1), 17, Color("e0645a"), true, "italic")
+		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cv.add_child(cl)
+		for n in cv.get_children(): (n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(b)
+	if not w.bargains.is_empty():
+		var ml := UIKit.label("Already bound: " + ", ".join(w.bargains.map(func(x): return Content.WHISPERS[x].name)), 15, UIKit.DIM, true, "italic")
+		ml.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(ml)
+	var note := UIKit.label("Each bargain lasts the run, marks it, and pays +1 Echo at its end.", 15, UIKit.DIM, true, "italic")
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(note)
+	v.add_child(UIKit.button("Refuse and walk on", func(): act.emit("bargain", ""), 54))
+
 func show_end(w: World) -> void:
 	var v := _open(820)
 	var won: bool = w.won
@@ -719,6 +795,11 @@ func show_end(w: World) -> void:
 		pc.add_child(pv)
 		g.add_child(pc)
 	v.add_child(g)
+	if not w.bargains.is_empty():
+		v.add_child(_section("Marked by the Whisperer"))
+		var wl := UIKit.label(", ".join(w.bargains.map(func(x): return Content.WHISPERS[x].name)), 18, Color("c9a2ff"), true, "display")
+		wl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(wl)
 	var ev := ""
 	for e in w.director.history: ev += Content.EVENTS[e[1]].name + ", "
 	if ev != "":
@@ -916,3 +997,26 @@ class AtlasView extends Control:
 			if best >= 0:
 				picked.emit(best)
 				accept_event()
+
+
+## The Moon drawn to its phase: dark disc, the lit limb (right while waxing), an elliptical terminator.
+class MoonDisc extends Control:
+	var phase := 0.0
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := minf(size.x, size.y) * 0.5 - 2.0
+		draw_circle(c, r + 2.0, Color(0, 0, 0, 0.7))
+		draw_circle(c, r, Color(0.16, 0.17, 0.22))
+		var waxing := phase < 0.5
+		var k := cos(TAU * phase)
+		var pts := PackedVector2Array()
+		var n := 24
+		for i in n + 1:                      # the lit limb, top to bottom
+			var a := -PI / 2.0 + PI * i / n
+			pts.append(c + Vector2(r * cos(a) * (1.0 if waxing else -1.0), r * sin(a)))
+		for i in n + 1:                      # the terminator, bottom to top
+			var a := PI / 2.0 - PI * i / n
+			pts.append(c + Vector2(r * k * cos(a) * (1.0 if waxing else -1.0), r * sin(a)))
+		if Moon.illumination(phase) > 0.01:
+			draw_colored_polygon(pts, Color(0.93, 0.92, 0.84))
+		draw_arc(c, r, 0, TAU, 40, Color(0.75, 0.78, 0.9, 0.5), 1.2, true)
