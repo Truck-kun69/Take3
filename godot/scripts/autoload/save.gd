@@ -13,7 +13,7 @@ const DEFAULT_OPTIONS := {
 	"sound": true, "volume": 0.8, "shake": 1.0, "dmg_numbers": 2,   # 0 off, 1 crits/reactions only, 2 all
 	"colorblind": false, "reduce_flash": false, "haptics": true, "aim": 0,   # 0 nearest, 1 strongest, 2 facing
 	"joy_mode": 0, "left_handed": false, "auto_equip": true, "loot_filter": 0,   # 0 all, 1 hide normal, 2 rare+
-	"show_fps": false, "quality": 1, "gfx": 0, "gpu_crowd": 0, "ui_scale": 1.0, "force_touch_ui": false, "renderer": 0, "render_scale": 0,
+	"show_fps": false, "quality": 1, "gfx": 0, "gpu_crowd": 0, "gfx_off": [], "ui_scale": 1.0, "force_touch_ui": false, "renderer": 0, "render_scale": 0,
 }
 
 func _ready() -> void:
@@ -36,6 +36,7 @@ func defaults() -> Dictionary:
 		"passives": ["start"], "echoes": 0, "torment": 0, "torment_max": 0,
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
 		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0},
+		"selftest": {}, "bench": {},          # graphics self-test progress (survives a crash), last benchmark
 	}
 
 func load_profile() -> void:
@@ -59,7 +60,7 @@ func _merge(dst: Dictionary, src: Dictionary) -> void:
 	for k in dst:
 		if not src.has(k):
 			continue
-		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped"].has(k):
+		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench"].has(k):
 			_merge(dst[k], src[k])
 		else:
 			dst[k] = src[k]

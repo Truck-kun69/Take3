@@ -51,10 +51,20 @@ func _ready() -> void:
 	get_tree().root.size_changed.connect(_on_resize)
 	# level of detail switches a little earlier than the 1 px default: the camera is high above the
 	# battlefield, so the coarser meshes are indistinguishable (optimisation pass: -4% triangles)
+	Quality.load_saved()
 	_render_scale()
 	_ui_scale()
 	_menu()
-	if Diag.crashed_last:
+	var st: Dictionary = Save.data.get("selftest", {})
+	if st.get("running", false):
+		if Diag.crashed_last:                     # the pass that was running took the app down
+			var f: String = _st_feature(int(st.pass))
+			st.bad.append(f)
+			st.results.append({"f": f, "crash": true})
+			Diag.mark("selftest: pass %d (%s) crashed" % [st.pass, f])
+		Save.mark_dirty(); Save.flush()
+		screens.show_selftest_resume(st, Diag.crashed_last)
+	elif Diag.crashed_last:
 		screens.show_crash(Diag.report)
 
 ## GPU crowd separation (a compute shader on a local RenderingDevice). Option "gpu_crowd":
@@ -99,11 +109,13 @@ func _render_scale() -> void:
 	var vp := get_viewport()
 	vp.scaling_3d_scale = s
 	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if (compat or s >= 1.0) else Viewport.SCALING_3D_MODE_FSR
+	# FSR 1 exists only in Forward+ (the Mobile renderer warned and ignored it on the S22)
+	var fsr := RenderingServer.get_current_rendering_method() == "forward_plus" and s < 1.0
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if fsr else Viewport.SCALING_3D_MODE_BILINEAR
 	# the graphics tier (Quality): LOD bias, MSAA and the sun's shadow atlas
 	var hi := Quality.high()
 	vp.mesh_lod_threshold = 1.0 if hi else 1.5
-	vp.msaa_3d = Viewport.MSAA_2X if (hi and not compat) else Viewport.MSAA_DISABLED
+	vp.msaa_3d = Viewport.MSAA_2X if (Quality.tier() >= 2 and Quality.on("msaa") and not compat) else Viewport.MSAA_DISABLED
 	if not compat:
 		RenderingServer.directional_shadow_atlas_set_size(4096 if hi else 2048, true)
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if hi else RenderingServer.SHADOW_QUALITY_HARD)
@@ -248,7 +260,7 @@ func start_bench() -> void:
 	hud.visible = true
 	touch.visible = false
 
-func _bench_step(dt: float) -> void:
+func _bench_step_world(dt: float) -> void:
 	_bench_t += dt
 	var a := world.t * 0.35
 	world.in_move = Vector2(-sin(a), cos(a))                 # a slow circle of radius ~ speed / 0.35
@@ -260,6 +272,9 @@ func _bench_step(dt: float) -> void:
 	world.whisper_offer = []
 	world.light = 0.6
 	world.step(minf(dt, 0.05))
+
+func _bench_step(dt: float) -> void:
+	_bench_step_world(dt)
 	if _bench_t > BENCH_WARM:
 		_bench_ms.append(dt * 1000.0)
 		_bench_acc.draws += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
@@ -285,8 +300,82 @@ func _bench_step(dt: float) -> void:
 		_menu()
 		screens.show_bench(res)
 
+# ================================================================= graphics self-test
+## Bisects device crashes: pass 0 runs the benchmark scene with every Quality feature off, then each
+## pass switches one more on for 7 s and records the FPS. Progress is flushed before each pass, so
+## when a driver crash kills the app the next launch knows which feature did it: that one stays
+## off ("gfx_off") and the test resumes. Features found crashing remain off for normal play.
+const ST_PASS := 7.0
+var _st: Dictionary = {}
+var _st_t := 0.0
+var _st_frames := 0
+var _st_time := 0.0
+
+func _st_feature(p: int) -> String:
+	return "base" if p == 0 else String(Quality.FEATURES[p - 1])
+
+func start_selftest(resume: bool) -> void:
+	if not resume or Save.data.selftest.is_empty():
+		Save.data["selftest"] = {"running": true, "pass": 0, "bad": [], "results": []}
+	_st = Save.data["selftest"]
+	_st.running = true
+	if resume: _st.pass = int(_st.pass) + 1
+	Save.data.options.gfx_off = []
+	start_bench()
+	state = "selftest"
+	_st_begin_pass()
+
+func _st_apply() -> void:
+	Quality.off = {}
+	for i in Quality.FEATURES.size():
+		var f: String = Quality.FEATURES[i]
+		if i + 1 > int(_st.pass) or _st.bad.has(f): Quality.off[f] = true
+	_render_scale()
+
+func _st_begin_pass() -> void:
+	while int(_st.pass) <= Quality.FEATURES.size() and _st.bad.has(_st_feature(int(_st.pass))):
+		_st.pass = int(_st.pass) + 1
+	if int(_st.pass) > Quality.FEATURES.size():
+		_st_finish()
+		return
+	_st_apply()
+	_st_t = 0.0
+	_st_frames = 0
+	_st_time = 0.0
+	Save.mark_dirty(); Save.flush()            # on disk before the pass can crash
+	Diag.mark("selftest pass %d: +%s" % [_st.pass, _st_feature(int(_st.pass))])
+
+func _st_step(dt: float) -> void:
+	_bench_step_world(dt)
+	_st_t += dt
+	if _st_t > 1.0:                            # 1 s to settle, then measure
+		_st_frames += 1
+		_st_time += dt
+	if _st_t >= ST_PASS:
+		var fps := _st_frames / maxf(0.01, _st_time)
+		_st.results.append({"f": _st_feature(int(_st.pass)), "fps": snappedf(fps, 0.1),
+			"ktris": int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000.0)})
+		Diag.mark("selftest pass %d ok fps=%.1f" % [_st.pass, fps])
+		_st.pass = int(_st.pass) + 1
+		_st_begin_pass()
+
+func _st_finish() -> void:
+	_st.running = false
+	Save.data.options.gfx_off = _st.bad.filter(func(f): return f != "base")
+	Save.mark_dirty(); Save.flush()
+	Diag.mark("selftest done bad=%s" % str(_st.bad))
+	Quality.load_saved()
+	_render_scale()
+	var res: Dictionary = _st.duplicate(true)
+	_menu()
+	screens.show_selftest(res)
+
 func _process(dt: float) -> void:
 	if world == null:
+		return
+	if state == "selftest":
+		Diag.beat(world, dt, "selftest")
+		_st_step(dt)
 		return
 	if state == "bench":
 		Diag.beat(world, dt, "bench")
@@ -335,6 +424,8 @@ func _on_act(what: String, arg) -> void:
 		"web": screens.show_web()
 		"options": screens.show_options("menu")
 		"bench": start_bench()
+		"selftest": start_selftest(false)
+		"selftest_resume": start_selftest(true)
 		"options_changed":
 			if world != null:
 				world.colorblind = bool(Save.opt("colorblind"))

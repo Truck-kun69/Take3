@@ -22,13 +22,13 @@ func _ready() -> void:
 
 func _process(dt: float) -> void:
 	t += dt
-	if t > 1.0 and main.state == "menu" and not main.screens.get_child_count() == 0 and not Save.data.has("bench") and main.world == null:
+	if t > 1.0 and main.state == "menu" and not main.screens.get_child_count() == 0 and Save.data.bench.is_empty() and main.world == null:
 		main._on_act("bench", null)
 	if main.state == "bench" and not snapped and main._bench_t > 8.0:
 		snapped = true
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(out.path_join("bench_play.png"))
-	if Save.data.has("bench") and main.state == "menu":
+	if not Save.data.bench.is_empty() and main.state == "menu":
 		await RenderingServer.frame_post_draw
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(out.path_join("bench_result.png"))

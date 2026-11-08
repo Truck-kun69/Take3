@@ -563,6 +563,11 @@ func show_options(back: String = "menu") -> void:
 		v.add_child(UIKit.button("Last crash report", func():
 			show_crash(FileAccess.get_file_as_string(Diag.PREV).strip_edges().split("\n").slice(-30)), 46))
 	if back == "menu":
+		v.add_child(UIKit.button("Graphics self-test (finds crashing features)", func(): Save.flush(); act.emit("selftest", null), 50))
+		if not Save.opt("gfx_off").is_empty():
+			v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
+			v.add_child(UIKit.button("Turn them back on", func(): Save.set_opt("gfx_off", []); Quality.load_saved(); act.emit("options_changed", null); show_options(back), 44))
+	if back == "menu":
 		var bb := UIKit.button("Run benchmark (23 s)", func(): Save.flush(); act.emit("bench", null), 50)
 		bb.tooltip_text = "A fixed 400-foe scene; screenshot the result to compare graphics settings."
 		v.add_child(bb)
@@ -579,6 +584,51 @@ func show_crash(lines: PackedStringArray) -> void:
 	sc.custom_minimum_size = Vector2(0, 400)
 	v.add_child(sc)
 	v.add_child(UIKit.button("Continue", func(): show_menu(), 50))
+
+## After a crash (or a background) during the self-test: what crashed, and resume.
+func show_selftest_resume(st: Dictionary, crashed: bool) -> void:
+	var v := _open(860)
+	var f: String = st.bad[st.bad.size() - 1] if crashed and not st.bad.is_empty() else ""
+	if crashed:
+		_title(v, "Found one", "The game crashed while turning on: %s. It stays off. Continue the test to check the rest." % (Quality.FEATURE_NAMES.get(f, "the basic scene (foes, hero, ground)")))
+	else:
+		_title(v, "Self-test paused", "Continue where it stopped?")
+	_selftest_rows(v, st)
+	var row := _grid(2, 10)
+	for pair in [["Continue the test", "selftest_resume"], ["Stop", "menu"]]:
+		var b := UIKit.button(pair[0], func():
+			if pair[1] == "menu":
+				st.running = false
+				Save.data.options.gfx_off = st.bad.filter(func(x): return x != "base")
+				Quality.load_saved()
+				Save.flush()
+			act.emit(pair[1], null), 54)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	v.add_child(row)
+
+func show_selftest(st: Dictionary) -> void:
+	var v := _open(860)
+	_title(v, "Self-test complete", ("Crashing features are switched off: " + ", ".join(st.bad.map(func(x): return Quality.FEATURE_NAMES.get(x, x)))) if not st.bad.is_empty() else "Nothing crashed. Screenshot this and send it over.")
+	_selftest_rows(v, st)
+	var tip := UIKit.label("FPS after each feature is switched on (400 foes). Big drops show what is expensive on this phone.", 15, UIKit.DIM, true, "italic")
+	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(tip)
+	v.add_child(UIKit.button("Back", func(): act.emit("menu", null), 54))
+
+func _selftest_rows(outer: VBoxContainer, st: Dictionary) -> void:
+	var v := UIKit.vbox(2)
+	var sc := _scroll(v, "rows")
+	sc.custom_minimum_size = Vector2(0, mini(36 * st.results.size(), int(get_viewport_rect().size.y * 0.5)))
+	outer.add_child(sc)
+	for r in st.results:
+		var h := UIKit.hbox(12)
+		var nm := "Basic scene" if r.f == "base" else "+ " + String(Quality.FEATURE_NAMES.get(r.f, r.f))
+		var k := UIKit.label(nm, 17, UIKit.DIM, false, "body")
+		k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(k)
+		h.add_child(UIKit.label("CRASHED" if r.get("crash", false) else "%s FPS  %dk tris" % [r.fps, r.ktris], 17, Color("e0645a") if r.get("crash", false) else UIKit.TEXT, false, "body"))
+		v.add_child(h)
 
 ## Benchmark result: big FPS figure, then the detail rows to screenshot and send back.
 func show_bench(r: Dictionary) -> void:

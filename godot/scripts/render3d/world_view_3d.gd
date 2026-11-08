@@ -299,7 +299,33 @@ func _process(dt: float) -> void:
 	env_fx.step(dt)
 	fx.step(dt)
 	_assign_lights()
+	_features()
 	cost_us = lerpf(cost_us, float(Time.get_ticks_usec() - t0), 0.05)
+
+## Quality feature switches (self-test / gfx_off), applied every frame so they can change mid-run.
+var _props_on := true
+var _terr_on := true
+var _hi_on := true
+func _features() -> void:
+	sun.shadow_enabled = Quality.tier() >= 1 and Quality.on("sun_shadow")
+	torch.shadow_enabled = Quality.tier() >= 1 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	env.glow_enabled = Quality.on("post")
+	env.fog_enabled = Quality.on("post")
+	water.visible = Quality.on("water")
+	fx.visible = Quality.on("effects")
+	env_fx.visible = Quality.on("effects")
+	var fs := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if (Quality.tier() >= 1 and Quality.on("foe_shadow")) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for m in _foe_mm:
+		if m.cast_shadow != fs: m.cast_shadow = fs
+	terrain_mat.set_shader_parameter("displace", Quality.on("terrain"))
+	if Quality.on("terrain") != _terr_on:
+		_terr_on = Quality.on("terrain")
+		_tex_center = Vector2i(1 << 30, 0)       # recompose: terrain_o.z = 0 makes every th() lookup return 0
+	if Quality.on("props") != _props_on or Quality.high() != _hi_on:
+		_props_on = Quality.on("props")
+		_hi_on = Quality.high()
+		_clear_props()
+	if GROUND_Q != Quality.ground_q(): _ground_mesh()
 
 func _camera(dt: float) -> void:
 	var vs := get_viewport().get_visible_rect().size
@@ -408,7 +434,7 @@ func _terrain_tex(dt: float) -> void:
 		else: _th_tex.update(_th_img)
 		var o := Vector2(cc - Vector2i(half, half)) * Terrain.CHUNK
 		RenderingServer.global_shader_parameter_set("terrain_h", _th_tex)
-		RenderingServer.global_shader_parameter_set("terrain_o", Vector4(o.x, o.y, n, Terrain.CELL))
+		RenderingServer.global_shader_parameter_set("terrain_o", Vector4(o.x, o.y, n if Quality.on("terrain") else 0, Terrain.CELL))
 		_ts_ver = -1
 	_ts_t -= dt
 	var live := not T.frozen.is_empty() or not T.charged.is_empty()
@@ -444,6 +470,7 @@ func _prop_ok(kind: String, p: Vector2) -> bool:
 func _build_cell(c: Vector2i) -> Node3D:
 	var cell := Node3D.new()
 	add_child(cell)
+	if not Quality.on("props"): return cell
 	var dens: Dictionary = _look.props
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(Vector3i(c.x, c.y, w.stage))

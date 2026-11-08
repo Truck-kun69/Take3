@@ -10,6 +10,21 @@ extends RefCounted
 
 const NAMES := ["Low", "Medium", "High"]
 
+## Rendering features that can be switched off one by one (the graphics self-test bisects device
+## crashes with these; features it finds crashing stay off via the "gfx_off" option).
+const FEATURES := ["props", "terrain", "water", "lights", "post", "effects", "foe_shadow", "sun_shadow", "torch_shadow", "msaa", "high_detail"]
+const FEATURE_NAMES := {"props": "Trees, rocks and ruins", "terrain": "Hills (terrain height in shaders)", "water": "Water and lava",
+	"lights": "Dynamic lights", "post": "Glow and fog", "effects": "Spell effects and ground marks", "foe_shadow": "Foe shadows",
+	"sun_shadow": "Sun shadows", "torch_shadow": "Hero torch shadow", "msaa": "Anti-aliasing (MSAA)", "high_detail": "High-detail props and ground"}
+static var off := {}            # feature -> true while switched off (self-test pass or saved gfx_off)
+
+static func on(f: String) -> bool:
+	return not off.has(f)
+
+static func load_saved() -> void:
+	off = {}
+	for f in Save.opt("gfx_off"): off[f] = true
+
 static func tier() -> int:
 	var o := int(Save.opt("gfx"))
 	if o > 0: return clampi(o - 1, 0, 2)
@@ -17,7 +32,7 @@ static func tier() -> int:
 	return 2
 
 static func high() -> bool:
-	return tier() >= 2
+	return tier() >= 2 and on("high_detail")
 
 ## Prop count multiplier for the chunked scatter.
 static func prop_density() -> float:
@@ -25,7 +40,7 @@ static func prop_density() -> float:
 
 ## Ground grid spacing in world units (vertex density of the displaced terrain).
 static func ground_q() -> float:
-	return [24.0, 20.0, 12.0][tier()]
+	return 12.0 if high() else [24.0, 20.0, 20.0][tier()]
 
 static func lights() -> int:
-	return [4, 8, 14][tier()]
+	return [4, 8, 14][tier()] if on("lights") else 0
