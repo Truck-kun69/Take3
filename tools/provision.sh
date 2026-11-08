@@ -62,12 +62,24 @@ if [ ! -x "$SDK/build-tools/$BUILD_TOOLS/apksigner" ]; then
   "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "build-tools;$BUILD_TOOLS" "platforms;$PLATFORM" >/dev/null
 fi
 
-# 4. Debug keystore (standard Android debug credentials)
+# 4. Debug keystore (standard Android debug credentials). The repo carries one (tools/keys) so every
+#    machine signs with the same key and new test APKs install over old ones, keeping the save.
 KS="$TOOLS/debug.keystore"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -f "$KS" ] && [ -f "$HERE/keys/debug.keystore" ]; then cp "$HERE/keys/debug.keystore" "$KS"; fi
 if [ ! -f "$KS" ]; then
   log "Creating debug keystore"
   keytool -genkeypair -v -keystore "$KS" -storepass android -alias androiddebugkey -keypass android \
     -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+fi
+
+# 4b. Blender (headless model pipeline: tools/blender/*.py); SKIP_BLENDER=1 to leave it out
+BLENDER_VER="${BLENDER_VER:-4.5.15}"
+if [ -z "${SKIP_BLENDER:-}" ] && [ ! -x "$TOOLS/blender/blender" ]; then
+  log "Downloading Blender $BLENDER_VER"
+  fetch "https://download.blender.org/release/Blender${BLENDER_VER%.*}/blender-${BLENDER_VER}-linux-x64.tar.xz" "$TOOLS/blender.tar.xz"
+  tar -xJf "$TOOLS/blender.tar.xz" -C "$TOOLS" && rm "$TOOLS/blender.tar.xz"
+  ln -sfn "$TOOLS/blender-${BLENDER_VER}-linux-x64" "$TOOLS/blender"
 fi
 
 # 5. Editor settings: where headless exports look for the SDK, JDK and keystore
