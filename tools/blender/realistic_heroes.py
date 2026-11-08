@@ -33,10 +33,10 @@ import build_models as B  # noqa: E402
 
 MODELS = B.MODELS
 HEROES = {
-    "warden": {"concept": "warden_23", "tris": 60000, "weapons": [("warden_sword", "sword"), ("warden_shield", "shield")]},
-    "spark": {"concept": "spark_23", "tris": 60000, "weapons": [("spark_staff", "staff")]},
-    "ember": {"concept": "ember_11", "tris": 60000, "weapons": [("ember_staff", "staff")]},
-    "storm": {"concept": "storm_11", "tris": 60000, "weapons": [("storm_staff", "staff")]},
+    "warden": {"concept": "warden_23", "tris": 28000, "weapons": [("warden_sword", "sword"), ("warden_shield", "shield")]},
+    "spark": {"concept": "spark_23", "tris": 28000, "weapons": [("spark_staff", "staff")]},
+    "ember": {"concept": "ember_11", "tris": 28000, "weapons": [("ember_staff", "staff")]},
+    "storm": {"concept": "storm_11", "tris": 28000, "weapons": [("storm_staff", "staff")]},
 }
 NOSE_TO_ANKLE = 40.6          # humanoid(50): head 43.2, ankle 2.6
 

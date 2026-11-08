@@ -46,7 +46,7 @@ var _cam_pos := Vector3.ZERO
 var _cam_target := Vector3.ZERO
 var _foe_mm: Array[MultiMeshInstance3D] = []
 var _foe_n := PackedInt32Array()
-var _prop_mm := {}
+var _prop_cells := {}        # Vector2i chunk -> Node3D holding one MultiMesh per prop kind (culled and LOD'd per cell)
 var _chunk_key := ""
 var _look: Dictionary
 var cost_us := 0.0
@@ -94,7 +94,7 @@ func _ready() -> void:
 	sun.light_energy = 0.7
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 1800.0
+	sun.directional_shadow_max_distance = 1150.0          # the camera sits 600-700 away; 1800 shadowed far off screen
 	sun.shadow_blur = 1.5
 	add_child(sun)
 	torch = OmniLight3D.new()
@@ -147,17 +147,6 @@ func _ready() -> void:
 		add_child(mmi)
 		_foe_mm.append(mmi)
 	_foe_n.resize(Models.FOE_KINDS.size())
-	for kind in Models.PROP_KINDS:
-		var pmi := MultiMeshInstance3D.new()
-		var mm2 := MultiMesh.new()
-		mm2.transform_format = MultiMesh.TRANSFORM_3D
-		mm2.mesh = Models.prop_mesh(kind)
-		mm2.custom_aabb = AABB(Vector3(-1e6, -100, -1e6), Vector3(2e6, 600, 2e6))
-		pmi.multimesh = mm2
-		pmi.material_override = prop_mat
-		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if kind == "grass" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		add_child(pmi)
-		_prop_mm[kind] = pmi
 	fx = FX3D.new()
 	add_child(fx)
 	fx.view = self
@@ -235,7 +224,7 @@ func bind(world: World) -> void:
 	sky_mat.sky_horizon_color = _look.fog.lightened(0.3)
 	sky_mat.ground_bottom_color = _look.bg
 	sky_mat.ground_horizon_color = _look.fog
-	_chunk_key = ""
+	_clear_props()
 	_cam_pos = Vector3(w.pp.x, 0, w.pp.y)
 	_cam_target = _cam_pos
 	_kind_col.clear()
@@ -313,36 +302,75 @@ func _lighting(dt: float) -> void:
 	env.fog_density = lerpf(env.fog_density, 0.0014 if ecl else 0.0007, minf(1.0, dt))
 
 # ================================================================= props
+## Props are batched per 640-unit chunk and kind (optimisation pass): a cell off screen is frustum-culled
+## as a whole, and a distant cell draws the imported mesh's automatic lower LOD. One batch per kind for
+## the whole 5x5 neighbourhood drew every prop every frame (props were ~70% of all triangles).
 func _props() -> void:
+	prop_mat.set_shader_parameter("hero_pos", Vector3(w.pp.x, ground_y(w.pp), w.pp.y))
 	var cx := floori(w.pp.x / CHUNK)
 	var cy := floori(w.pp.y / CHUNK)
 	var key := "%d:%d" % [cx, cy]
 	if key == _chunk_key:
-		prop_mat.set_shader_parameter("hero_pos", Vector3(w.pp.x, 0, w.pp.y))
 		return
 	_chunk_key = key
-	var dens: Dictionary = _look.props
-	var per := {}
-	for kind in Models.PROP_KINDS: per[kind] = []
+	var want := {}
 	for gx in range(cx - 2, cx + 3):
 		for gy in range(cy - 2, cy + 3):
-			var rng := RandomNumberGenerator.new()
-			rng.seed = hash(Vector3i(gx, gy, w.stage))
-			for kind in Models.PROP_KINDS:
-				var n := float(dens.get(kind, 0.0))
-				var cnt := int(n) + (1 if rng.randf() < n - floorf(n) else 0)
-				for i in cnt:
-					var p := Vector2((gx + rng.randf()) * CHUNK, (gy + rng.randf()) * CHUNK)
-					if p.length() < 120.0: continue          # keep the spawn point clear
-					var s := rng.randf_range(0.7, 1.35)
-					var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.85, 1.2), s))
-					per[kind].append(Transform3D(b, Vector3(p.x, 0, p.y)))
-	for kind in per:
-		var mm: MultiMesh = _prop_mm[kind].multimesh
-		var list: Array = per[kind]
+			want[Vector2i(gx, gy)] = true
+	for c in _prop_cells.keys():
+		if not want.has(c):
+			_prop_cells[c].queue_free()
+			_prop_cells.erase(c)
+	for c in want:
+		if not _prop_cells.has(c):
+			_prop_cells[c] = _build_cell(c)
+
+func _clear_props() -> void:
+	for c in _prop_cells: _prop_cells[c].queue_free()
+	_prop_cells.clear()
+	_chunk_key = ""
+
+## Ground height under a point (flat until the terrain heightfield exists).
+func ground_y(p: Vector2) -> float:
+	return w.terrain.height(p) if w != null and w.terrain != null else 0.0
+
+## Whether a prop of this kind may stand here (terrain rules: no trees in water, no props on cliffs).
+func _prop_ok(kind: String, p: Vector2) -> bool:
+	if w == null or w.terrain == null: return true
+	return w.terrain.prop_ok(kind, p)
+
+func _build_cell(c: Vector2i) -> Node3D:
+	var cell := Node3D.new()
+	add_child(cell)
+	var dens: Dictionary = _look.props
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(Vector3i(c.x, c.y, w.stage))
+	var lo := Vector3(c.x * CHUNK, -200.0, c.y * CHUNK)
+	for kind in Models.PROP_KINDS:
+		var n := float(dens.get(kind, 0.0)) * (w.terrain.density(kind, c) if w.terrain != null else 1.0)
+		var cnt := int(n) + (1 if rng.randf() < n - floorf(n) else 0)
+		var list := []
+		for i in cnt:
+			var p := Vector2((c.x + rng.randf()) * CHUNK, (c.y + rng.randf()) * CHUNK)
+			var s := rng.randf_range(0.7, 1.35)
+			var rot := rng.randf() * TAU
+			var sy := rng.randf_range(0.85, 1.2)
+			if p.length() < 120.0 or not _prop_ok(kind, p): continue      # keep the spawn point clear
+			var b := Basis(Vector3.UP, rot).scaled(Vector3(s, s * sy, s))
+			list.append(Transform3D(b, Vector3(p.x, ground_y(p) - 0.5, p.y)))
+		if list.is_empty(): continue
+		var pmi := MultiMeshInstance3D.new()
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = Models.prop_mesh(kind)
 		mm.instance_count = list.size()
-		for i in list.size():
-			mm.set_instance_transform(i, list[i])
+		for i in list.size(): mm.set_instance_transform(i, list[i])
+		mm.custom_aabb = AABB(lo, Vector3(CHUNK, 600.0, CHUNK)).grow(60.0)
+		pmi.multimesh = mm
+		pmi.material_override = prop_mat
+		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if kind == "grass" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		cell.add_child(pmi)
+	return cell
 
 # ================================================================= foes
 ## All kinds share one flat member buffer (kind k owns [k*CAP*STRIDE, (k+1)*CAP*STRIDE)), written in place.

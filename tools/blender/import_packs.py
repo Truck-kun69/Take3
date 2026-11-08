@@ -33,16 +33,16 @@ QL = "quaternius_monsters/Blob/glTF"
 
 # kind -> source, pose, size (procedural foe height), triangle budget, shard crystals, extras
 FOES = {
-    "grunt":   {"src": f"{KK}/Characters/gltf/Skeleton_Minion.glb", "action": "Idle", "height": 2.1, "tris": 2200, "crystals": 3,
+    "grunt":   {"src": f"{KK}/Characters/gltf/Skeleton_Minion.glb", "action": "Idle", "height": 2.1, "tris": 1000, "crystals": 3,
                 "weapon": (f"{KK}/Assets/gltf/Skeleton_Blade.gltf", "handslot.r")},
-    "runner":  {"src": f"{QB}/Dino.blend", "action": "Idle", "height": 1.5, "tris": 1300, "crystals": 4},
-    "brute":   {"src": f"{QB}/Yeti.blend", "action": "Idle", "height": 2.6, "tris": 1800, "crystals": 6},
-    "spitter": {"src": f"{QB}/Frog.blend", "action": "Idle", "height": 1.7, "tris": 1300, "crystals": 3},
-    "charger": {"src": f"{QB}/Demon.blend", "action": "Idle", "height": 1.8, "tris": 1400, "crystals": 4},
-    "breach":  {"src": f"{QB}/Alien.blend", "action": "Idle", "height": 1.8, "tris": 1400, "crystals": 2},
-    "goblin":  {"src": f"{QB}/MushroomKing.blend", "action": "Idle", "height": 1.9, "tris": 1500, "crystals": 3},
-    "splitter": {"src": f"{QL}/GreenSpikyBlob.gltf", "action": "Idle", "height": 2.0, "tris": 1200, "crystals": 4},
-    "mini":    {"src": f"{QL}/GreenBlob.gltf", "action": "Idle", "height": 1.0, "tris": 600, "crystals": 1},
+    "runner":  {"src": f"{QB}/Dino.blend", "action": "Idle", "height": 1.5, "tris": 800, "crystals": 4},
+    "brute":   {"src": f"{QB}/Yeti.blend", "action": "Idle", "height": 2.6, "tris": 900, "crystals": 6},
+    "spitter": {"src": f"{QB}/Frog.blend", "action": "Idle", "height": 1.7, "tris": 800, "crystals": 3},
+    "charger": {"src": f"{QB}/Demon.blend", "action": "Idle", "height": 1.8, "tris": 800, "crystals": 4},
+    "breach":  {"src": f"{QB}/Alien.blend", "action": "Idle", "height": 1.8, "tris": 800, "crystals": 2},
+    "goblin":  {"src": f"{QB}/MushroomKing.blend", "action": "Idle", "height": 1.9, "tris": 900, "crystals": 3},
+    "splitter": {"src": f"{QL}/GreenSpikyBlob.gltf", "action": "Idle", "height": 2.0, "tris": 800, "crystals": 4},
+    "mini":    {"src": f"{QL}/GreenBlob.gltf", "action": "Idle", "height": 1.0, "tris": 450, "crystals": 1},
 }
 
 LEG_L, LEG_R, ARM_L, ARM_R, HEAD, EYE, GLOW = 1, 2, 3, 4, 5, 6, 7

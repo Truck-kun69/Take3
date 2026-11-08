@@ -25,11 +25,11 @@ OUT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "godot", "models", "p
 
 # name -> height (matches the procedural prop), triangle budget, which faces glow / sway
 PROPS = {
-    "crystal": {"height": 30.0, "tris": 2000, "glow": "crystal"},
-    "pillar":  {"height": 48.0, "tris": 2600, "glow": "crystal"},
-    "tree":    {"height": 69.0, "tris": 5000, "sway_above": 0.42},     # thin branches need the triangles
-    "rock":    {"height": 16.0, "tris": 1000, "glow": "crystal"},
-    "bones":   {"height": 7.0, "tris": 2600},
+    "crystal": {"height": 30.0, "tris": 1400, "glow": "crystal"},
+    "pillar":  {"height": 48.0, "tris": 1800, "glow": "crystal"},
+    "tree":    {"height": 69.0, "tris": 3000, "sway_above": 0.42},     # thin branches shattered at 2000
+    "rock":    {"height": 16.0, "tris": 700, "glow": "crystal"},
+    "bones":   {"height": 7.0, "tris": 1600},
 }
 
 

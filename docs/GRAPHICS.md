@@ -190,3 +190,30 @@ xvfb-run -a godot --path godot --rendering-method mobile --resolution 720x1280 r
 ```
 
 The web page is 15.6 MB. The logo ships at 1400 px and unused font weights were dropped to stay under 16 MB.
+
+## Optimisation pass (render benchmark)
+
+`tests/render_bench.tscn` plays a real run with the full 3D view at 150, 300 and 500 foes and reports
+frame time, the 3D view's CPU cost, draw calls and triangles (env vars `BENCH_SIZES`, `BENCH_NO_SHADOW`,
+`BENCH_NO_PROPS`, `BENCH_NO_LOD`, `BENCH_LOD`, `BENCH_ORTHO` isolate costs). Measured here on lavapipe, a
+CPU rasteriser, so only the ratios carry over to real GPUs:
+
+| Foes | Frame before → after | Triangles before → after |
+|---|---|---|
+| 157 | 699 → 430 ms | 1.33M → 0.92M |
+| 300 | 909 → 540 ms | 1.89M → 0.96M |
+| 500 | 1215 → 660 ms | 2.68M → 0.91M |
+
+What changed:
+* **Props batched per 640-unit chunk** instead of one batch per kind for the whole neighbourhood,
+  so off-screen chunks are culled and distant ones draw the imported meshes' automatic LODs. Props
+  had been ~70% of all triangles.
+* **Leaner meshes where the camera can't tell**: swarm foes 450–1,100 triangles (grunt was 2,300),
+  props 700–3,000 (tree 5,000), heroes 31–35k (42k, checked side by side on the title stage). No
+  tangents on meshes without normal maps.
+* LOD switches at 1.5 px instead of 1; sun shadows reach 1,150 units instead of 1,800.
+* **3D resolution option** (Auto, 100%, 75%, 50%): Auto renders 3D at 75% on phones and the web
+  (FSR 1 upscaling where the renderer supports it) with the UI at full resolution.
+* **Show FPS** now reads frame time, draw calls, triangles, foe count and 3D resolution.
+* **Web build**: hero textures at 1024 (desktop and Android keep 2048). Page 35 → 30 MB; the rest is
+  the 13 MB engine and the four hero meshes, which all ship because the pack is downloaded whole.

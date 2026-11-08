@@ -54,6 +54,10 @@ func _ready() -> void:
 	else:
 		print("crowd compute: GPU separation active")
 	get_tree().root.size_changed.connect(_on_resize)
+	# level of detail switches a little earlier than the 1 px default: the camera is high above the
+	# battlefield, so the coarser meshes are indistinguishable (optimisation pass: -4% triangles)
+	get_viewport().mesh_lod_threshold = 1.5
+	_render_scale()
 	_ui_scale()
 	_menu()
 
@@ -64,6 +68,21 @@ func _ui_scale() -> void:
 	var f := 1.0
 	if vs.y > vs.x: f = clampf(float(vs.y) / float(vs.x), 1.0, 1.9)
 	get_window().content_scale_factor = f * float(Save.opt("ui_scale"))
+
+## 3D render resolution. Phones and the web build are fill-rate bound: rendering the 3D at 75%
+## (FSR 1 upscale where the renderer has it, bilinear on Compatibility) and drawing the UI at full
+## resolution keeps text sharp. Option "render_scale": 0 auto, 1 = 100%, 2 = 75%, 3 = 50%.
+func _render_scale() -> void:
+	var opt := int(Save.opt("render_scale"))
+	var s := 1.0
+	match opt:
+		0: s = 0.75 if (OS.has_feature("mobile") or OS.has_feature("web")) else 1.0
+		2: s = 0.75
+		3: s = 0.5
+	var vp := get_viewport()
+	vp.scaling_3d_scale = s
+	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if (compat or s >= 1.0) else Viewport.SCALING_3D_MODE_FSR
 
 func _on_resize() -> void:
 	_ui_scale()
@@ -222,6 +241,7 @@ func _on_act(what: String, arg) -> void:
 				world.colorblind = bool(Save.opt("colorblind"))
 				world.aim_mode = int(Save.opt("aim"))
 				_bind_view()
+			_render_scale()
 		"equip": equip(arg)
 		"salvage":
 			Save.data.stash.erase(arg)

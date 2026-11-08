@@ -65,6 +65,7 @@ var season := ""
 var rng := RandomNumberGenerator.new()
 var headless := false         # tests: no profile writes beyond the in-memory dict
 var view_r := VIEW_R_DEFAULT
+var terrain: Terrain = null      # set by setup(); heights, water and passability
 var colorblind := false
 var aim_mode := 0
 

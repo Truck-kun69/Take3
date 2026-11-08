@@ -32,6 +32,7 @@ var banner_time := 0.0
 var toasts: VBoxContainer
 var upgrade_lbl: Label
 var fps_lbl: Label
+var _frame_ms := 16.0
 var flash_rect: ColorRect
 var vignette: ColorRect
 var pause_btn: Button
@@ -239,8 +240,11 @@ func _process(dt: float) -> void:
 	upgrade_lbl.position = Vector2((vs.x - upgrade_lbl.get_combined_minimum_size().x) * 0.5, bar.position.y - 30 if not touch else vs.y - 230)
 	fps_lbl.visible = bool(Save.opt("show_fps"))
 	if fps_lbl.visible:
-		fps_lbl.text = "%d fps  %d foes  %s" % [Engine.get_frames_per_second(), w.sw.n, "GPU crowd" if w.crowd != null and w.crowd.ready else "CPU crowd"]
-		fps_lbl.position = Vector2(vs.x - 260, vs.y - 50)
+		_frame_ms = lerpf(_frame_ms, dt * 1000.0, 0.1)
+		fps_lbl.text = "%d fps  %.1f ms  %d foes\n%d draws  %dk tris  %s  3D %d%%" % [Engine.get_frames_per_second(), _frame_ms, w.sw.n,
+			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000.0),
+			"GPU crowd" if w.crowd != null and w.crowd.ready else "CPU crowd", int(get_viewport().scaling_3d_scale * 100.0)]
+		fps_lbl.position = Vector2(vs.x - 330, vs.y - 70)
 	var fl := w.flash * (0.3 if Save.opt("reduce_flash") else 1.0)
 	flash_rect.color = Color(1, 1, 1, clampf(fl * 1.6, 0, 0.6))
 	var low := clampf((0.35 - w.hp / w.max_hp) / 0.35, 0, 1) * (0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008))
