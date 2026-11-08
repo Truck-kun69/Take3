@@ -556,13 +556,29 @@ func show_options(back: String = "menu") -> void:
 	_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
 	_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
 	_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
+	_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
 	_toggle(v, "Show FPS", "show_fps", back)
 	_toggle(v, "Always show touch buttons", "force_touch_ui", back)
+	if back == "menu" and FileAccess.file_exists(Diag.PREV):
+		v.add_child(UIKit.button("Last crash report", func():
+			show_crash(FileAccess.get_file_as_string(Diag.PREV).strip_edges().split("\n").slice(-30)), 46))
 	if back == "menu":
 		var bb := UIKit.button("Run benchmark (23 s)", func(): Save.flush(); act.emit("bench", null), 50)
 		bb.tooltip_text = "A fixed 400-foe scene; screenshot the result to compare graphics settings."
 		v.add_child(bb)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); act.emit(back, null)))
+
+## Shown on launch after a session that ended without closing cleanly: the tail of its breadcrumb
+## trail and the engine's errors, small enough to fit one screenshot.
+func show_crash(lines: PackedStringArray) -> void:
+	var v := _open(1100)
+	_title(v, "The last session ended unexpectedly", "Please screenshot this and send it over. It shows what the game was doing when it stopped.")
+	var t := UIKit.label("\n".join(lines), 12, Color("d8d0c0"), true, "body")
+	t.add_theme_font_override("font", SystemFont.new())
+	var sc := _scroll(t, "crash")
+	sc.custom_minimum_size = Vector2(0, 400)
+	v.add_child(sc)
+	v.add_child(UIKit.button("Continue", func(): show_menu(), 50))
 
 ## Benchmark result: big FPS figure, then the detail rows to screenshot and send back.
 func show_bench(r: Dictionary) -> void:

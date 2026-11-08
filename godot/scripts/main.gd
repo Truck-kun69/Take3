@@ -47,18 +47,34 @@ func _ready() -> void:
 	touch.roll.connect(func(): if world: world.in_roll = true)
 	touch.ult.connect(func(): if world: world.in_ult = true)
 	touch.flask.connect(func(i: int): if world: world.in_flask[i] = true)
-	crowd = CrowdCompute.new()
-	if not crowd.init():
-		print("crowd compute unavailable: ", crowd.last_error, " (CPU separation in use)")
-		crowd = null
-	else:
-		print("crowd compute: GPU separation active")
+	_crowd_setup()
 	get_tree().root.size_changed.connect(_on_resize)
 	# level of detail switches a little earlier than the 1 px default: the camera is high above the
 	# battlefield, so the coarser meshes are indistinguishable (optimisation pass: -4% triangles)
 	_render_scale()
 	_ui_scale()
 	_menu()
+	if Diag.crashed_last:
+		screens.show_crash(Diag.report)
+
+## GPU crowd separation (a compute shader on a local RenderingDevice). Option "gpu_crowd":
+## 0 Auto = off on phones (first S21 test crashed seconds into a run; CPU separation is cheap), on
+## elsewhere; 1 On; 2 Off.
+func _crowd_setup() -> void:
+	var o := int(Save.opt("gpu_crowd"))
+	var want := o == 1 or (o == 0 and not OS.has_feature("mobile"))
+	if want and crowd == null:
+		Diag.mark("crowd init")
+		crowd = CrowdCompute.new()
+		if not crowd.init():
+			Diag.mark("crowd unavailable: " + crowd.last_error)
+			crowd = null
+		else:
+			Diag.mark("crowd: GPU separation active")
+	elif not want and crowd != null:
+		crowd.release()
+		crowd = null
+		Diag.mark("crowd off (CPU separation)")
 
 ## Portrait phones: the 1280x720 design base shrinks the UI to ~0.56x; scale the 2D canvas back up.
 ## (content_scale_factor only affects 2D, the 3D camera handles portrait framing itself.)
@@ -144,17 +160,20 @@ func start(cfg: Dictionary) -> void:
 	menu_stage.hide_stage()
 	last_cfg = cfg.duplicate()
 	cfg["hero"] = int(Save.data.hero)
+	Diag.mark("start %s gfx=%s scale=%.2f crowd=%s" % [str(cfg), Quality.NAMES[Quality.tier()], get_viewport().scaling_3d_scale, "gpu" if crowd != null else "cpu"])
 	if not cfg.has("moon"):
 		cfg["moon"] = Moon.now()
 		cfg["sky_date"] = Moon.today()
 	world = World.new()
 	world.crowd = crowd
 	world.setup(cfg)
+	Diag.mark("world ready")
 	world.level_up.connect(_on_level)
 	world.ended.connect(_on_end)
 	world.merchant_open.connect(func(): if state == "play": state = "merchant"; screens.show_merchant(world))
 	world.whisper_open.connect(func(): if state == "play": state = "whisper"; Sfx.play("event"); screens.show_whisper(world))
 	_bind_view()
+	Diag.mark("view bound")
 	hud.bind(world)
 	touch.world = world
 	hud.visible = true
@@ -222,6 +241,7 @@ func start_bench() -> void:
 	_bench_ms = PackedFloat32Array()
 	_bench_acc = {"draws": 0.0, "tris": 0.0, "foes": 0.0, "n": 0}
 	world.stats.set_source("bench", [["invuln", "add", 1.0], ["max_hp", "add", 1e6]])
+	Diag.mark("bench start")
 	for id in ["bolt", "nova", "orbit"]:
 		world.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
 		world.wlocal[id] = Stats.new()
@@ -232,7 +252,8 @@ func _bench_step(dt: float) -> void:
 	_bench_t += dt
 	var a := world.t * 0.35
 	world.in_move = Vector2(-sin(a), cos(a))                 # a slow circle of radius ~ speed / 0.35
-	while world.sw.n < 400 and not world.sw.full():
+	var target := mini(400, int(400.0 * _bench_t / 2.0))      # ramp in over 2 s: first-use shader work spreads out
+	while world.sw.n < target and not world.sw.full():
 		world.spawn_foe([Content.E.GRUNT, Content.E.RUNNER, Content.E.BRUTE, Content.E.SPITTER][world.sw.n % 4], world.ring_point(), 0, 0, 30.0)
 	world.progress = 0.0
 	world.pending = 0
@@ -260,6 +281,7 @@ func _bench_step(dt: float) -> void:
 		Save.mark_dirty()
 		Save.flush()
 		print("BENCH ", res)
+		Diag.mark("bench done %s" % str(res))
 		_menu()
 		screens.show_bench(res)
 
@@ -267,8 +289,10 @@ func _process(dt: float) -> void:
 	if world == null:
 		return
 	if state == "bench":
+		Diag.beat(world, dt, "bench")
 		_bench_step(dt)
 		return
+	if state == "play": Diag.beat(world, dt)
 	if state == "play":
 		if not bot_drive:
 			world.in_move = touch.value if touch.stick_id >= 0 else Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -317,6 +341,8 @@ func _on_act(what: String, arg) -> void:
 				world.aim_mode = int(Save.opt("aim"))
 				_bind_view()
 			_render_scale()
+			_crowd_setup()
+			if world != null: world.crowd = crowd
 		"equip": equip(arg)
 		"salvage":
 			Save.data.stash.erase(arg)

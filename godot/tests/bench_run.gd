@@ -1,6 +1,6 @@
 extends Node
 ## Runs the in-game benchmark (Options > Run benchmark) and saves the result screen.
-##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/bench_run.tscn -- <outdir> [gfx 0-3]
+##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/bench_run.tscn -- <outdir> [gfx 0-3] [gpu_crowd 0-2]
 var main: Node
 var out := "user://bench"
 var t := 0.0
@@ -16,6 +16,7 @@ func _ready() -> void:
 	sv.data.options.sound = false
 	sv.data.options.show_fps = true
 	if a.size() > 1: sv.data.options.gfx = int(a[1])
+	if a.size() > 2: sv.data.options.gpu_crowd = int(a[2])
 	main = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 

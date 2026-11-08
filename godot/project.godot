@@ -11,6 +11,7 @@ config/icon="res://icon.png"
 
 [autoload]
 
+Diag="*res://scripts/autoload/diag.gd"
 Save="*res://scripts/autoload/save.gd"
 Sfx="*res://scripts/autoload/sfx.gd"
 
@@ -41,6 +42,8 @@ environment/defaults/default_clear_color=Color(0.04, 0.05, 0.08, 1)
 2d/snap/snap_2d_transforms_to_pixel=false
 
 [debug]
+
+file_logging/enable_file_logging=true
 
 gdscript/warnings/inference_on_variant=1
 gdscript/warnings/untyped_declaration=0
