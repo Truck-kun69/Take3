@@ -2,6 +2,11 @@ shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 // Lightning / arcs / beams built as camera-facing ribbons in an ImmediateMesh. Vertex colour carries
 // intensity; UV.y across the ribbon gives a hot white core with coloured falloff.
+#include "res://shaders/3d/terrain_h.gdshaderinc"
+void vertex() {
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(w.xz), 0.0);
+}
 void fragment() {
 	float x = abs(UV.y - 0.5) * 2.0;
 	float core = smoothstep(0.35, 0.0, x);

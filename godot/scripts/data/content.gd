@@ -149,6 +149,20 @@ const STAGES := [
 	{"name": "Neon Rift", "blurb": "A torn seam in the grid.", "boss": "Overclock Prime", "boss_col": "ff4fd8",
 		"g0": "081426", "g1": "12365c", "g2": "164070", "acc": "25e0ff", "hp": 3.0, "dmg": 1.7, "spd": 1.15, "gold": 2.2},
 ]
+## Terrain per stage (scripts/sim/terrain.gd). Heights in world units (a hero is ~50 tall).
+##   amp: hill height; scale: hill wavelength; terraces: plateau steps (0 = rolling); cliff: max walkable
+##   rise per cell; liquid: water | lava | void | none, its surface `level`; river: width of carved channels.
+const TERRAIN := [
+	{"amp": 85.0, "scale": 1200.0, "terraces": 0, "cliff": 0.9, "liquid": "water", "level": -46.0, "deep": 20.0,
+		"river": 0.07, "river_scale": 1700.0, "river_depth": 24.0, "detail": 5.0, "shore": 20.0},     # Mossglen: rolling hills, lakes, streams
+	{"amp": 110.0, "scale": 1000.0, "terraces": 5, "cliff": 1.2, "liquid": "lava", "level": -62.0, "deep": 8.0,
+		"river": 0.04, "river_scale": 1400.0, "river_depth": 20.0, "detail": 4.0, "shore": 26.0},     # Cinder: terraces and lava rivers
+	{"amp": 90.0, "scale": 800.0, "terraces": 3, "cliff": 0.75, "liquid": "water", "level": -38.0, "deep": 9.0,
+		"river": 0.0, "detail": 2.5, "shore": 20.0},                                                     # Crypt: sunken pits, ledges, black pools
+	{"amp": 120.0, "scale": 1300.0, "terraces": 4, "cliff": 1.05, "liquid": "void", "level": -78.0, "deep": 999.0,
+		"river": 0.03, "river_scale": 1600.0, "river_depth": 40.0, "detail": 3.0, "shore": 30.0},    # Neon Rift: plateaus over void chasms
+]
+
 const STAGE_TIME := 150.0
 
 # ---------------------------------------------------------------- items

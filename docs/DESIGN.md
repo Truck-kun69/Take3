@@ -184,3 +184,36 @@ rose between GR1 and GR8.
 * **Bot ≠ human**: all balance numbers come from a deliberately mediocre bot. Touch feel (dead
   zone, curve, button sizes) has only been verified in screenshots, not on a phone.
 
+
+## Terrain: elevation, water and elemental ground (scripts/sim/terrain.gd)
+
+![Terrain in four acts](screenshots/terrain_stages.png)
+
+Fights stay on the flat simulation plane; the ground is a seeded heightfield the sim and every shader share.
+
+* **Shape:** 640-unit chunks of 40 x 40 cells (16 units), generated on demand and prefetched one per
+  frame. Per act (`Content.TERRAIN`): rolling hills with lakes and streams (Mossglen), terraces cut
+  by lava rivers (Cinder), sunken pits, ledges and black pools (Crypt), plateaus over void chasms (Neon).
+  A 260-unit plateau around the start (and the Herald's whole arena) is always flat and dry.
+* **Rules:** cliffs (rise per cell above the act's limit) and deep liquid block movement; the hero
+  and foes slide along them and blocked foes sidestep around. Shallows slow to 65%; lava shallows
+  burn (5% life every half second). Spawns, events and breakables land on walkable ground.
+  Striking down from 24+ units of high ground deals +15%.
+* **Elements and the ground:** cold on a foe in water freezes a 60-unit ice sheet for 6 s that anyone
+  can cross (over lava it is an obsidian crust); lightning on a foe in water electrifies the pool and
+  arcs to every foe wading in it (80% weapon damage, up to 10); fire on water raises steam and melts
+  ice. The Sparkcaller's Absolute Zero freezes every lake on screen for 9 s. The void never freezes.
+* **Rendering:** the 7 x 7 chunks around the hero become one R32F height texture and an RG8 state
+  texture (ice, charge), published as global shader uniforms. The ground is a camera-following grid
+  displaced in the vertex shader; foes, sparks, projectiles, loot, decals, telegraphs and bolts add the
+  same bilinear height, so everything stands on the same hill without per-object bookkeeping. Water,
+  lava and void are one surface shader at the act's liquid level, shading by depth from the height
+  texture. Fog stays flat, so it pools in valleys. The classic 2D view draws a top-down terrain map.
+* **Cost:** chunk generation 2-4 ms; terrain adds ~0.9 ms to foe movement at 680 foes (cell fast path).
+
+Critique passes: (1) [hills invisible from the high camera, water lost against dark grass, ice a
+blocky white sticker](screenshots/terrain_pass1.png): valleys now darker and ridges lighter, water has
+a sky sheen, glints and foam, ice has soft edges, cracks and frost; (2) lava swamped foes in combat
+([before](screenshots/terrain_combat.png)): now dark crust plates with glowing seams
+([after](screenshots/terrain_lava_pass2.png)). [Electrified water](screenshots/terrain_electrified.png),
+[2D view](screenshots/terrain_2d.png).

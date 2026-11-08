@@ -20,7 +20,9 @@ func _ready() -> void:
 	save.path = "user://test_profile.json"
 	save.data = save.defaults()
 	save.data.options.sound = false
-	if "unit" in args: _unit()
+	if "unit" in args:
+		_unit()
+		_terrain_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -187,6 +189,62 @@ func _unit() -> void:
 	ok(int(sv.data.gold) == 123 and sv.data.stash.size() == 1 and Items.valid(sv.data.stash[0]), "profile save/load")
 	sv.data = sv.defaults()
 	sv.data.options.sound = false
+
+# ================================================================= terrain (elevation pass)
+func _terrain_tests() -> void:
+	print("== terrain")
+	for st in Content.TERRAIN.size():
+		var a := Terrain.new(st, 4242, Content.TERRAIN[st])
+		var b := Terrain.new(st, 4242, Content.TERRAIN[st])
+		var same := true
+		for k in 50:
+			var p := Vector2(k * 137.0 - 3000.0, k * 91.0 - 2000.0)
+			if not is_equal_approx(a.height(p), b.height(p)) or a.type_at(p) != b.type_at(p): same = false
+		ok(same, "stage %d terrain is deterministic for a seed" % st)
+		ok(a.passable(Vector2.ZERO) and a.passable(Vector2(200, 0)) and a.passable(Vector2(0, -200)), "stage %d spawn plateau is walkable" % st)
+		var sv := a.survey(Vector2(1800, -1200), 1400.0)
+		ok(sv.land + sv.shallow > 0.7 and sv.cliff < 0.12, "stage %d leaves most ground walkable (%s)" % [st, str(sv)])
+		# a long random walk never ends up inside a cliff or deep liquid
+		var p := Vector2.ZERO
+		var bad := 0
+		var rng := RandomNumberGenerator.new(); rng.seed = st
+		var dir := Vector2.RIGHT
+		for i in 3000:
+			if i % 40 == 0: dir = Vector2.from_angle(rng.randf() * TAU)
+			p = a.move(p, p + dir * 9.0)
+			if not a.passable(p): bad += 1
+		ok(bad == 0, "stage %d movement slides along cliffs and shores (%d bad steps)" % [st, bad])
+	# ice: freezing deep water makes it walkable, and it thaws
+	var T := Terrain.new(0, 77, Content.TERRAIN[0])
+	var deep := Vector2.INF
+	for r in range(300, 4000, 32):
+		for k in 16:
+			var q := Vector2.from_angle(TAU * k / 16.0) * r
+			if T.type_at(q) == Terrain.DEEP: deep = q; break
+		if deep != Vector2.INF: break
+	ok(deep != Vector2.INF and not T.passable(deep), "deep water blocks movement")
+	T.freeze(deep, 40.0, 1.0)
+	ok(T.passable(deep), "frozen water can be walked on")
+	for i in 70: T.step(1.0 / 60.0)
+	ok(not T.passable(deep), "ice thaws")
+	ok(T.electrify(deep, 40.0, 1.0) > 0 and T.is_charged(deep), "lightning charges water")
+	var L := Terrain.new(3, 77, Content.TERRAIN[3])
+	ok(L.freeze(Vector2(5000, 5000), 300.0, 5.0) == 0, "the void never freezes")
+	# a run: spawns land on walkable ground and foes never stand in a wall after moving
+	var w := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 9})
+	var spawn_ok := true
+	for i in 200:
+		if not w.terrain.passable(w.ring_point()): spawn_ok = false
+	ok(spawn_ok, "spawn ring points are walkable")
+	for i in 120: w.spawn_foe(Content.E.GRUNT)
+	var stuck := 0
+	for f in 300:
+		w.in_move = Vector2.from_angle(f * 0.05)
+		w.step(1.0 / 60.0)
+	for i in w.sw.n:
+		if (w.sw.flags[i] & (Swarm.F_BOSS | Swarm.F_HERALD)) == 0 and not w.terrain.passable(w.sw.pos[i]): stuck += 1
+	ok(stuck <= 2, "foes stay on walkable ground (%d inside walls)" % stuck)
+	ok(w.terrain.passable(w.pp), "the hero stays on walkable ground")
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

@@ -147,7 +147,7 @@ func _near_point(d: float) -> Vector2:
 	var p := w.pp + Vector2(cos(a), sin(a)) * d
 	if w.arena_r > 0.0 and p.length() > w.arena_r - 40.0:
 		p = p.normalized() * (w.arena_r - 60.0)
-	return p
+	return w.terrain.nearest_passable(p) if w.terrain != null else p
 
 func _rand_in(c: Vector2, r: float) -> Vector2:
 	var a := w.rng.randf() * TAU

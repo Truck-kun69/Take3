@@ -72,8 +72,12 @@ static func _lit_vc() -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
 render_mode diffuse_burley;
+#include "res://shaders/3d/terrain_h.gdshaderinc"
 varying vec4 v_c;
-void vertex() { v_c = INSTANCE_CUSTOM; }
+void vertex() {
+	v_c = INSTANCE_CUSTOM;
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(MODEL_MATRIX[3].xz), 0.0);   // heights are above the terrain
+}
 void fragment() { ALBEDO = COLOR.rgb; ROUGHNESS = 0.35 + 0.5 * v_c.y; METALLIC = v_c.z; EMISSION = COLOR.rgb * v_c.x; }"""
 	m.shader = sh
 	return m
@@ -110,6 +114,8 @@ func _ready() -> void:
 	bs.code = """shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 uniform float time = 0.0;
+#include "res://shaders/3d/terrain_h.gdshaderinc"
+void vertex() { VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(MODEL_MATRIX[3].xz), 0.0); }
 void fragment() {
 	float h = UV.y;
 	float a = pow(h, 2.2) * (0.75 + 0.25 * sin(time * 5.0 + UV.x * 20.0));
@@ -140,8 +146,13 @@ void fragment() {
 	var ms := Shader.new()
 	ms.code = """shader_type spatial;
 render_mode depth_draw_never, cull_disabled, shadows_disabled;
+#include "res://shaders/3d/terrain_h.gdshaderinc"
 varying vec4 v_c;
-void vertex() { v_c = INSTANCE_CUSTOM; }
+void vertex() {
+	v_c = INSTANCE_CUSTOM;
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(w.xz), 0.0);
+}
 void fragment() {
 	vec2 p = (UV - 0.5) * 2.0;
 	float n = fract(sin(dot(floor(p * 6.0 + v_c.y * 10.0), vec2(12.9, 78.2))) * 43758.5);
@@ -672,13 +683,13 @@ func _event_props(dt: float) -> void:
 		var key := "ev%d" % ev.uid
 		want[key] = true
 		if not objs.has(key): objs[key] = _make_obj(kind, Content.col(Content.EVENTS[ev.id].col))
-		objs[key].position = Vector3(ev.pos.x, 0, ev.pos.y)
+		objs[key].position = Vector3(ev.pos.x, view.ground_y(ev.pos), ev.pos.y)
 		if ev.id == "cursed" and ev.state == 1: objs[key].rotation.y += dt * 0.5
 	for o in w.director.objects:
 		var key2 := "ob%d_%d" % [int(o.pos.x), int(o.pos.y)]
 		want[key2] = true
 		if not objs.has(key2): objs[key2] = _make_obj(o.kind, Content.col(Content.BUFFS[o.id].col))
-		objs[key2].position = Vector3(o.pos.x, 0, o.pos.y)
+		objs[key2].position = Vector3(o.pos.x, view.ground_y(o.pos), o.pos.y)
 		if o.kind == "pylon": objs[key2].rotation.y += dt * 0.8
 	for key3 in objs.keys():
 		if not want.has(key3):

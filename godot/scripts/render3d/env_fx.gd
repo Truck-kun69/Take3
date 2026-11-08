@@ -234,7 +234,7 @@ func _breakables() -> void:
 		if n >= 40: continue
 		var p: Vector2 = b.pos
 		var yaw := fmod(p.x * 0.37 + p.y * 0.11, TAU)
-		mmi.multimesh.set_instance_transform(n, Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, 0, p.y)))
+		mmi.multimesh.set_instance_transform(n, Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, view.ground_y(p), p.y)))
 		counts[b.kind] = n + 1
 	urn_mm.multimesh.visible_instance_count = counts[0]
 	barrel_mm.multimesh.visible_instance_count = counts[1]

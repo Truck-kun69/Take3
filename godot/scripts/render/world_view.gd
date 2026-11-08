@@ -9,6 +9,12 @@ var w: World
 var cam: Camera2D
 var ground: Polygon2D
 var ground_mat: ShaderMaterial
+var terrain_map: Sprite2D
+var _map_img: Image
+var _map_tex: ImageTexture
+var _map_center := Vector2i(1 << 30, 0)
+var _map_ver := -1
+var _chunk_px := {}
 var swarm_mm: MultiMeshInstance2D
 var swarm_mat: ShaderMaterial
 var glow_mm: MultiMeshInstance2D
@@ -46,6 +52,10 @@ func _ready() -> void:
 	ground_mat.shader = load("res://shaders/ground.gdshader")
 	ground.material = ground_mat
 	add_child(ground)
+	terrain_map = Sprite2D.new()                    # elevation pass: liquids, cliffs and valley shade from above
+	terrain_map.centered = false
+	terrain_map.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(terrain_map)
 	under = _layer(); add_child(under)
 	under.draw.connect(_draw_under)
 	swarm_mm = MultiMeshInstance2D.new()
@@ -123,6 +133,8 @@ func bind(world: World) -> void:
 	swarm_mat.set_shader_parameter("colorblind", w.colorblind)
 	p_n = 0
 	ghosts.clear()
+	_chunk_px.clear()
+	_map_center = Vector2i(1 << 30, 0)
 
 func pcap() -> int:
 	return PCAP_LO if int(Save.opt("quality")) == 0 else PCAP_HI
@@ -144,6 +156,7 @@ func _process(dt: float) -> void:
 	ground.scale = half
 	ground_mat.set_shader_parameter("time", time)
 	swarm_mat.set_shader_parameter("time", time)
+	_terrain_map()
 	var ecl := w.director.eclipse()
 	var target := Color(0.18, 0.16, 0.3) if ecl else Color.WHITE
 	modulate_node.color = modulate_node.color.lerp(target, minf(1.0, dt * 2.0))
@@ -537,3 +550,56 @@ func _label(c: CanvasItem, p: Vector2, txt: String, col: Color, size: int, outli
 	if outline:
 		c.draw_string_outline(font, at, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, Color(0.03, 0.03, 0.06, col.a * 0.9))
 	c.draw_string(font, at, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+
+
+# ================================================================= terrain (top-down map)
+## One pixel per 16-unit cell over the 7 x 7 chunks around the player: liquids in their colour
+## (ice pale), cliffs as dark rock, and land shaded darker in valleys so hills read from above.
+func _chunk_pixels(c: Vector2i) -> Image:
+	if _chunk_px.has(c): return _chunk_px[c]
+	var T := w.terrain
+	var ch: Array = T.chunk(c)
+	var hs: PackedFloat32Array = ch[0]
+	var ty: PackedByteArray = ch[1]
+	var img := Image.create(Terrain.CN, Terrain.CN, false, Image.FORMAT_RGBA8)
+	var liq := {"water": [Color(0.12, 0.3, 0.38, 0.7), Color(0.03, 0.09, 0.14, 0.92)], "lava": [Color(0.9, 0.35, 0.08, 0.75), Color(0.75, 0.2, 0.04, 0.95)],
+		"void": [Color(0, 0, 0, 0.9), Color(0.01, 0, 0.03, 0.97)]}.get(T.liquid, [Color.TRANSPARENT, Color.TRANSPARENT])
+	for j in Terrain.CN:
+		for i in Terrain.CN:
+			var k := j * Terrain.CN + i
+			var col := Color.TRANSPARENT
+			match ty[k]:
+				Terrain.SHALLOW: col = liq[0]
+				Terrain.DEEP: col = liq[1]
+				Terrain.CLIFF: col = Color(0.05, 0.045, 0.05, 0.75)
+				_:
+					var hn := clampf((hs[k] - T.level) / 130.0, 0.0, 1.0)
+					col = Color(0, 0, 0, (1.0 - hn) * 0.4) if hn < 0.6 else Color(1, 0.95, 0.85, (hn - 0.6) * 0.18)
+			img.set_pixel(i, j, col)
+	_chunk_px[c] = img
+	return img
+
+func _terrain_map() -> void:
+	var T := w.terrain
+	if T == null: return
+	var cc := Vector2i(floori(w.pp.x / Terrain.CHUNK), floori(w.pp.y / Terrain.CHUNK))
+	if cc == _map_center and T.version == _map_ver: return
+	_map_center = cc
+	_map_ver = T.version
+	var n := 7 * Terrain.CN
+	if _map_img == null: _map_img = Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for dy in 7:
+		for dx in 7:
+			_map_img.blit_rect(_chunk_pixels(cc + Vector2i(dx - 3, dy - 3)), Rect2i(0, 0, Terrain.CN, Terrain.CN), Vector2i(dx * Terrain.CN, dy * Terrain.CN))
+	var base := (cc - Vector2i(3, 3)) * Terrain.CN
+	for c in T.frozen:
+		var q: Vector2i = c - base
+		if q.x >= 0 and q.y >= 0 and q.x < n and q.y < n:
+			_map_img.set_pixel(q.x, q.y, Color(0.75, 0.9, 1.0, 0.85) if T.liquid == "water" else Color(0.08, 0.06, 0.09, 0.95))
+	if _map_tex == null: _map_tex = ImageTexture.create_from_image(_map_img)
+	else: _map_tex.update(_map_img)
+	terrain_map.texture = _map_tex
+	terrain_map.position = Vector2(base) * Terrain.CELL
+	terrain_map.scale = Vector2(Terrain.CELL, Terrain.CELL)
+	for c in _chunk_px.keys():                       # keep the cache to the neighbourhood
+		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > 5: _chunk_px.erase(c)

@@ -180,7 +180,7 @@ var _agg := {}
 var _label_t := {}
 var _crit_stop := -9.0
 var metrics := {"reactions": 0, "react_by": {}, "texts": 0, "peak_foes": 0, "dmg_taken": 0.0, "perfect": 0, "events": {}, "dmg_dealt": 0.0,
-	"react_dropped": 0, "cascade_max": 0, "items": 0, "deaths_by": ""}
+	"react_dropped": 0, "cascade_max": 0, "items": 0, "deaths_by": "", "high_ground": 0, "terrain": {"freeze": 0, "shock": 0, "steam": 0}}
 
 # ================================================================= setup
 func setup(cfg: Dictionary) -> void:
@@ -219,6 +219,9 @@ func setup(cfg: Dictionary) -> void:
 		need = _need(lvl)
 	if mode == "pinnacle":
 		arena_r = 520.0
+	var tp: Dictionary = Content.TERRAIN[mini(stage, Content.TERRAIN.size() - 1)]
+	terrain = Terrain.new(stage, rng.randi(), tp, (arena_r + 160.0) if mode == "pinnacle" else 260.0)
+	if mode == "pinnacle":
 		bosses.spawn_herald()
 	if Save.has_nemesis() and mode != "pinnacle":
 		director.nemesis_pending = true
@@ -297,6 +300,9 @@ func step(dt: float) -> void:
 		dt *= 0.4
 	t += dt
 	Sfx.listener = pp
+	terrain.step(dt)
+	terrain.prefetch(pp, 3, 1)
+	if fmod(t, 7.0) < dt: terrain.trim(pp)
 	buffs.step(dt)
 	_refresh_max_hp()
 	shake = maxf(0.0, shake - dt * 1.8)
@@ -343,11 +349,21 @@ func _refresh_max_hp() -> void:
 func _step_player(dt: float) -> void:
 	var spd := stats.value("move_speed", float(Content.HEROES[hero].spd))
 	var mvv := in_move.limit_length(1.0)
+	var tm := terrain.speed_mul(pp)
+	var np := pp
 	if roll_t > 0.0:
 		roll_t -= dt
-		pp += roll_dir * spd * 2.6 * dt
+		np += roll_dir * spd * 2.6 * dt               # a roll is not slowed by shallows
 	else:
-		pp += mvv * spd * dt
+		np += mvv * spd * tm * dt
+	pp = terrain.move(pp, np)
+	if terrain.burns(pp):
+		_lava_t -= dt
+		if _lava_t <= 0.0:
+			_lava_t = 0.5
+			hurt_player(max_hp * 0.05, "Molten shallows")
+	else:
+		_lava_t = 0.0
 	roll_age += dt
 	if arena_r > 0.0 and pp.length() > arena_r - 14.0:
 		pp = pp.normalized() * (arena_r - 14.0)
@@ -387,6 +403,8 @@ func _step_player(dt: float) -> void:
 		hp = minf(max_hp, hp + rg * dt)
 	if buffs.has("conduit"):
 		_conduit(dt)
+
+var _lava_t := 0.0
 
 func _roll(mvv: Vector2) -> void:
 	roll_dir = mvv.normalized() if mvv.length() > 0.1 else face
@@ -487,6 +505,7 @@ func use_ult() -> void:
 					sw.set_freeze(i, 2.5)
 					hit(i, weapon_damage_base() * 6.0, 1 << Content.El.COLD, (sw.pos[i] - pp).normalized(), 0.0, 0)
 			fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": view_r, "col": Color("aef4ff"), "life": 0.6, "t": 0.0})
+			terrain.freeze(pp, view_r, 9.0)             # every lake on screen becomes a road
 		"ember":
 			nova_at(pp, view_r * 0.9, weapon_damage_base() * 10.0, 1 << Content.El.FIRE, Color("ff8a3c"))
 			for k in 6:
@@ -558,16 +577,22 @@ func _pick_type() -> int:
 	return Content.E.GRUNT
 
 func ring_point(extra: float = 30.0) -> Vector2:
-	var a := rng.randf() * TAU
-	var p := pp + Vector2(cos(a), sin(a)) * (view_r + extra)
-	if arena_r > 0.0 and p.length() > arena_r:
-		p = p.normalized() * (arena_r - 30.0)
-	return p
+	var p := pp
+	for tries in 6:                                  # spawns land on walkable ground, not in a lake or on a cliff
+		var a := rng.randf() * TAU
+		p = pp + Vector2(cos(a), sin(a)) * (view_r + extra)
+		if arena_r > 0.0 and p.length() > arena_r:
+			p = p.normalized() * (arena_r - 30.0)
+		if terrain == null or terrain.passable(p):
+			return p
+	return terrain.nearest_passable(p)
 
 ## Spawns a foe. elite: -1 roll, 0 never, 1 always. Returns the swarm index or -1.
 func spawn_foe(k: int, at: Vector2 = Vector2.INF, elite: int = -1, extra_flags: int = 0, hp_m: float = 1.0) -> int:
 	var e: Dictionary = Content.ENEMIES[k]
 	var p := at if at != Vector2.INF else ring_point()
+	if terrain != null and at != Vector2.INF and (extra_flags & (Swarm.F_BOSS | Swarm.F_HERALD)) == 0:
+		p = terrain.nearest_passable(p)
 	var el := false
 	if elite == 1:
 		el = true
@@ -609,7 +634,7 @@ func _step_foes(dt: float) -> void:
 		sw.cpu_separation(grid, _sep_parity, pp, view_r + 40.0)
 	_shots_req.clear()
 	var target := pp
-	sw.step_move(dt, target, _shots_req, 1.0)
+	sw.step_move(dt, target, _shots_req, 1.0, terrain)
 	for q in range(0, _shots_req.size(), 3):
 		var sp: Proj = _new_proj()
 		sp.pos = _shots_req[q]; sp.vel = _shots_req[q + 1] * 170.0; sp.life = 4.0; sp.r = 5.0
@@ -887,6 +912,9 @@ func hit(i: int, dmg: float, em: int, kdir: Vector2, kb: float, depth: int) -> v
 				shake = minf(1.0, shake + 0.06)
 		if sw.freeze_t[i] > 0.0 and has_leg("rimeheart"):
 			dmg *= 1.2
+		if terrain.height(pp) - terrain.height(sw.pos[i]) > HIGH_GROUND:
+			dmg *= 1.15                               # striking down from a ridge or ledge
+			metrics.high_ground += 1
 	if sw.shock_t[i] > 0.0: dmg *= 1.15
 	if sw.cond_t[i] > 0.0: dmg *= 1.3
 	if keystones.has("equilibrium") and sw.ee_t[i] > 0.0 and em != 0 and (em & (1 << sw.ee_el[i])) == 0:
@@ -914,6 +942,8 @@ func hit(i: int, dmg: float, em: int, kdir: Vector2, kb: float, depth: int) -> v
 	if em != 0 and sw.hp[i] > 0.0:
 		apply_elements(i, em, depth)
 
+const HIGH_GROUND := 24.0
+
 func _bestiary_bonus(k: int) -> float:
 	var id: String = Content.ENEMIES[k].id
 	return 0.03 * Save.bestiary_tier(id)
@@ -921,6 +951,8 @@ func _bestiary_bonus(k: int) -> float:
 ## Applies statuses for each element in `em`; when a foe already carries the partner status of
 ## a reaction, the reaction is queued (resolved after all hits this frame, within a budget).
 func apply_elements(i: int, em: int, depth: int) -> void:
+	if depth == 0 and terrain.liquid != "none":
+		_terrain_react(i, em)
 	var cap := Content.REACT_DEPTH + int(stats.value("react_depth", 0.0))
 	for el in 5:
 		if (em & (1 << el)) == 0:
@@ -939,6 +971,50 @@ func apply_elements(i: int, em: int, depth: int) -> void:
 		sw.apply_status(i, el, 1.0, 3.0)
 		if keystones.has("equilibrium"):
 			sw.set_ee(i, el, 3.0)
+
+## The ground reacts to elements (elevation pass):
+##   cold on a foe in water or lava freezes it into a walkable ice sheet or obsidian crust for 6 s
+##   lightning on a foe in water electrifies the pool: the charge leaps to every foe wading in it
+##   fire on a foe in water or on ice raises steam and melts the ice
+var _shock_water_t := -9.0
+func _terrain_react(i: int, em: int) -> void:
+	var fp := sw.pos[i]
+	if not terrain.is_liquid(fp):
+		return
+	if (em & (1 << Content.El.COLD)) != 0:
+		if terrain.freeze(fp, 60.0, 6.0) > 0:
+			metrics.terrain.freeze += 1
+			fx.append({"k": "ring", "pos": fp, "r": 0.0, "max": 70.0, "col": Color("c8f4ff"), "life": 0.35, "t": 0.0})
+	if (em & (1 << Content.El.LIGHT)) != 0 and terrain.liquid == "water" and not terrain.is_frozen(fp) and t - _shock_water_t > 0.3:
+		_shock_water_t = t
+		_water_chain(i)
+	if (em & (1 << Content.El.FIRE)) != 0 and terrain.liquid == "water":
+		terrain.scald(fp, 44.0)
+		metrics.terrain.steam += 1
+		_burst(fp, Color(0.85, 0.88, 0.9, 0.6), 10, 70.0)
+
+func _water_chain(i: int) -> void:
+	var fp := sw.pos[i]
+	terrain.electrify(fp, 130.0, 1.4)
+	var c := grid.query(fp, 260.0, sw)
+	var near := []                                    # copied: hit() can run other grid queries
+	for q in c: near.append(grid.results[q])
+	var hits := 0
+	var pts := PackedVector2Array([fp])
+	var dmg := weapon_damage_base() * 0.8
+	for j in near:
+		if j == i or sw.hp[j] <= 0.0: continue
+		if not terrain.is_liquid(sw.pos[j]) or terrain.is_frozen(sw.pos[j]): continue
+		hit(j, dmg, 1 << Content.El.LIGHT, Vector2.ZERO, 0.0, 1)
+		sw.apply_status(j, Content.El.LIGHT, 1.0, 2.0)
+		terrain.electrify(sw.pos[j], 40.0, 1.0)
+		pts.append(sw.pos[j])
+		hits += 1
+		if hits >= 10: break
+	if hits > 0:
+		metrics.terrain.shock += 1
+		for k in range(1, pts.size()):
+			fx.append({"k": "arc", "pos": fp, "col": Color("bfe8ff"), "life": 0.22, "t": 0.0, "pts": PackedVector2Array([fp, pts[k]])})
 
 func _resolve_reactions() -> void:
 	var budget := Content.REACT_BUDGET
@@ -1626,10 +1702,12 @@ func _step_breakables(dt: float) -> void:
 		_brk_t = rng.randf_range(18.0, 30.0)
 		if near < 10:
 			var a := rng.randf() * TAU
-			var c := pp + Vector2(cos(a), sin(a)) * rng.randf_range(260.0, 420.0)
+			var c := terrain.nearest_passable(pp + Vector2(cos(a), sin(a)) * rng.randf_range(260.0, 420.0))
 			var kind := rng.randi_range(0, 1)
 			for i in rng.randi_range(3, 5):
-				breakables.append({"pos": c + Vector2(rng.randf_range(-40, 40), rng.randf_range(-40, 40)), "kind": kind, "r": 10.0 if kind == 0 else 13.0})
+				var bp := c + Vector2(rng.randf_range(-40, 40), rng.randf_range(-40, 40))
+				if terrain.type_at(bp) == Terrain.LAND:
+					breakables.append({"pos": bp, "kind": kind, "r": 10.0 if kind == 0 else 13.0})
 
 ## Returns true if anything broke.
 func shatter(at: Vector2, r: float) -> bool:

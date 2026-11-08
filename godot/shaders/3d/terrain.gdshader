@@ -12,7 +12,10 @@ uniform int octaves = 4;
 uniform bool has_tex = false;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform float tex_scale = 0.004;
+uniform bool displace = false;     // the run's ground follows the terrain; the title stage stays flat
 varying vec3 wp;
+varying vec3 v_n;
+#include "res://shaders/3d/terrain_h.gdshaderinc"
 
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vn(vec2 p) {
@@ -44,7 +47,15 @@ float height(vec2 p) {
 	h += stones * smoothstep(0.0, 0.08, c.y - c.x) * 0.35;
 	return h;
 }
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_n = vec3(0.0, 1.0, 0.0);
+	if (displace) {
+		wp.y = th(wp.xz);
+		VERTEX = (inverse(MODEL_MATRIX) * vec4(wp, 1.0)).xyz;
+		v_n = tnormal(wp.xz);
+	}
+}
 void fragment() {
 	vec2 p = wp.xz;
 	float n = fbm(p / 420.0);
@@ -71,12 +82,37 @@ void fragment() {
 	float hx = height(p + vec2(e, 0.0));
 	float hz = height(p + vec2(0.0, e));
 	vec3 nw = normalize(vec3((hc - hx) * 14.0 + peb * 0.0, 1.0, (hc - hz) * 14.0));
+	// elevation: steep faces turn to bare dark rock with strata, ground near the liquid is wet and dark
+	float slope = 1.0 - clamp(v_n.y, 0.0, 1.0);
+	float rock = smoothstep(0.28, 0.5, slope);
+	float strata = 0.75 + 0.25 * sin(wp.y * 0.55 + vn(p / 30.0) * 3.0);
+	col = mix(col, mix(c0 * 0.9, vec3(0.2, 0.19, 0.2), 0.5) * strata, rock);
+	// read elevation from above: valleys darker and damper, ridges lighter and drier (critique 1: from the
+	// high camera, slope shading alone made hills invisible)
+	if (displace) {
+		float hn = clamp((wp.y - terrain_l.x) / 130.0, 0.0, 1.0);
+		col *= mix(0.62, 1.22, smoothstep(0.0, 1.0, hn));
+		col = mix(col, col * vec3(1.08, 1.04, 0.94), smoothstep(0.6, 1.0, hn));     // sun-bleached tops
+		float lip = smoothstep(0.18, 0.32, slope) * (1.0 - rock);                      // light catches ledge rims
+		col *= 1.0 + lip * 0.25;
+	}
+	float shore = 0.0;
+	if (displace && terrain_l.y < 2.5) {
+		shore = smoothstep(terrain_l.x + 14.0, terrain_l.x, wp.y);
+		vec3 wet = terrain_l.y < 0.5 ? col * 0.45 : mix(col * 0.5, vec3(0.25, 0.06, 0.02), 0.5);
+		col = mix(col, wet, shore);
+	}
+	// combine the detail normal with the terrain's own slope
+	vec3 tn = v_n;
+	vec3 tt = normalize(cross(tn, vec3(0.0, 0.0, 1.0)));
+	vec3 tb = cross(tt, tn);
+	nw = normalize(tt * nw.x * -1.0 + tn * nw.y + tb * nw.z);
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
 	// shard veins
 	float v = abs(fbm(p / 300.0 + 4.0) - 0.5);
 	float vein = smoothstep(0.004, 0.0, v) * smoothstep(0.55, 0.62, fbm(p / 900.0 + 7.0));
 	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.3);       // desaturate
 	ALBEDO = col * (0.55 + 0.25 * hc);
-	ROUGHNESS = mix(0.95, 0.6, stones);
+	ROUGHNESS = mix(mix(0.95, 0.6, stones), 0.25, shore);
 	EMISSION = acc * vein * (0.35 + 0.25 * sin(time * 1.6 + p.x * 0.01 + p.y * 0.007));
 }

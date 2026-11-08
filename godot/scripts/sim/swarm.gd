@@ -207,7 +207,7 @@ func tick_timers(dt: float) -> void:
 ## Movement toward `target`, plus separation and decaying knockback. AI states for spitters and
 ## chargers live in ai_s/ai_t. Returns nothing; shots requested by spitters are written into
 ## `shots_out` as [pos, dir, dmg] triples (flat Array) for World to spawn.
-func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float) -> void:
+func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float, terr: Terrain = null) -> void:
 	var decay := maxf(0.0, 1.0 - 8.0 * dt)
 	for i in n:
 		var p := pos[i]
@@ -255,7 +255,16 @@ func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float) ->
 						ai_s[i] = 0; ai_t[i] = randf_range(2.0, 3.5)
 			if (flags[i] & (F_BOSS | F_HERALD)) == 0:
 				v += sep[i]
-		pos[i] = p + (v + kb[i]) * dt
+		var np := p + (v + kb[i]) * dt
+		if terr != null and (flags[i] & (F_BOSS | F_HERALD | F_RIFTG)) == 0:
+			# terrain: shallows slow, cliffs and deep water stop; a blocked foe sidesteps along the edge
+			var q := terr.foe_move(p, np)
+			if q == p and np != p:
+				var side := Vector2(-v.y, v.x) * (1.0 if (uid[i] & 1) == 0 else -1.0)
+				q = terr.move(p, p + side * dt)
+				kb[i] = Vector2.ZERO
+			np = q
+		pos[i] = np
 		kb[i] *= decay
 
 ## CPU separation (fallback for devices without compute): each foe is pushed out of overlapping

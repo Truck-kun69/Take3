@@ -46,6 +46,11 @@ var _cam_pos := Vector3.ZERO
 var _cam_target := Vector3.ZERO
 var _foe_mm: Array[MultiMeshInstance3D] = []
 var _foe_n := PackedInt32Array()
+const GROUND_SIZE := 3000.0
+const GROUND_Q := 20.0
+var water: MeshInstance3D
+var water_mat: ShaderMaterial
+var _cam_y := 0.0
 var _prop_cells := {}        # Vector2i chunk -> Node3D holding one MultiMesh per prop kind (culled and LOD'd per cell)
 var _chunk_key := ""
 var _look: Dictionary
@@ -121,13 +126,28 @@ func _ready() -> void:
 		light_pool.append(l)
 	terrain_mat = ShaderMaterial.new()
 	terrain_mat.shader = load("res://shaders/3d/terrain.gdshader")
+	# elevation pass: a grid of 20-unit quads that follows the camera (snapped to whole quads so it never
+	# swims) and is displaced by the terrain height texture in the vertex shader
 	ground = MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(7000, 7000)
+	pm.size = Vector2(GROUND_SIZE, GROUND_SIZE)
+	pm.subdivide_width = int(GROUND_SIZE / GROUND_Q) - 1
+	pm.subdivide_depth = int(GROUND_SIZE / GROUND_Q) - 1
 	ground.mesh = pm
 	ground.material_override = terrain_mat
-	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ground.custom_aabb = AABB(Vector3(-GROUND_SIZE * 0.5, -300, -GROUND_SIZE * 0.5), Vector3(GROUND_SIZE, 600, GROUND_SIZE))
+	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON      # hills shade the valleys
+	terrain_mat.set_shader_parameter("displace", true)
 	add_child(ground)
+	water = MeshInstance3D.new()
+	var wm := PlaneMesh.new()
+	wm.size = Vector2(GROUND_SIZE, GROUND_SIZE)
+	water.mesh = wm
+	water_mat = ShaderMaterial.new()
+	water_mat.shader = load("res://shaders/3d/water.gdshader")
+	water.material_override = water_mat
+	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(water)
 	foe_mat = ShaderMaterial.new()
 	foe_mat.shader = load("res://shaders/3d/foe.gdshader")
 	prop_mat = ShaderMaterial.new()
@@ -225,6 +245,18 @@ func bind(world: World) -> void:
 	sky_mat.ground_bottom_color = _look.bg
 	sky_mat.ground_horizon_color = _look.fog
 	_clear_props()
+	# terrain: liquid kind and colours per stage; textures recomposed on the first frame
+	var lk := {"water": 0, "lava": 1, "void": 2, "none": 3}.get(w.terrain.liquid, 3) as int
+	RenderingServer.global_shader_parameter_set("terrain_l", Vector4(w.terrain.level, lk, 0, 0))
+	water.visible = lk != 3
+	var wc: Array = [[Color(0.02, 0.07, 0.07), Color(0.12, 0.26, 0.2)], [Color(0.02, 0.01, 0.01), Color(0.2, 0.06, 0.02)],
+		[Color(0.01, 0.015, 0.03), Color(0.06, 0.08, 0.12)], [Color(0, 0, 0), Color(0, 0, 0)]][mini(w.stage, 3)]
+	water_mat.set_shader_parameter("deep_col", wc[0])
+	water_mat.set_shader_parameter("shallow_col", wc[1])
+	water_mat.set_shader_parameter("glow_col", Content.col(s.acc).lerp(Color(1.0, 0.45, 0.1), 0.6))
+	_tex_center = Vector2i(1 << 30, 0)
+	_ts_ver = -1
+	_cam_y = w.terrain.height(w.pp)
 	_cam_pos = Vector3(w.pp.x, 0, w.pp.y)
 	_cam_target = _cam_pos
 	_kind_col.clear()
@@ -238,7 +270,7 @@ func bind(world: World) -> void:
 
 ## World -> screen, used by the overlay and the HUD compass.
 func to_screen(p: Vector2, h: float = 0.0) -> Vector2:
-	return cam.unproject_position(Vector3(p.x, h, p.y))
+	return cam.unproject_position(Vector3(p.x, h + ground_y(p), p.y))
 
 func _process(dt: float) -> void:
 	visible = w != null
@@ -266,7 +298,8 @@ func _camera(dt: float) -> void:
 	var boss_on := w.bosses.boss_hp_frac() >= 0.0
 	var dist := 600.0 * view_scale * (1.18 if boss_on else 1.0)
 	var lead := Vector3(w.face.x, 0, w.face.y) * 40.0 * w.mv
-	var tgt := Vector3(w.pp.x, 0, w.pp.y) + lead
+	_cam_y = lerpf(_cam_y, ground_y(w.pp), minf(1.0, dt * 4.0))          # the camera rides the hills, smoothly
+	var tgt := Vector3(w.pp.x, _cam_y, w.pp.y) + lead
 	_cam_target = _cam_target.lerp(tgt, minf(1.0, dt * 6.0))
 	var pitch := deg_to_rad(52.0)
 	var off := Vector3(0, sin(pitch), cos(pitch)) * dist
@@ -275,7 +308,10 @@ func _camera(dt: float) -> void:
 	cam.position = _cam_target + off + shake
 	cam.look_at(_cam_target + shake * 0.5, Vector3.UP)
 	cam.rotate_object_local(Vector3.FORWARD, sin(time * 37.0) * tr * 0.012)
-	ground.position = Vector3(snappedf(_cam_target.x, 64.0), 0, snappedf(_cam_target.z, 64.0))
+	ground.position = Vector3(snappedf(_cam_target.x, GROUND_Q), 0, snappedf(_cam_target.z, GROUND_Q))
+	water.position = Vector3(snappedf(_cam_target.x, 64.0), w.terrain.level, snappedf(_cam_target.z, 64.0))
+	water_mat.set_shader_parameter("time", time)
+	_terrain_tex(dt)
 	sun.position = _cam_target
 	# spawn ring / culling radius from where the screen corners hit the ground
 	var r := 0.0
@@ -290,10 +326,11 @@ func _camera(dt: float) -> void:
 func _lighting(dt: float) -> void:
 	var ecl := w.director.eclipse()
 	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7)
-	torch.position = Vector3(w.pp.x, 52.0, w.pp.y)
+	var gy := ground_y(w.pp)
+	torch.position = Vector3(w.pp.x, 52.0 + gy, w.pp.y)
 	var to_cam := (cam.global_position - Vector3(w.pp.x, 0, w.pp.y))
 	to_cam.y = 0.0
-	key_light.position = Vector3(w.pp.x, 46.0, w.pp.y) + to_cam.normalized() * 55.0
+	key_light.position = Vector3(w.pp.x, 46.0 + gy, w.pp.y) + to_cam.normalized() * 55.0
 	var tgt_sun := 0.06 if ecl else 0.7
 	sun.light_energy = lerpf(sun.light_energy, tgt_sun, minf(1.0, dt * 2.0))
 	env.ambient_light_energy = lerpf(env.ambient_light_energy, 0.08 if ecl else 0.3, minf(1.0, dt * 2.0))
@@ -329,6 +366,59 @@ func _clear_props() -> void:
 	for c in _prop_cells: _prop_cells[c].queue_free()
 	_prop_cells.clear()
 	_chunk_key = ""
+
+# ---------------------------------------------------------------- terrain textures
+## The 7 x 7 chunks around the player as one R32F height texture (1 texel per 16-unit cell) plus an
+## RG8 state texture (R ice, G charge), published as global shader uniforms (terrain_h.gdshaderinc).
+const TEX_CHUNKS := 7
+var _th_img: Image
+var _th_tex: ImageTexture
+var _ts_img: Image
+var _ts_tex: ImageTexture
+var _tex_center := Vector2i(1 << 30, 0)
+var _ts_ver := -1
+var _ts_t := 0.0
+
+func _terrain_tex(dt: float) -> void:
+	var T := w.terrain
+	var cc := Vector2i(floori(w.pp.x / Terrain.CHUNK), floori(w.pp.y / Terrain.CHUNK))
+	var n := TEX_CHUNKS * Terrain.CN
+	var half := TEX_CHUNKS / 2
+	if cc != _tex_center:
+		_tex_center = cc
+		if _th_img == null: _th_img = Image.create(n, n, false, Image.FORMAT_RF)
+		for dy in TEX_CHUNKS:
+			for dx in TEX_CHUNKS:
+				var ch: Array = T.chunk(cc + Vector2i(dx - half, dy - half))
+				var img := Image.create_from_data(Terrain.CN, Terrain.CN, false, Image.FORMAT_RF, (ch[0] as PackedFloat32Array).to_byte_array())
+				_th_img.blit_rect(img, Rect2i(0, 0, Terrain.CN, Terrain.CN), Vector2i(dx * Terrain.CN, dy * Terrain.CN))
+		if _th_tex == null: _th_tex = ImageTexture.create_from_image(_th_img)
+		else: _th_tex.update(_th_img)
+		var o := Vector2(cc - Vector2i(half, half)) * Terrain.CHUNK
+		RenderingServer.global_shader_parameter_set("terrain_h", _th_tex)
+		RenderingServer.global_shader_parameter_set("terrain_o", Vector4(o.x, o.y, n, Terrain.CELL))
+		_ts_ver = -1
+	_ts_t -= dt
+	var live := not T.frozen.is_empty() or not T.charged.is_empty()
+	if T.version != _ts_ver or (live and _ts_t <= 0.0) or _ts_tex == null:
+		_ts_ver = T.version
+		_ts_t = 0.15
+		if _ts_img == null: _ts_img = Image.create(n, n, false, Image.FORMAT_RG8)
+		_ts_img.fill(Color(0, 0, 0))
+		var base := (cc - Vector2i(half, half)) * Terrain.CN
+		for c in T.frozen:
+			var q: Vector2i = c - base
+			if q.x >= 0 and q.y >= 0 and q.x < n and q.y < n:
+				_ts_img.set_pixel(q.x, q.y, Color(clampf(float(T.frozen[c]), 0.0, 1.0), 0, 0))
+		for c in T.charged:
+			var q: Vector2i = c - base
+			if q.x >= 0 and q.y >= 0 and q.x < n and q.y < n:
+				var px := _ts_img.get_pixel(q.x, q.y)
+				_ts_img.set_pixel(q.x, q.y, Color(px.r, clampf(float(T.charged[c]) * 1.5, 0.0, 1.0), 0))
+		if _ts_tex == null:
+			_ts_tex = ImageTexture.create_from_image(_ts_img)
+			RenderingServer.global_shader_parameter_set("terrain_s", _ts_tex)
+		else: _ts_tex.update(_ts_img)
 
 ## Ground height under a point (flat until the terrain heightfield exists).
 func ground_y(p: Vector2) -> float:
@@ -491,7 +581,7 @@ var _aura_n := 0
 func _aura(p: Vector2, r: float, c: Color) -> void:
 	if _aura_n >= 64: return
 	var mm := _aura_mm.multimesh
-	mm.set_instance_transform(_aura_n, Transform3D(Basis().scaled(Vector3(r, 1, r)), Vector3(p.x, 0.8, p.y)))
+	mm.set_instance_transform(_aura_n, Transform3D(Basis().scaled(Vector3(r, 1, r)), Vector3(p.x, 0.8 + ground_y(p), p.y)))
 	mm.set_instance_color(_aura_n, c)
 	_aura_n += 1
 
@@ -514,6 +604,7 @@ func _foe_color(k: int) -> Color:
 func _hero(dt: float) -> void:
 	hero.animate({"pos": w.pp, "face": w.face, "mv": w.mv, "ph": w.walk_ph, "cast_age": w.t - w.cast_t, "cast_dir": w.cast_dir,
 		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
+	hero.position.y += ground_y(w.pp)
 	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
 
 var exile_rigs := {}
@@ -534,6 +625,7 @@ func _exiles(dt: float) -> void:
 		var to := w.pp - w.sw.pos[i]
 		rig.animate({"pos": w.sw.pos[i], "face": to.normalized(), "mv": 1.0 if w.sw.freeze_t[i] <= 0.0 else 0.0, "ph": time * 9.0 + u, "cast_age": fmod(time + u, 1.6),
 			"cast_dir": to.normalized(), "roll": -1.0, "hit": clampf(w.sw.flash[i] * 10.0, 0, 1), "dead": false, "t": time}, dt)
+		rig.position.y += ground_y(w.sw.pos[i])
 	for u in exile_rigs.keys():
 		if not alive.has(u):
 			exile_rigs[u].queue_free()
@@ -561,6 +653,7 @@ func _bosses(dt: float) -> void:
 		if k == Content.E.HERALD: atk = float(w.bosses.H.get("atk_t", -9.0)) > w.t - dt * 1.5
 		rig.animate({"pos": w.sw.pos[i], "face": (w.pp - w.sw.pos[i]).normalized(), "hp_frac": w.sw.hp[i] / w.sw.mhp[i], "flash": w.sw.flash[i],
 			"t": time, "dt": dt, "attack": atk, "phase": w.bosses.herald_phase()})
+		rig.position.y += ground_y(w.sw.pos[i])
 	for u in boss_rigs.keys():
 		if not alive.has(u):
 			var rig2: BossRig = boss_rigs[u]
@@ -577,7 +670,7 @@ func _assign_lights() -> void:
 		if i < cand.size():
 			var c: Array = cand[i]
 			l.visible = true
-			l.position = c[0]
+			l.position = c[0] + Vector3(0, ground_y(Vector2(c[0].x, c[0].z)), 0)
 			l.light_color = c[1]
 			l.light_energy = c[2] * LIGHT_GAIN
 			l.omni_range = c[3]

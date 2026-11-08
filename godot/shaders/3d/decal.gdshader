@@ -9,6 +9,12 @@ instance uniform float prog = 0.0;       // telegraph fill 0..1, ring expansion 
 instance uniform float inner = 0.0;      // ring inner radius fraction, cone half-angle (radians)
 instance uniform float hatch = 0.0;
 uniform float time = 0.0;
+#include "res://shaders/3d/terrain_h.gdshaderinc"
+void vertex() {
+	// each corner drapes onto the terrain (telegraphs and rings follow hills and sit on ice)
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, max(th(w.xz), terrain_l.y < 2.5 ? terrain_l.x : -1e4) + 0.5, 0.0);
+}
 void fragment() {
 	vec2 p = (UV - 0.5) * 2.0;
 	float r = length(p);

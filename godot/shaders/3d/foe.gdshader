@@ -12,6 +12,7 @@ uniform bool colorblind = false;
 varying flat float v_part;
 varying vec4 v_custom;
 varying vec3 v_mpos;
+#include "res://shaders/3d/terrain_h.gdshaderinc"
 
 float h31(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 float vn3(vec3 p) {
@@ -77,6 +78,9 @@ void vertex() {
 		v.x -= flash * 3.0;
 		VERTEX = v;
 	}
+	// stand on the terrain under the instance's origin (elevation pass)
+	vec3 wo = MODEL_MATRIX[3].xyz;
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(wo.xz), 0.0);
 }
 
 void fragment() {
