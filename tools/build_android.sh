@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Headless Android export.
-#   tools/build_android.sh            -> build/shardfall-debug.apk  (debug-signed, arm64-v8a + x86_64)
-#   tools/build_android.sh release    -> build/shardfall-release.apk (needs SHARDFALL_KEYSTORE* env vars)
+#   tools/build_android.sh            -> build/shardfall.apk  (release template: optimised engine, no debug
+#                                        checks; signed with SHARDFALL_KEYSTORE* if set, else the shared
+#                                        test key in tools/keys, so it installs over earlier test builds)
+#   tools/build_android.sh debug      -> build/shardfall-debug.apk  (debug template, same key)
 #   tools/build_android.sh aab        -> build/shardfall-release.aab (Gradle build; needs the Android
 #                                        build template and network access to Google Maven + Gradle)
 # Run tools/provision.sh first. Exits non-zero if the export or the signature check fails.
@@ -11,7 +13,7 @@ TOOLS="${TOOLS:-$HOME/toolchains}"
 GODOT="$TOOLS/godot/godot"
 SDK="$TOOLS/android-sdk"
 BT="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)"
-MODE="${1:-debug}"
+MODE="${1:-release}"
 mkdir -p "$ROOT/build"
 cd "$ROOT/godot"
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
@@ -20,11 +22,14 @@ case "$MODE" in
     OUT="$ROOT/build/shardfall-debug.apk"
     "$GODOT" --headless --path . --export-debug "Android" "$OUT" ;;
   release)
-    : "${SHARDFALL_KEYSTORE:?set SHARDFALL_KEYSTORE, SHARDFALL_KEYSTORE_USER, SHARDFALL_KEYSTORE_PASS}"
+    if [ -z "${SHARDFALL_KEYSTORE:-}" ]; then
+      echo "note: no SHARDFALL_KEYSTORE; signing with the shared test key (fine for sideloading, not for the Play Store)"
+      SHARDFALL_KEYSTORE="$ROOT/tools/keys/debug.keystore" SHARDFALL_KEYSTORE_USER=androiddebugkey SHARDFALL_KEYSTORE_PASS=android
+    fi
     export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$SHARDFALL_KEYSTORE"
     export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$SHARDFALL_KEYSTORE_USER"
     export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
-    OUT="$ROOT/build/shardfall-release.apk"
+    OUT="$ROOT/build/shardfall.apk"
     "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
   aab)
     # Gradle builds need res://android/build (installed from the export templates' android_source.zip).

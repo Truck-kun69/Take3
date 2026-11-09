@@ -308,7 +308,16 @@ func spd_mult() -> float:
 	return float(Content.STAGES[stage].spd) * (1.0 + minf(0.25, t / 600.0)) * (1.2 if has_mod("swift") else 1.0)
 
 # ================================================================= main step
+var step_us := 0.0               # smoothed cost of step() (diagnostics: CPU sim vs render)
+
 func step(dt: float) -> void:
+	if over:
+		return
+	var _t0 := Time.get_ticks_usec()
+	_step(dt)
+	step_us = lerpf(step_us, float(Time.get_ticks_usec() - _t0), 0.1)
+
+func _step(dt: float) -> void:
 	if over:
 		return
 	if hitstop > 0.0:

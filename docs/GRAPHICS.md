@@ -253,3 +253,25 @@ measured. It holds about 400 foes, evolves every effect weapon, and walks a circ
 props stream in. The result screen shows average FPS, the 1% low, frame time, draw calls,
 triangles, device, GPU and renderer. The last result is saved in the profile under `bench`.
 `tests/bench_run.tscn` runs it headless for screenshots.
+
+## Diagnosing a device (no debugger, no logcat)
+
+The first S22 (Adreno 730) build crashed a few seconds into every run, with no engine error and flat
+memory, which points at the GPU driver. Tools added to find the cause:
+
+- **Diag** (`scripts/autoload/diag.gd`) writes a flushed trail to `user://diag.txt`: device, GPU, run
+  start, then a heartbeat twice a second (foes, projectiles, effects, memory, video memory, FPS, and
+  the CPU split: `sim` = World.step, `view` = WorldView3D, `cpu` = whole process frame). If frame
+  time is far above sim + view + UI, the GPU is the bottleneck. A session without a clean-close line
+  is shown on the next launch, together with the engine's errors from that session's file log.
+- **Graphics self-test** (Options > Diagnostics) runs the 400-foe scene with every `Quality` feature
+  off, then adds one per 7 s pass and records FPS and triangles. Progress is flushed before each pass,
+  so after a crash the next launch marks that feature as the cause, keeps it off (`gfx_off`), and
+  resumes. On this machine the torch's omni shadow alone added ~865k triangles at 400 foes. It is now
+  High only, and renders as a dual paraboloid (2 views instead of 6).
+- **Release APK.** `tools/build_android.sh` builds the release template by default
+  (`build/shardfall.apk`): optimised engine, no debug checks. It is signed with the shared test key
+  in `tools/keys` unless `SHARDFALL_KEYSTORE*` is set, so it installs over earlier test builds and
+  keeps the save. `tools/build_android.sh debug` still builds the debug template.
+- **Frame cap.** Auto caps phones at 60 FPS. The S22's 120 Hz panel otherwise asks for twice the frames,
+  and twice the heat, for no visible gain.

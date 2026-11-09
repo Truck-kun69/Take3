@@ -109,6 +109,7 @@ func _ready() -> void:
 	torch.omni_attenuation = LIGHT_ATT
 	torch.light_energy = 3.2 * LIGHT_GAIN
 	torch.shadow_enabled = false
+	torch.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
 	add_child(torch)
 	key_light = OmniLight3D.new()
 	key_light.light_color = Color(1.0, 0.95, 0.88)
@@ -301,6 +302,7 @@ func _process(dt: float) -> void:
 	_assign_lights()
 	_features()
 	cost_us = lerpf(cost_us, float(Time.get_ticks_usec() - t0), 0.05)
+	Diag.view_us = cost_us
 
 ## Quality feature switches (self-test / gfx_off), applied every frame so they can change mid-run.
 var _props_on := true
@@ -308,7 +310,9 @@ var _terr_on := true
 var _hi_on := true
 func _features() -> void:
 	sun.shadow_enabled = Quality.tier() >= 1 and Quality.on("sun_shadow")
-	torch.shadow_enabled = Quality.tier() >= 1 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	# the torch's omni shadow re-renders the scene around the hero (+865k triangles at 400 foes in the
+	# self-test): High tier only, and as a dual paraboloid (2 views) rather than a cube (6)
+	torch.shadow_enabled = Quality.tier() >= 2 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"
 	env.glow_enabled = Quality.on("post")
 	env.fog_enabled = Quality.on("post")
 	water.visible = Quality.on("water")

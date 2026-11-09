@@ -538,40 +538,66 @@ func _scroll(c: Control, nm: String) -> ScrollContainer:
 	return s
 
 # ================================================================= options
+var _opt_tab := 0
+
+## Options in three tabs (Game / Graphics / Diagnostics): on a 720-high landscape phone the single list
+## had grown to ~25 rows with the graphics and test tools below the fold.
 func show_options(back: String = "menu") -> void:
 	var v := _open(900)
 	_title(v, "Options")
-	_toggle(v, "Sound", "sound", back)
-	_slider(v, "Volume", "volume", 0.0, 1.0, back)
-	_slider(v, "Screen shake", "shake", 0.0, 1.5, back)
-	_cycle(v, "Damage numbers", "dmg_numbers", ["Off", "Crits & reactions", "All"], back)
-	_cycle(v, "Auto-aim", "aim", ["Nearest", "Strongest", "Facing"], back)
-	_cycle(v, "Joystick", "joy_mode", ["Floating", "Fixed"], back)
-	_toggle(v, "Left-handed layout", "left_handed", back)
-	_toggle(v, "Colour-blind palette & patterns", "colorblind", back)
-	_toggle(v, "Reduce flashing", "reduce_flash", back)
-	_toggle(v, "Haptics", "haptics", back)
-	_toggle(v, "Auto-equip upgrades", "auto_equip", back)
-	_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
-	_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
-	_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
-	_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
-	_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
-	_toggle(v, "Show FPS", "show_fps", back)
-	_toggle(v, "Always show touch buttons", "force_touch_ui", back)
-	if back == "menu" and FileAccess.file_exists(Diag.PREV):
-		v.add_child(UIKit.button("Last crash report", func():
-			show_crash(FileAccess.get_file_as_string(Diag.PREV).strip_edges().split("\n").slice(-30)), 46))
-	if back == "menu":
-		v.add_child(UIKit.button("Graphics self-test (finds crashing features)", func(): Save.flush(); act.emit("selftest", null), 50))
-		if not Save.opt("gfx_off").is_empty():
-			v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
-			v.add_child(UIKit.button("Turn them back on", func(): Save.set_opt("gfx_off", []); Quality.load_saved(); act.emit("options_changed", null); show_options(back), 44))
-	if back == "menu":
-		var bb := UIKit.button("Run benchmark (23 s)", func(): Save.flush(); act.emit("bench", null), 50)
-		bb.tooltip_text = "A fixed 400-foe scene; screenshot the result to compare graphics settings."
-		v.add_child(bb)
-	v.add_child(UIKit.button("Back", func(): Save.flush(); act.emit(back, null)))
+	var tabs := _grid(3, 8)
+	for i in 3:
+		var tb := UIKit.button(["Game", "Graphics", "Diagnostics"][i], func(): _opt_tab = i; show_options(back), 46)
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if i == _opt_tab: tb.add_theme_color_override("font_color", UIKit.GOLD)
+		else: tb.modulate = Color(0.75, 0.72, 0.7)
+		tabs.add_child(tb)
+	v.add_child(tabs)
+	match _opt_tab:
+		0:
+			_toggle(v, "Sound", "sound", back)
+			_slider(v, "Volume", "volume", 0.0, 1.0, back)
+			_slider(v, "Screen shake", "shake", 0.0, 1.5, back)
+			_cycle(v, "Damage numbers", "dmg_numbers", ["Off", "Crits & reactions", "All"], back)
+			_cycle(v, "Auto-aim", "aim", ["Nearest", "Strongest", "Facing"], back)
+			_cycle(v, "Joystick", "joy_mode", ["Floating", "Fixed"], back)
+			_toggle(v, "Left-handed layout", "left_handed", back)
+			_toggle(v, "Colour-blind palette & patterns", "colorblind", back)
+			_toggle(v, "Reduce flashing", "reduce_flash", back)
+			_toggle(v, "Haptics", "haptics", back)
+			_toggle(v, "Auto-equip upgrades", "auto_equip", back)
+			_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
+			_toggle(v, "Always show touch buttons", "force_touch_ui", back)
+		1:
+			_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
+			_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
+			_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
+			_cycle(v, "Frame rate cap", "frame_cap", ["Auto (%s)" % ("60" if OS.has_feature("mobile") else "none"), "30 (cool, saves battery)", "60", "None"], back)
+			_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
+			_toggle(v, "Show FPS", "show_fps", back)
+			if not Save.opt("gfx_off").is_empty():
+				v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
+				v.add_child(UIKit.button("Turn them back on", func(): Save.set_opt("gfx_off", []); Quality.load_saved(); act.emit("options_changed", null); show_options(back), 44))
+		2:
+			if back != "menu":
+				var nl := UIKit.label("The tests start their own scene: open Options from the main menu to run them.", 16, UIKit.DIM, true, "italic")
+				nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				v.add_child(nl)
+			else:
+				v.add_child(UIKit.button("Graphics self-test (finds crashing features)", func(): Save.flush(); act.emit("selftest", null), 50))
+				var bb := UIKit.button("Run benchmark (23 s)", func(): Save.flush(); act.emit("bench", null), 50)
+				bb.tooltip_text = "A fixed 400-foe scene; screenshot the result to compare graphics settings."
+				v.add_child(bb)
+				if FileAccess.file_exists(Diag.PREV):
+					v.add_child(UIKit.button("Last crash report", func():
+						show_crash(FileAccess.get_file_as_string(Diag.PREV).strip_edges().split("\n").slice(-30)), 46))
+				var st: Dictionary = Save.data.get("selftest", {})
+				if not st.get("results", []).is_empty() and not st.get("running", false):
+					v.add_child(UIKit.button("Last self-test results", func(): show_selftest(st), 46))
+			var info := UIKit.label("%s  \u00b7  %s  \u00b7  %s" % [OS.get_model_name(), RenderingServer.get_video_adapter_name(), RenderingServer.get_current_rendering_method()], 14, UIKit.DIM, true, "italic")
+			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			v.add_child(info)
+	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null)))
 
 ## Shown on launch after a session that ended without closing cleanly: the tail of its breadcrumb
 ## trail and the engine's errors, small enough to fit one screenshot.

@@ -112,6 +112,10 @@ func _render_scale() -> void:
 	# FSR 1 exists only in Forward+ (the Mobile renderer warned and ignored it on the S22)
 	var fsr := RenderingServer.get_current_rendering_method() == "forward_plus" and s < 1.0
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if fsr else Viewport.SCALING_3D_MODE_BILINEAR
+	# frame cap: phones with 90/120 Hz screens would otherwise render (and heat) at the panel rate
+	# for no visible gain in a top-down game. Option "frame_cap": 0 Auto (60 on phones), 1 30, 2 60, 3 none.
+	var cap := [60 if OS.has_feature("mobile") else 0, 30, 60, 0][clampi(int(Save.opt("frame_cap")), 0, 3)] as int
+	Engine.max_fps = cap
 	# the graphics tier (Quality): LOD bias, MSAA and the sun's shadow atlas
 	var hi := Quality.high()
 	vp.mesh_lod_threshold = 1.0 if hi else 1.5

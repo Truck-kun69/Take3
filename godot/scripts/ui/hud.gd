@@ -241,7 +241,7 @@ func _process(dt: float) -> void:
 	fps_lbl.visible = bool(Save.opt("show_fps"))
 	if fps_lbl.visible:
 		_frame_ms = lerpf(_frame_ms, dt * 1000.0, 0.1)
-		fps_lbl.text = "%d fps  %.1f ms  %d foes\n%d draws  %dk tris  %s  3D %d%%" % [Engine.get_frames_per_second(), _frame_ms, w.sw.n,
+		fps_lbl.text = "%d fps  %.1f ms  %d foes  sim %.1f  view %.1f\n%d draws  %dk tris  %s  3D %d%%" % [Engine.get_frames_per_second(), _frame_ms, w.sw.n, w.step_us / 1000.0, Diag.view_us / 1000.0,
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000.0),
 			"GPU crowd" if w.crowd != null and w.crowd.ready else "CPU crowd", int(get_viewport().scaling_3d_scale * 100.0)]
 		fps_lbl.position = Vector2(vs.x - 330, vs.y - 70)

@@ -65,9 +65,13 @@ func beat(w: World, dt: float, label: String = "run") -> void:
 	_beat_t -= dt
 	if _beat_t > 0.0 or w == null: return
 	_beat_t = 0.5
-	mark("%s t=%.1f foes=%d projs=%d eshots=%d teles=%d fx=%d texts=%d picks=%d mem=%dMB vmem=%dMB fps=%d" % [label, w.t, w.sw.n, w.projs.size(),
-		w.eshots.size(), w.teles.size(), w.fx.size(), w.texts.size(), w.picks.size(), OS.get_static_memory_usage() / 1048576,
-		int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0), Engine.get_frames_per_second()])
+	mark("%s t=%.1f foes=%d projs=%d eshots=%d fx=%d texts=%d mem=%dMB vmem=%dMB fps=%d | sim %.1f view %.1f cpu %.1f ms" % [label, w.t, w.sw.n, w.projs.size(),
+		w.eshots.size(), w.fx.size(), w.texts.size(), OS.get_static_memory_usage() / 1048576,
+		int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0), Engine.get_frames_per_second(),
+		w.step_us / 1000.0, view_us / 1000.0, Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
+
+## Set by WorldView3D each frame (its own CPU cost), read by beat().
+var view_us := 0.0
 
 func _notification(what: int) -> void:
 	match what:
