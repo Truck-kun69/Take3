@@ -240,6 +240,22 @@ func _resume() -> void:
 	state = "play"
 	screens.close()
 
+## World-side first-occurrence breadcrumbs (see Diag.first).
+func _firsts() -> void:
+	if world == null: return
+	if world.kills > 0: Diag.first("kill")
+	if not world.projs.is_empty(): Diag.first("projectile")
+	if not world.eshots.is_empty(): Diag.first("enemy projectile")
+	if not world.teles.is_empty(): Diag.first("telegraph")
+	if world.gem_n > 0: Diag.first("xp gem")
+	for e in world.fx: Diag.first("fx " + String(e.k))
+	for p in world.picks: Diag.first("pickup " + String(p.k))
+	for ev in world.director.active: Diag.first("event " + String(ev.id))
+	for o in world.director.objects: Diag.first("object " + String(o.kind))
+	if not world.breakables.is_empty(): Diag.first("breakables")
+	if world.hp < world.max_hp: Diag.first("hero hit")
+	if world.lvl > 1: Diag.first("level 2")
+
 # ================================================================= benchmark
 ## Options > Benchmark: a fixed, invulnerable 23 s rift (3 s warm-up, 20 s measured) with the swarm
 ## held at ~400 foes and every effect weapon evolved, walking a circle so terrain and props stream.
@@ -377,6 +393,7 @@ func _st_finish() -> void:
 func _process(dt: float) -> void:
 	if world == null:
 		return
+	if state in ["play", "bench", "selftest"]: _firsts()
 	if state == "selftest":
 		Diag.beat(world, dt, "selftest")
 		_st_step(dt)

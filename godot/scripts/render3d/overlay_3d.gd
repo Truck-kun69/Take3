@@ -104,6 +104,7 @@ func _draw() -> void:
 			_text(sp4, names.strip_edges(), Color("8ab4ff"), 12, 4)
 			_bar(sp4 + Vector2(0, 6), 40.0, w.sw.hp[i] / w.sw.mhp[i], Color("ffd84a"))
 	# damage numbers
+	if not w.texts.is_empty(): Diag.first("damage numbers")
 	for e in w.texts:
 		var life := 1.0 if e.tier == 3 else 0.65
 		var k: float = e.t / life

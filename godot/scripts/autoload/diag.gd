@@ -25,7 +25,11 @@ func _enter_tree() -> void:
 			if last.contains(c): clean = true
 		if not clean and lines.size() > 1:
 			crashed_last = true
-			report = lines.slice(maxi(0, lines.size() - 22))
+			report = PackedStringArray()
+			for l in lines:                          # every first occurrence, then the tail of the trail
+				if l.contains(" first ") or l.contains("== boot") or l.contains(" device ") or l.contains(" gpu ") or l.contains(" start "): report.append(l)
+			report.append("-- last moments --")
+			report.append_array(lines.slice(maxi(0, lines.size() - 16)))
 			var eng := _engine_errors()
 			if not eng.is_empty():
 				report.append("-- engine errors --")
@@ -55,6 +59,15 @@ func _engine_errors() -> PackedStringArray:
 			out.append(l.strip_edges().left(140))
 	return out.slice(maxi(0, out.size() - 10))
 
+## First-occurrence breadcrumbs: the first time each kind of thing happens in this session (a sound,
+## a kill, a corpse dissolving, a decal, a light...) it is written down. After a hard crash, whatever
+## appeared just before the trail ends is the prime suspect.
+var _seen := {}
+func first(key: String) -> void:
+	if _seen.has(key): return
+	_seen[key] = true
+	mark("first " + key)
+
 func mark(s: String) -> void:
 	if _f == null: return
 	_f.store_line("%7.2f %s" % [Time.get_ticks_msec() / 1000.0, s])
@@ -64,7 +77,7 @@ func mark(s: String) -> void:
 func beat(w: World, dt: float, label: String = "run") -> void:
 	_beat_t -= dt
 	if _beat_t > 0.0 or w == null: return
-	_beat_t = 0.5
+	_beat_t = 0.25
 	mark("%s t=%.1f foes=%d projs=%d eshots=%d fx=%d texts=%d mem=%dMB vmem=%dMB fps=%d | sim %.1f view %.1f cpu %.1f ms" % [label, w.t, w.sw.n, w.projs.size(),
 		w.eshots.size(), w.fx.size(), w.texts.size(), OS.get_static_memory_usage() / 1048576,
 		int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0), Engine.get_frames_per_second(),

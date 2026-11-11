@@ -547,6 +547,7 @@ func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: flo
 	if _decal_used >= DECAL_POOL: return
 	var d := decals[_decal_used]
 	_decal_used += 1
+	Diag.first("decal kind %d" % int(kind))
 	d.visible = true
 	d.transform = Transform3D(xform_basis, Vector3(pos.x, y, pos.y))
 	d.set_instance_shader_parameter("col", col)

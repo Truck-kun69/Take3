@@ -437,6 +437,7 @@ func _terrain_tex(dt: float) -> void:
 		if _th_tex == null: _th_tex = ImageTexture.create_from_image(_th_img)
 		else: _th_tex.update(_th_img)
 		var o := Vector2(cc - Vector2i(half, half)) * Terrain.CHUNK
+		Diag.mark("terrain texture rebuilt around chunk %s" % str(cc))
 		RenderingServer.global_shader_parameter_set("terrain_h", _th_tex)
 		RenderingServer.global_shader_parameter_set("terrain_o", Vector4(o.x, o.y, n if Quality.on("terrain") else 0, Terrain.CELL))
 		_ts_ver = -1
@@ -584,6 +585,7 @@ func add_corpse(kind: int, pos: Vector2, dir: Vector2, rad: float, seed_v: int) 
 	if kind == Content.E.BOSS or kind == Content.E.HERALD or kind == Content.E.EXILE: return
 	if corpses.size() >= 140: corpses.pop_front()
 	corpses.append([kind, pos, dir if dir != Vector2.ZERO else Vector2.RIGHT, rad, time, seed_v % 64])
+	Diag.first("corpse")
 
 func _corpses() -> void:
 	var span := Swarm.CAP * FOE_STRIDE
@@ -615,6 +617,7 @@ func _corpses() -> void:
 		_fb[o + 12] = col.r; _fb[o + 13] = col.g; _fb[o + 14] = col.b; _fb[o + 15] = 1.0
 		_fb[o + 16] = 0.0
 		_fb[o + 17] = clampf((age - 1.2) / (CORPSE_LIFE - 1.2), 0.0, 1.0)  # dissolve
+		if age > 1.2: Diag.first("corpse dissolving")
 		_fb[o + 18] = 7.0
 		_fb[o + 19] = 256.0 * float(c[5])
 		_foe_n[k] = n + 1
@@ -624,6 +627,7 @@ var _aura_mm: MultiMeshInstance3D
 var _aura_n := 0
 func _aura(p: Vector2, r: float, c: Color) -> void:
 	if _aura_n >= 64: return
+	Diag.first("elite aura")
 	var mm := _aura_mm.multimesh
 	mm.set_instance_transform(_aura_n, Transform3D(Basis().scaled(Vector3(r, 1, r)), Vector3(p.x, 0.8 + ground_y(p), p.y)))
 	mm.set_instance_color(_aura_n, c)
@@ -718,6 +722,8 @@ func _assign_lights() -> void:
 		if i < cand.size() and i < nl:
 			var c: Array = cand[i]
 			l.visible = true
+			if i == 0: Diag.first("dynamic light")
+			if i == 7: Diag.first("8 dynamic lights")
 			l.position = c[0] + Vector3(0, ground_y(Vector2(c[0].x, c[0].z)), 0)
 			l.light_color = c[1]
 			l.light_energy = c[2] * LIGHT_GAIN

@@ -125,6 +125,7 @@ func start_ambience(stage: int) -> void:
 		ov = _ambience_loop(stage)
 	ambience.stream = ov
 	ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("volume")) * 0.35))
+	Diag.first("ambience %d" % stage)
 	ambience.play()
 
 func stop_ambience() -> void:
@@ -170,6 +171,7 @@ func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
 	if now - int(_last.get(name, -1000)) < 50:
 		return
 	_last[name] = now
+	Diag.first("sound " + name)
 	var p := players[_rr]
 	_rr = (_rr + 1) % POOL
 	p.stream = streams[name]
