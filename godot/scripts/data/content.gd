@@ -392,6 +392,33 @@ const SEASONS := [
 	{"id": "mirrored", "name": "Season of Mirrors", "d": "Elites spawn with a twin. +40% elite rewards."},
 ]
 
+# ---------------------------------------------------------------- prophecies (targeted rewards)
+# Chosen on the main menu before a run: an objective, and a reward picked up front. It stays active
+# across runs until fulfilled (within a single run) or abandoned; the reward pays out the moment the
+# objective completes, mid-run. World.prophecy_progress() reads each objective from run metrics.
+const PROPHECIES := {
+	"pyre": {"name": "The Pyre", "d": "Slay 3 elites while they burn.", "target": 3},
+	"rime": {"name": "Rimebound", "d": "Kill 25 foes while they are frozen.", "target": 25},
+	"conduit": {"name": "The Conduit", "d": "Arc lightning through water or blood 6 times.", "target": 6},
+	"reaper": {"name": "The Reaper", "d": "Slay 600 foes in one run.", "target": 600},
+	"unscathed": {"name": "Unscathed", "d": "Reach the act's boss having lost less than 150 life in total.", "target": 1},
+	"hoarder": {"name": "The Hoarder", "d": "Bank a hoard worth 500 or more at once.", "target": 500},
+	"gambler": {"name": "The Gambler", "d": "Bank a hoard at x2 or higher.", "target": 1},
+	"alloy": {"name": "Alloy", "d": "Fuse two weapons.", "target": 1},
+	"pilgrim": {"name": "The Pilgrim", "d": "Complete 3 events in one run.", "target": 3},
+	"kindling": {"name": "Kindling", "d": "Ignite oil or detonate poison 5 times.", "target": 5},
+}
+const PROPHECY_IDS := ["pyre", "rime", "conduit", "reaper", "unscathed", "hoarder", "gambler", "alloy", "pilgrim", "kindling"]
+const PROPHECY_REWARDS := {
+	"legendary": "A legendary item",
+	"rare3": "Three rare items",
+	"chaos": "4 Chaos Shards",
+	"exalt": "2 Exalted Shards",
+	"echoes": "6 Echoes",
+	"gold": "600 gold",
+}
+const PROPHECY_REWARD_IDS := ["legendary", "rare3", "chaos", "exalt", "echoes", "gold"]
+
 # ---------------------------------------------------------------- the Whisperer's bargains
 # A hooded voice appears mid-run (Director object "whisper"); touching it offers two of these. Each is
 # a boon and a price, applied as one stat source for the rest of the run. Accepted bargains mark the

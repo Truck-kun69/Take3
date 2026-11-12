@@ -175,7 +175,9 @@ func _rand_in(c: Vector2, r: float) -> Vector2:
 
 func _end(ev: Dictionary, ok: bool) -> void:
 	ev.done = true
-	if ok: w.hoard += 40.0
+	if ok:
+		w.hoard += 40.0
+		w.metrics.events_done = int(w.metrics.get("events_done", 0)) + 1
 	if ok and w.rng.randf() < 0.3:
 		w.drop_lore(ev.pos)
 

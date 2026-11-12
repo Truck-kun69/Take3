@@ -443,6 +443,7 @@ func _on_act(what: String, arg) -> void:
 		"stash": screens.show_stash(false)
 		"codex": screens.show_codex()
 		"web": screens.show_web()
+		"prophecy": screens.show_prophecies()
 		"options": screens.show_options("menu")
 		"bench": start_bench()
 		"selftest": start_selftest(false)

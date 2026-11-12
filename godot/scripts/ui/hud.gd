@@ -327,10 +327,18 @@ func _lantern() -> void:
 	if w.hoard > 0.0 or w.hoard_mult > 1.0:                  # bank-or-push: what a death would cost
 		var f3 := UIKit.font("label")
 		var hc := Color("7fd8ff").lerp(Color("ffb347"), clampf((w.hoard_mult - 1.0) / 2.0, 0.0, 1.0))
-		draw_string(f3, Vector2(bar.position.x + 64.0, bar.end.y + 15.0), "HOARD %d  x%.1f" % [int(w.hoard), w.hoard_mult], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, hc)
+		draw_string(f3, Vector2(bar.position.x, bar.end.y + 15.0), "HOARD %d  x%.1f" % [int(w.hoard), w.hoard_mult], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, hc)
+	if not w.prophecy.is_empty():                              # the active prophecy's progress
+		var f4 := UIKit.font("label")
+		var pr: Vector2 = w.prophecy_progress()
+		var pc := Color("ffd27a") if not w.prophecy_done else Color("8aff9a")
+		var ptx := ("%s  %d/%d" % [Content.PROPHECIES[w.prophecy.id].name.to_upper(), int(pr.x), int(pr.y)]) if not w.prophecy_done else "PROPHECY FULFILLED"
+		draw_string(f4, Vector2(bar.position.x, bar.end.y + 30.0), ptx, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, pc)
 	if eng:
 		var f2 := UIKit.font("label")
-		draw_string(f2, Vector2(bar.position.x, bar.end.y + 15.0), "ENGULFED", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))
+		var et := "ENGULFED"
+		var ew := f2.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		draw_string(f2, Vector2(fc.x - 14.0 - ew, bar.end.y - 1.0), et, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))
 
 
 ## Liquid globe with the bronze frame and a value in the num face.

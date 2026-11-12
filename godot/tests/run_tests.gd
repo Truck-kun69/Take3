@@ -28,6 +28,7 @@ func _ready() -> void:
 		_fusion_tests()
 		_surface_tests()
 		_hoard_tests()
+		_prophecy_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -515,6 +516,41 @@ func _hoard_tests() -> void:
 	w5.end_run(true)
 	ok(w5.hoard_banked == 300.0 and w5.hoard_echoes == 1, "a win banks what you carry")
 	Save.data.echoes = e0
+
+func _prophecy_tests() -> void:
+	print("== prophecies")
+	var saved: Dictionary = Save.data.prophecy.duplicate(true)
+	Save.data.prophecy = {"offers": [], "active": {}, "done": 0}
+	var offers := Save.prophecy_offers()
+	ok(offers.size() == 3 and offers[0][1].size() == 3, "three prophecies on offer, three rewards each")
+	ok(offers[0][0] != offers[1][0] and offers[1][0] != offers[2][0], "the offers differ")
+	Save.data.prophecy.active = {"id": "reaper", "reward": "chaos"}
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 51})
+	ok(w.prophecy.id == "reaper", "a run carries the active prophecy")
+	var ch0 := int(Save.data.currency.chaos)
+	w.kills = 599
+	w._step_prophecy(1.0)
+	ok(not w.prophecy_done, "not yet (599/600)")
+	w.kills = 600
+	w._proph_t = 0.0
+	w._step_prophecy(1.0)
+	ok(w.prophecy_done and int(Save.data.currency.chaos) == ch0 + 4, "fulfilled: the chosen reward pays out")
+	ok(Save.data.prophecy.active.is_empty() and int(Save.data.prophecy.done) == 1, "and leaves the profile")
+	# item rewards drop at the hero's feet
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 52, "prophecy": {"id": "alloy", "reward": "rare3"}})
+	var p0 := w2.picks.size()
+	w2.metrics.fusions = 1
+	w2._step_prophecy(1.0)
+	ok(w2.picks.size() >= p0 + 3, "three rare items drop")
+	# objectives read from the run
+	var w3 := _world({"mode": "campaign", "hero": 0, "seed": 53, "prophecy": {"id": "pyre", "reward": "gold"}})
+	var e := w3.spawn_foe(Content.E.BRUTE, w3.pp + Vector2(90, 0), 1)
+	w3.sw.apply_status(e, Content.El.FIRE, 3.0, 4.0)
+	w3.sw.take(e, 1e9)
+	w3._reap()
+	ok(w3.prophecy_progress().x == 1.0, "a burning elite counts for The Pyre")
+	ok(_world({"mode": "pinnacle", "hero": 0, "seed": 54, "prophecy": {"id": "reaper", "reward": "gold"}}).prophecy.is_empty(), "no prophecies in the pinnacle")
+	Save.data.prophecy = saved
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

@@ -122,11 +122,16 @@ func show_menu() -> void:
 	_journey(j, d, wide)
 	if wide:
 		v.add_child(_spacer(4))
-	var row := _grid(2, 8)
+	var row := _grid(3, 8)
 	var unspent := int(d.get("echoes", 0))
-	for pair in [["Gear & Cube", "stash"], ["Shard Web" + ("  (%d)" % unspent if unspent > 0 else ""), "web"], ["Codex", "codex"], ["Options", "options"]]:
-		var b3 := UIKit.button(pair[0], func(): act.emit(pair[1], null), 52)
+	var act_p: Dictionary = d.prophecy.active
+	for pair in [["Gear & Cube", "stash"], ["Shard Web" + ("  (%d)" % unspent if unspent > 0 else ""), "web"], ["Prophecy" + (" \u2605" if not act_p.is_empty() else ""), "prophecy"],
+			["Daily Rift", "daily"], ["Codex", "codex"], ["Options", "options"]]:
+		var b3 := UIKit.button(pair[0], func(): act.emit(pair[1], null), 50)
 		b3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if pair[1] == "prophecy" and not act_p.is_empty():
+			b3.add_theme_color_override("font_color", Color("ffd27a"))
+			b3.tooltip_text = "%s  Reward: %s" % [Content.PROPHECIES[act_p.id].d, Content.PROPHECY_REWARDS[act_p.reward]]
 		row.add_child(b3)
 	v.add_child(row)
 	var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
@@ -599,6 +604,51 @@ func show_options(back: String = "menu") -> void:
 			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.add_child(info)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null)))
+
+## Prophecies: three offers, each with three rewards to choose from; the active one can be abandoned.
+func show_prophecies() -> void:
+	var v := _open(1000)
+	var P: Dictionary = Save.data.prophecy
+	_title(v, "Prophecies", "Choose a fate and name your price. It holds until fulfilled within a single run.")
+	if not P.active.is_empty():
+		var A: Dictionary = Content.PROPHECIES[P.active.id]
+		var al := UIKit.label("Active: %s. %s  Reward: %s" % [A.name, A.d, Content.PROPHECY_REWARDS[P.active.reward]], 18, Color("ffd27a"), true, "body")
+		al.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(al)
+		v.add_child(UIKit.button("Abandon it", func(): P.active = {}; P.offers = []; Save.mark_dirty(); show_prophecies(), 46))
+	else:
+		var portrait := get_viewport_rect().size.x < 820.0
+		var row: BoxContainer = UIKit.vbox(10) if portrait else UIKit.hbox(14)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		v.add_child(row)
+		for off in Save.prophecy_offers():
+			var id: String = off[0]
+			var D: Dictionary = Content.PROPHECIES[id]
+			var card := PanelContainer.new()
+			card.add_theme_stylebox_override("panel", UIKit.nine("card", 46, Vector4(18, 20, 18, 20), Color("c9a25a")))
+			card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			card.custom_minimum_size = Vector2(0 if portrait else 280, 0)
+			var cv := UIKit.vbox(8)
+			card.add_child(cv)
+			var nm := UIKit.label(D.name, 23, UIKit.TEXT, true, "display")
+			nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cv.add_child(nm)
+			var ds := UIKit.label(D.d, 17, Color("cfc5b0"), true, "body")
+			ds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cv.add_child(ds)
+			for rw in off[1]:
+				var b := UIKit.button(Content.PROPHECY_REWARDS[rw], func():
+					P.active = {"id": id, "reward": rw}
+					P.offers = []
+					Save.mark_dirty()
+					Sfx.play("event")
+					show_menu(), 44)
+				cv.add_child(b)
+			row.add_child(card)
+	var dn := UIKit.label("Prophecies fulfilled: %d" % int(P.done), 15, UIKit.DIM, true, "italic")
+	dn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(dn)
+	v.add_child(UIKit.button("Back", func(): act.emit("menu", null), 50))
 
 ## Shown on launch after a session that ended without closing cleanly: the tail of its breadcrumb
 ## trail and the engine's errors, small enough to fit one screenshot.

@@ -36,7 +36,8 @@ func defaults() -> Dictionary:
 		"passives": ["start"], "echoes": 0, "torment": 0, "torment_max": 0,
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
 		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0},
-		"selftest": {}, "bench": {},          # graphics self-test progress (survives a crash), last benchmark
+		"selftest": {}, "bench": {},
+		"prophecy": {"offers": [], "active": {}, "done": 0},   # offers: [[id, [reward ids]]], active: {id, reward}          # graphics self-test progress (survives a crash), last benchmark
 	}
 
 func load_profile() -> void:
@@ -60,7 +61,7 @@ func _merge(dst: Dictionary, src: Dictionary) -> void:
 	for k in dst:
 		if not src.has(k):
 			continue
-		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench"].has(k):
+		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench", "prophecy"].has(k):
 			_merge(dst[k], src[k])
 		else:
 			dst[k] = src[k]
@@ -147,6 +148,24 @@ func lore_sets() -> int:
 func season() -> Dictionary:
 	var week := int(Time.get_unix_time_from_system() / 604800.0)
 	return Content.SEASONS[week % Content.SEASONS.size()]
+
+## Three prophecies on offer, each with three reward choices; rerolled after one is fulfilled or abandoned.
+func prophecy_offers() -> Array:
+	var P: Dictionary = data.prophecy
+	if P.offers.is_empty():
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		var ids: Array = Content.PROPHECY_IDS.duplicate()
+		var act: Dictionary = P.active
+		if not act.is_empty(): ids.erase(act.id)
+		for k in 3:
+			var id: String = ids.pop_at(rng.randi_range(0, ids.size() - 1))
+			var rw: Array = Content.PROPHECY_REWARD_IDS.duplicate()
+			var pick: Array = []
+			for r in 3: pick.append(rw.pop_at(rng.randi_range(0, rw.size() - 1)))
+			P.offers.append([id, pick])
+		mark_dirty()
+	return P.offers
 
 func has_nemesis() -> bool:
 	return not data.nemesis.is_empty()

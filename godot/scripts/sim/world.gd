@@ -79,6 +79,8 @@ var hoard_mult := 1.0            # grows each time a gate is walked past (x1 .. 
 var hoard_banked := 0.0          # total banked this run (after multipliers)
 var hoard_lost := 0.0            # unbanked hoard lost on death
 var hoard_echoes := 0            # Echoes earned by banking (added at end_run)
+var prophecy := {}               # the active prophecy {id, reward} (from the profile; cleared when fulfilled)
+var prophecy_done := false
 var whisper_offer: Array = []    # two ids while the bargain screen is open
 var _night_q := -1
 var colorblind := false
@@ -209,6 +211,7 @@ func setup(cfg: Dictionary) -> void:
 		stage = int(node.biome)
 	season = cfg.get("season", Save.season().id)
 	moon = float(cfg.get("moon", -1.0))
+	prophecy = (cfg.get("prophecy", Save.data.prophecy.active) as Dictionary).duplicate() if mode != "pinnacle" else {}
 	sky_date = cfg.get("sky_date", [])
 	headless = cfg.get("headless", false)
 	torment = 0 if mode == "rift" else clampi(int(cfg.get("torment", Save.data.get("torment", 0))), 0, Content.TORMENT.size() - 1)
@@ -342,6 +345,7 @@ func _step(dt: float) -> void:
 	buffs.step(dt)
 	_step_light(dt)
 	_step_surfaces(dt)
+	_step_prophecy(dt)
 	_refresh_max_hp()
 	shake = maxf(0.0, shake - dt * 1.8)
 	flash = maxf(0.0, flash - dt)
@@ -1687,6 +1691,8 @@ func _on_kill(i: int) -> void:
 	_burst(at, _foe_col(k), 14 if elite else 5, 200.0 if elite else 120.0)
 	director.on_kill(i, at)
 	hoard += 15.0 if elite else (60.0 if (f & (Swarm.F_BOSS | Swarm.F_EXILE | Swarm.F_RIFTG)) != 0 else 1.0)
+	if elite and sw.burn[i] > 0.0: metrics.burn_elites = int(metrics.get("burn_elites", 0)) + 1
+	if sw.freeze_t[i] > 0.0: metrics.frozen_kills = int(metrics.get("frozen_kills", 0)) + 1
 	# the fight leaves its marks: blood where the big ones fall, poison where spitters burst
 	if k == Content.E.SPITTER: terrain.pour(at, 30.0, Terrain.Surf.POISON, 12.0)
 	elif elite or k == Content.E.BRUTE: terrain.pour(at, 32.0 if elite else 18.0, Terrain.Surf.BLOOD, 14.0)
@@ -1951,6 +1957,58 @@ func gloom() -> float:
 func engulfed() -> float:
 	return clampf((LIGHT_ENGULF - light) / LIGHT_ENGULF, 0.0, 1.0) if light < LIGHT_ENGULF else 0.0
 
+# ================================================================= prophecies
+## [current, target] for the active prophecy, from this run's metrics.
+func prophecy_progress() -> Vector2:
+	if prophecy.is_empty(): return Vector2.ZERO
+	var P: Dictionary = Content.PROPHECIES[prophecy.id]
+	var tg := float(P.target)
+	var tm: Dictionary = metrics.terrain
+	var cur := 0.0
+	match String(prophecy.id):
+		"pyre": cur = metrics.get("burn_elites", 0)
+		"rime": cur = metrics.get("frozen_kills", 0)
+		"conduit": cur = int(tm.get("shock", 0)) + int(tm.get("conduct", 0))
+		"reaper": cur = kills
+		"unscathed": cur = 1.0 if boss_spawned and metrics.dmg_taken < 150.0 else 0.0
+		"hoarder": cur = metrics.get("best_bank", 0.0)
+		"gambler": cur = 1.0 if float(metrics.get("best_mult", 0.0)) >= 2.0 else 0.0
+		"alloy": cur = metrics.get("fusions", 0)
+		"pilgrim": cur = metrics.get("events_done", 0)
+		"kindling": cur = int(tm.get("ignite", 0)) + int(tm.get("blast", 0))
+	return Vector2(minf(float(cur), tg), tg)
+
+var _proph_t := 0.0
+func _step_prophecy(dt: float) -> void:
+	if prophecy.is_empty() or prophecy_done: return
+	_proph_t -= dt
+	if _proph_t > 0.0: return
+	_proph_t = 0.5
+	var pr := prophecy_progress()
+	if pr.x >= pr.y: fulfil_prophecy()
+
+## Pays the chosen reward now (items drop at the hero's feet) and clears it from the profile.
+func fulfil_prophecy() -> void:
+	prophecy_done = true
+	var P: Dictionary = Content.PROPHECIES[prophecy.id]
+	match String(prophecy.reward):
+		"legendary": drop_item(pp + Vector2(0, 30), Content.Rarity.LEGENDARY)
+		"rare3":
+			for k in 3: drop_item(pp + Vector2(cos(k * 2.1), sin(k * 2.1)) * 34.0, Content.Rarity.RARE)
+		"chaos": Save.add_currency("chaos", 4)
+		"exalt": Save.add_currency("exalt", 2)
+		"echoes": Save.data.echoes = int(Save.data.echoes) + 6
+		"gold": Save.data.gold = int(Save.data.gold) + 600
+	if not headless or Save.data.prophecy.active.get("id", "") == prophecy.id:
+		Save.data.prophecy.active = {}
+		Save.data.prophecy.offers = []
+		Save.data.prophecy.done = int(Save.data.prophecy.done) + 1
+	Save.mark_dirty()
+	metrics.prophecy = prophecy.id
+	banner.emit("Prophecy fulfilled: " + P.name, Content.PROPHECY_REWARDS[prophecy.reward], Color("ffd27a"))
+	fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 200.0, "col": Color("ffd27a"), "life": 0.5, "t": 0.0})
+	Sfx.play("level")
+
 # ================================================================= bank or push (Rift Gates)
 ## Banks the hoard at the current multiplier: gold now, Echoes at the end of the run, and rare items
 ## that spill out of the gate (one per 150 banked, at most four). Resets the multiplier.
@@ -1966,6 +2024,8 @@ func bank_hoard(at: Vector2, drop: bool = true) -> Dictionary:
 		for k in items: drop_item(at + Vector2(cos(k * 1.9), sin(k * 1.9)) * 30.0, Content.Rarity.RARE)
 	var res := {"value": v, "gold": g, "echoes": e, "items": items if drop else 0, "mult": hoard_mult}
 	metrics.banked = int(metrics.get("banked", 0)) + 1
+	metrics.best_bank = maxf(float(metrics.get("best_bank", 0.0)), v)
+	if v > 0.0: metrics.best_mult = maxf(float(metrics.get("best_mult", 0.0)), hoard_mult)
 	if v > 0.0:
 		banner.emit("Hoard banked", "+%d gold   +%d Echoes   %d rare items   (x%.1f)" % [int(g), e, res.items, hoard_mult], Color("7fd8ff"))
 	hoard = 0.0
