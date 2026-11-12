@@ -324,6 +324,10 @@ func _lantern() -> void:
 	var fi := PackedVector2Array()
 	for p in fl: fi.append(fc + (p - fc) * 0.72)
 	draw_colored_polygon(fi, col.lightened(0.25))
+	if w.hoard > 0.0 or w.hoard_mult > 1.0:                  # bank-or-push: what a death would cost
+		var f3 := UIKit.font("label")
+		var hc := Color("7fd8ff").lerp(Color("ffb347"), clampf((w.hoard_mult - 1.0) / 2.0, 0.0, 1.0))
+		draw_string(f3, Vector2(bar.position.x + 64.0, bar.end.y + 15.0), "HOARD %d  x%.1f" % [int(w.hoard), w.hoard_mult], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, hc)
 	if eng:
 		var f2 := UIKit.font("label")
 		draw_string(f2, Vector2(bar.position.x, bar.end.y + 15.0), "ENGULFED", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))

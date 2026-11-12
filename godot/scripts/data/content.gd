@@ -355,6 +355,7 @@ const BUFFS := {
 	"diamond": {"name": "Diamond", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "e0faff", "mods": [["crit_chance", "add", 0.3]]},
 	"frenzy": {"name": "Overclock", "dur": 12.0, "policy": Stack.REFRESH, "col": "ff8a2b", "mods": [["cooldown", "more", 0.5]]},
 	"aegis": {"name": "Aegis", "dur": 12.0, "policy": Stack.UNIQUE, "col": "ffd24a", "mods": [["invuln", "add", 1.0], ["move_speed", "inc", 0.3]]},
+	"gate": {"name": "Rift Gate", "dur": 0.0, "policy": Stack.REFRESH, "col": "7fd8ff", "mods": []},        # a ground object: banks the hoard
 	"whisper": {"name": "The Whisperer", "dur": 0.0, "policy": Stack.REFRESH, "col": "9a6bff", "mods": []},   # a ground object, never applied
 	"vital": {"name": "Vital Surge", "dur": 10.0, "policy": Stack.REFRESH, "col": "5dff6b", "mods": [["regen_pct", "add", 0.05]]},
 	"cyclone": {"name": "Blade Cyclone", "dur": 6.0, "policy": Stack.REFRESH, "col": "f0b94d", "mods": []},

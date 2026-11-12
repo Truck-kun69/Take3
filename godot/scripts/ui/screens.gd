@@ -901,6 +901,8 @@ func show_end(w: World) -> void:
 		["Items", str(w.loot_run.size())], ["Reactions", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
 	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
 	rows.append(["Echoes", "+%d" % w.echoes_run])
+	if w.hoard_banked > 0.0: rows.append(["Hoard banked", str(int(w.hoard_banked))])
+	if w.hoard_lost > 0.0: rows.append(["Hoard lost", str(int(w.hoard_lost))])
 	if w.torment > 0: rows.append(["Difficulty", String(Content.TORMENT[w.torment].name)])
 	var g := _grid(3 if get_viewport_rect().size.x >= 820.0 else 2, 10)
 	for r in rows:

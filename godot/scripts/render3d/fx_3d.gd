@@ -656,6 +656,15 @@ func _make_obj(kind: String, col: Color) -> Node3D:
 			k.add("sphere", Vector3(2, 42, 0), Vector3(12, 12, 12), Color(0.85, 0.72, 0.55))
 			k.add("sphere", Vector3(-8, 24, 0), Vector3(18, 20, 18), Color(0.5, 0.36, 0.2))
 			k.add("sphere", Vector3(10, 30, 10), Vector3(5, 5, 5), Color(1, 0.8, 0.4), MeshKit.PART_GLOW)
+		"gate":               # a standing ring of dressed stones around a glowing veil (faces the camera)
+			k.add("cyl", Vector3(0, 2, 0), Vector3(96, 4, 40), Color(0.24, 0.24, 0.28), 0, 0, Vector3.ZERO, 16)
+			for i in 16:
+				var a := PI * (i + 0.5) / 16.0 - 0.18
+				var a2 := a * (PI + 0.36) / PI
+				var rp := Vector3(cos(a2) * 44.0, 8.0 + sin(a2) * 54.0, 0)
+				k.add("box", rp, Vector3(9, 13, 10), Color(0.34, 0.35, 0.4).darkened(0.1 * (i % 3)), 0, 0, Vector3(0, 0, a2 - PI / 2.0))
+				if i % 3 == 1: k.add("box", rp + Vector3(0, 0, 5.5), Vector3(3, 6, 1), col, MeshKit.PART_GLOW, 0, Vector3(0, 0, a2 - PI / 2.0))
+			k.add("cyl", Vector3(0, 32, -1), Vector3(78, 2, 96), col, MeshKit.PART_GLOW, 0, Vector3(PI / 2.0, 0, 0), 24)
 		"whisper":            # a hooded, faceless figure with two violet eyes and orbiting shards
 			k.add("cone", Vector3(0, 26, 0), Vector3(30, 52, 30), Color(0.05, 0.04, 0.07), 0, 0, Vector3.ZERO, 12)
 			k.add("sphere", Vector3(0, 52, 0), Vector3(17, 19, 17), Color(0.06, 0.05, 0.08))
@@ -701,6 +710,8 @@ func _event_props(dt: float) -> void:
 		if not objs.has(key2): objs[key2] = _make_obj(o.kind, Content.col(Content.BUFFS[o.id].col))
 		objs[key2].position = Vector3(o.pos.x, view.ground_y(o.pos), o.pos.y)
 		if o.kind == "pylon": objs[key2].rotation.y += dt * 0.8
+		elif o.kind == "gate":            # shrinks away in its last 3 s
+			objs[key2].scale = Vector3.ONE * clampf(float(o.life) / 3.0, 0.15, 1.0)
 		elif o.kind == "whisper":       # turns to watch the hero, bobs, and fades in its last seconds
 			var to: Vector2 = w.pp - o.pos
 			objs[key2].rotation.y = lerp_angle(objs[key2].rotation.y, atan2(to.x, to.y), minf(1.0, dt * 2.0))

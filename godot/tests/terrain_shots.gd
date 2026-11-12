@@ -45,6 +45,11 @@ func _process(dt: float) -> void:
 				main.start({"mode": "campaign", "stage": stages[si]})
 				main.world.stats.set_source("shot", [["max_hp", "add", 1e6]])
 				main.world.pp = _lake_spot(main.world.terrain)
+				if OS.get_environment("SHOT_GATE") != "":         # a Rift Gate and a pushed hoard
+					main.world.director.objects.append({"pos": main.world.pp + Vector2(150, -70), "kind": "gate", "id": "gate", "life": 20.0})
+					main.world.director.gate_t = 1e9
+					main.world.hoard = 340.0
+					main.world.hoard_mult = 1.5
 				if OS.get_environment("SHOT_SURF") != "":         # every surface around the hero
 					var T: Terrain = main.world.terrain
 					var p0: Vector2 = main.world.pp

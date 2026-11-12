@@ -30,6 +30,7 @@ var _pending_drops: Array = []     # [time, pos, kind, data]
 var whisper_t := 60.0              # next Whisperer appearance (run time)
 var whispers := 0                  # appearances this run
 const WHISPER_MAX := 3
+var gate_t := 55.0                 # next Rift Gate (bank-or-push)
 
 func _whisper_gap() -> float:
 	return w.rng.randf_range(70.0, 95.0) * Moon.whisper_mult(w.sky_date)
@@ -88,6 +89,11 @@ func step(dt: float) -> void:
 	if w.t >= shrine_t:
 		shrine_t = w.t + w.rng.randf_range(40.0, 65.0)
 		_place_object()
+	if w.t >= gate_t and w.mode != "pinnacle":
+		gate_t = w.t + w.rng.randf_range(55.0, 70.0)
+		var gp := _near_point(230.0)
+		objects.append({"pos": gp, "kind": "gate", "id": "gate", "life": 22.0})
+		w.banner.emit("A Rift Gate opens", "Step in to bank your hoard (x%.1f), or walk on and let it grow." % w.hoard_mult, Color("7fd8ff"))
 	if w.t >= whisper_t and w.mode != "pinnacle" and not w.boss_spawned and whispers < WHISPER_MAX + (1 if Moon.whisper_mult(w.sky_date) < 1.0 else 0) \
 			and w.bargains.size() < Content.WHISPER_IDS.size() - 1:
 		whisper_t = w.t + _whisper_gap()
@@ -169,6 +175,7 @@ func _rand_in(c: Vector2, r: float) -> Vector2:
 
 func _end(ev: Dictionary, ok: bool) -> void:
 	ev.done = true
+	if ok: w.hoard += 40.0
 	if ok and w.rng.randf() < 0.3:
 		w.drop_lore(ev.pos)
 
@@ -444,6 +451,16 @@ func _step_objects(dt: float) -> void:
 	while k >= 0:
 		var o: Dictionary = objects[k]
 		o.life -= dt
+		if o.kind == "gate":
+			if w.pp.distance_to(o.pos) < 40.0:
+				objects.remove_at(k)
+				w.bank_hoard(o.pos)
+				Sfx.play("pylon")
+			elif o.life <= 0.0:
+				objects.remove_at(k)
+				w.gate_passed()
+			k -= 1
+			continue
 		if o.kind == "whisper":
 			if w.pp.distance_to(o.pos) < 34.0:
 				objects.remove_at(k)

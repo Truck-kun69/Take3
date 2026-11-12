@@ -74,6 +74,11 @@ var sky_date: Array = []         # [month, day] for the calendar omens
 var light := 1.0                 # the lantern: fades over time, kills relight it (see _step_light)
 var light_cap := 1.0
 var bargains: Array = []         # the Whisperer's bargains accepted this run (Content.WHISPERS ids)
+var hoard := 0.0                 # bank-or-push: fills with kills/elites/events; banked at Rift Gates
+var hoard_mult := 1.0            # grows each time a gate is walked past (x1 .. x3)
+var hoard_banked := 0.0          # total banked this run (after multipliers)
+var hoard_lost := 0.0            # unbanked hoard lost on death
+var hoard_echoes := 0            # Echoes earned by banking (added at end_run)
 var whisper_offer: Array = []    # two ids while the bargain screen is open
 var _night_q := -1
 var colorblind := false
@@ -1681,6 +1686,7 @@ func _on_kill(i: int) -> void:
 	relight(0.5 if (f & (Swarm.F_BOSS | Swarm.F_EXILE | Swarm.F_RIFTG)) != 0 else (0.05 if elite else LIGHT_PER_KILL))
 	_burst(at, _foe_col(k), 14 if elite else 5, 200.0 if elite else 120.0)
 	director.on_kill(i, at)
+	hoard += 15.0 if elite else (60.0 if (f & (Swarm.F_BOSS | Swarm.F_EXILE | Swarm.F_RIFTG)) != 0 else 1.0)
 	# the fight leaves its marks: blood where the big ones fall, poison where spitters burst
 	if k == Content.E.SPITTER: terrain.pour(at, 30.0, Terrain.Surf.POISON, 12.0)
 	elif elite or k == Content.E.BRUTE: terrain.pour(at, 32.0 if elite else 18.0, Terrain.Surf.BLOOD, 14.0)
@@ -1867,6 +1873,11 @@ func apply_choice(c: Dictionary) -> void:
 func end_run(win: bool) -> void:
 	if over:
 		return
+	if win and hoard > 0.0 and mode != "pinnacle":
+		bank_hoard(pp, false)
+	elif not win:
+		hoard_lost = hoard * hoard_mult
+		hoard = 0.0
 	over = true
 	won = win
 	var d: Dictionary = Save.data
@@ -1886,7 +1897,7 @@ func end_run(win: bool) -> void:
 		while d.cleared.size() <= stage: d.cleared.append(false)
 		d.cleared[stage] = true
 	# Echoes for the Shard Web: a share of kills, a win bonus, rift depth and the torment tier
-	echoes_run = mini(12, kills / 250 + (2 if win else 0) + (gr_level / 3 if mode == "rift" else 0) + (int(Content.TORMENT[torment].echo) if win else 0) + bargains.size())
+	echoes_run = mini(12, kills / 250 + (2 if win else 0) + (gr_level / 3 if mode == "rift" else 0) + (int(Content.TORMENT[torment].echo) if win else 0) + bargains.size()) + hoard_echoes
 	if not bargains.is_empty():
 		d.stats["bargains"] = int(d.stats.get("bargains", 0)) + bargains.size()
 	d.echoes = int(d.get("echoes", 0)) + echoes_run
@@ -1939,6 +1950,33 @@ func gloom() -> float:
 ## 0..1: how far below the Engulfed line the light has fallen.
 func engulfed() -> float:
 	return clampf((LIGHT_ENGULF - light) / LIGHT_ENGULF, 0.0, 1.0) if light < LIGHT_ENGULF else 0.0
+
+# ================================================================= bank or push (Rift Gates)
+## Banks the hoard at the current multiplier: gold now, Echoes at the end of the run, and rare items
+## that spill out of the gate (one per 150 banked, at most four). Resets the multiplier.
+func bank_hoard(at: Vector2, drop: bool = true) -> Dictionary:
+	var v := hoard * hoard_mult
+	var g := v * 0.5
+	var e := int(v / 300.0)
+	var items := mini(4, int(v / 150.0))
+	gold += g
+	hoard_echoes += e
+	hoard_banked += v
+	if drop:
+		for k in items: drop_item(at + Vector2(cos(k * 1.9), sin(k * 1.9)) * 30.0, Content.Rarity.RARE)
+	var res := {"value": v, "gold": g, "echoes": e, "items": items if drop else 0, "mult": hoard_mult}
+	metrics.banked = int(metrics.get("banked", 0)) + 1
+	if v > 0.0:
+		banner.emit("Hoard banked", "+%d gold   +%d Echoes   %d rare items   (x%.1f)" % [int(g), e, res.items, hoard_mult], Color("7fd8ff"))
+	hoard = 0.0
+	hoard_mult = 1.0
+	return res
+
+## A gate closed without being used: the unbanked hoard grows more valuable, and more at risk.
+func gate_passed() -> void:
+	hoard_mult = minf(3.0, hoard_mult + 0.5)
+	metrics.pushed = int(metrics.get("pushed", 0)) + 1
+	toast.emit("You walked past the gate: hoard x%.1f" % hoard_mult, Color("7fd8ff"))
 
 # ================================================================= the Whisperer
 func has_bargain(id: String) -> bool:

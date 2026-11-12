@@ -27,6 +27,7 @@ func _ready() -> void:
 		_sky_tests()
 		_fusion_tests()
 		_surface_tests()
+		_hoard_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -463,6 +464,57 @@ func _surface_tests() -> void:
 	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 32, "stage": 1})
 	for k in 400: w2._step_surfaces(0.05)
 	ok(not w2.terrain.surf.is_empty(), "Act II's tar seeps open by themselves")
+
+func _hoard_tests() -> void:
+	print("== bank or push")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 41})
+	for k in 5: w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(80, 0), 0)
+	for k in 5: w.sw.take(k, 1e9)
+	w._reap()
+	ok(w.hoard >= 5.0, "kills fill the hoard (%d)" % int(w.hoard))
+	w.hoard = 400.0
+	w.gate_passed()
+	w.gate_passed()
+	ok(is_equal_approx(w.hoard_mult, 2.0), "walking past gates raises the multiplier")
+	for k in 4: w.gate_passed()
+	ok(is_equal_approx(w.hoard_mult, 3.0), "the multiplier caps at x3")
+	var g0 := w.gold
+	var picks0 := w.picks.size()
+	var r := w.bank_hoard(w.pp)
+	ok(is_equal_approx(r.value, 1200.0) and w.gold > g0 and w.hoard == 0.0 and w.hoard_mult == 1.0, "banking pays gold and resets")
+	ok(r.echoes == 4 and w.hoard_echoes == 4, "banking pays Echoes (%d)" % r.echoes)
+	ok(w.picks.size() > picks0, "rare items spill out of the gate")
+	# the Director opens gates; touching one banks, ignoring one pushes
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 42})
+	w2.director.gate_t = 0.0
+	w2.director.whisper_t = 1e9
+	w2.hoard = 100.0
+	w2.step(0.05)
+	var gate: Dictionary = {}
+	for o in w2.director.objects:
+		if o.kind == "gate": gate = o
+	ok(not gate.is_empty(), "a Rift Gate opens")
+	w2.pp = gate.pos
+	w2.step(0.05)
+	ok(w2.hoard == 0.0 and w2.hoard_banked >= 100.0, "stepping into the gate banks the hoard")
+	var w3 := _world({"mode": "campaign", "hero": 0, "seed": 43})
+	w3.director.gate_t = 0.0
+	w3.step(0.05)
+	for o in w3.director.objects: o.life = 0.01
+	w3.step(0.05)
+	ok(w3.hoard_mult == 1.5, "an unused gate closes and pushes the multiplier")
+	# death loses the unbanked hoard; a win banks it
+	var w4 := _world({"mode": "campaign", "hero": 0, "seed": 44})
+	w4.hoard = 300.0
+	w4.hoard_mult = 2.0
+	var e0: int = Save.data.echoes
+	w4.end_run(false)
+	ok(w4.hoard_lost == 600.0 and w4.hoard_echoes == 0, "death loses the unbanked hoard")
+	var w5 := _world({"mode": "campaign", "hero": 0, "seed": 45})
+	w5.hoard = 300.0
+	w5.end_run(true)
+	ok(w5.hoard_banked == 300.0 and w5.hoard_echoes == 1, "a win banks what you carry")
+	Save.data.echoes = e0
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true
