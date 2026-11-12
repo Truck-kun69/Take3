@@ -556,6 +556,7 @@ func show_options(back: String = "menu") -> void:
 	match _opt_tab:
 		0:
 			_toggle(v, "Sound", "sound", back)
+			_toggle(v, "Sound engine: Safe (fewer voices, no ambience)", "sfx_safe", back)
 			_slider(v, "Volume", "volume", 0.0, 1.0, back)
 			_slider(v, "Screen shake", "shake", 0.0, 1.5, back)
 			_cycle(v, "Damage numbers", "dmg_numbers", ["Off", "Crits & reactions", "All"], back)

@@ -453,6 +453,7 @@ func _on_act(what: String, arg) -> void:
 				world.aim_mode = int(Save.opt("aim"))
 				_bind_view()
 			_render_scale()
+			Sfx.apply_options()
 			_crowd_setup()
 			if world != null: world.crowd = crowd
 		"equip": equip(arg)

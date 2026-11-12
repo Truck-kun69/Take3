@@ -7,15 +7,25 @@ extends Node
 ## Authored audio wins when present:
 ##   res://audio/sfx/<name>.(wav|ogg|mp3)      replaces a synthesized sound of the same name
 ##   res://audio/music/<stage index>.(ogg|mp3)  replaces the generated stage ambience
-## Playback: round-robin pool, per-sound rate limit, distance attenuation via play_at().
+## Playback: one player per sound, its stream set once (up to 3 overlapping voices), a per-sound rate
+## limit, a cap on new voices per frame, and distance attenuation via play_at().
+##
+## Android (S22) crash, Nov 2026: the old round-robin pool of 16 players swapped a new stream into a
+## player on every play, often while it was still playing, dozens of times a second in a fight. The
+## game died ~3 s into every run with sound on and ran fine with it off; desktop never showed it
+## (headless/dummy audio does not mix). Now nothing is swapped while playing, sounds are baked at
+## the device's own mix rate (no resampling), and "Sound engine: Safe" (option sfx_safe) further
+## drops to 1 voice per sound, no pitch jitter and no ambience.
 
-const RATE := 22050
-const POOL := 16
+var RATE := 22050               # set to the output mix rate in _ready
+const VOICES := 3
+const MAX_NEW_PER_FRAME := 6
 var streams := {}
-var players: Array[AudioStreamPlayer] = []
+var players := {}               # name -> AudioStreamPlayer (stream fixed)
 var ambience: AudioStreamPlayer
 var _last := {}
-var _rr := 0
+var _frame := -1
+var _frame_n := 0
 var listener := Vector2.ZERO
 
 # layer: [freq, seconds, wave (0 sine 1 square 2 saw 3 triangle 4 noise), slide, volume, delay, lowpass 0..1]
@@ -57,13 +67,16 @@ const DEFS := {
 }
 
 func _ready() -> void:
+	RATE = clampi(int(AudioServer.get_mix_rate()), 22050, 48000)
+	var safe := bool(Save.opt("sfx_safe"))
 	for k in DEFS:
 		var ov := _override("res://audio/sfx/" + k)
 		streams[k] = ov if ov != null else _bake(DEFS[k])
-	for i in POOL:
 		var p := AudioStreamPlayer.new()
+		p.stream = streams[k]
+		p.max_polyphony = 1 if safe else VOICES
 		add_child(p)
-		players.append(p)
+		players[k] = p
 	ambience = AudioStreamPlayer.new()
 	ambience.volume_db = -14.0
 	add_child(ambience)
@@ -117,7 +130,7 @@ func _bake(layers: Array) -> AudioStreamWAV:
 
 ## Stage ambience: wind (filtered noise with slow gusts) over a detuned low drone, 8 s seamless loop.
 func start_ambience(stage: int) -> void:
-	if not Save.opt("sound"):
+	if not Save.opt("sound") or Save.opt("sfx_safe"):
 		ambience.stop()
 		return
 	var ov := _override("res://audio/music/%d" % stage)
@@ -160,24 +173,36 @@ func _ambience_loop(stage: int) -> AudioStreamWAV:
 	w.data = bytes
 	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	w.loop_begin = 0
-	w.loop_end = n
+	w.loop_end = n - 2            # inside the data: the interpolator reads one frame past the loop end
 	streams[key] = w
 	return w
 
 func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
-	if not Save.opt("sound") or not streams.has(name) or players.is_empty():
+	if not Save.opt("sound") or not players.has(name):
 		return
 	var now := Time.get_ticks_msec()
 	if now - int(_last.get(name, -1000)) < 50:
 		return
+	var f := Engine.get_process_frames()
+	if f != _frame:
+		_frame = f
+		_frame_n = 0
+	if _frame_n >= MAX_NEW_PER_FRAME:
+		return
+	_frame_n += 1
 	_last[name] = now
 	Diag.first("sound " + name)
-	var p := players[_rr]
-	_rr = (_rr + 1) % POOL
-	p.stream = streams[name]
-	p.pitch_scale = pitch * randf_range(0.94, 1.06)
-	p.volume_db = linear_to_db(maxf(0.001, float(Save.opt("volume")) * gain))
+	var p: AudioStreamPlayer = players[name]
+	var ps := 1.0 if Save.opt("sfx_safe") else clampf(pitch * randf_range(0.94, 1.06), 0.5, 2.0)
+	if not is_finite(ps): ps = 1.0
+	p.pitch_scale = ps
+	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")) * gain)), -60.0, 6.0)
 	p.play()
+
+## Option change: polyphony follows the Safe setting.
+func apply_options() -> void:
+	for k in players: players[k].max_polyphony = 1 if Save.opt("sfx_safe") else VOICES
+	if Save.opt("sfx_safe") or not Save.opt("sound"): ambience.stop()
 
 ## Distance-attenuated: full volume within 150 units of the listener, silent past ~900.
 func play_at(name: String, at: Vector2, pitch: float = 1.0) -> void:
