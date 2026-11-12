@@ -44,6 +44,16 @@ func think() -> void:
 			if z.shape == 1: out = -w.pp.normalized()
 			if z.shape == 2: out = z.dir.orthogonal()
 			mv = (mv + out * 2.0).normalized()
+	# step out of burning oil, poison and spikes (any player would)
+	var here := w.terrain.surf_at(w.pp)
+	if here == Terrain.Surf.FIRE or here == Terrain.Surf.POISON or here == Terrain.Surf.SPIKES:
+		var best := Vector2.ZERO
+		for k in 8:
+			var d := Vector2.from_angle(TAU * k / 8.0)
+			var s2 := w.terrain.surf_at(w.pp + d * 48.0)
+			if s2 != Terrain.Surf.FIRE and s2 != Terrain.Surf.POISON and s2 != Terrain.Surf.SPIKES:
+				best = d if best == Vector2.ZERO or d.dot(mv) > best.dot(mv) else best
+		if best != Vector2.ZERO: mv = (mv * 0.3 + best).normalized()
 	# objectives when the area is calm
 	if greedy and c < 6:
 		var goal := Vector2.INF

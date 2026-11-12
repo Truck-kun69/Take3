@@ -79,6 +79,11 @@ var hoard_mult := 1.0            # grows each time a gate is walked past (x1 .. 
 var hoard_banked := 0.0          # total banked this run (after multipliers)
 var hoard_lost := 0.0            # unbanked hoard lost on death
 var hoard_echoes := 0            # Echoes earned by banking (added at end_run)
+var daily := false               # the Daily Rift (or a shared code): no gear, passives, legendaries or sky
+var daily_code := ""
+var daily_date := ""
+var daily_score := 0
+var daily_best := false
 var prophecy := {}               # the active prophecy {id, reward} (from the profile; cleared when fulfilled)
 var prophecy_done := false
 var whisper_offer: Array = []    # two ids while the bargain screen is open
@@ -207,9 +212,14 @@ func setup(cfg: Dictionary) -> void:
 	gr_level = int(cfg.get("gr", 1))
 	node = cfg.get("node", {})
 	map_mods = node.get("mods", []) if not node.is_empty() else []
+	daily = bool(cfg.get("daily", false))
+	if daily:
+		map_mods = cfg.get("mods", [])
+		daily_code = String(cfg.get("code", ""))
+		daily_date = String(cfg.get("date", ""))
 	if not node.is_empty():
 		stage = int(node.biome)
-	season = cfg.get("season", Save.season().id)
+	season = cfg.get("season", Save.season().id) if not daily else ""
 	moon = float(cfg.get("moon", -1.0))
 	prophecy = (cfg.get("prophecy", Save.data.prophecy.active) as Dictionary).duplicate() if mode != "pinnacle" else {}
 	sky_date = cfg.get("sky_date", [])
@@ -250,6 +260,12 @@ func setup(cfg: Dictionary) -> void:
 ## Profile-driven modifiers: meta gold upgrades are folded into gear in this version; equipped
 ## items, codex legendary powers, bestiary bonuses, lore sets and map mods.
 func _apply_meta() -> void:
+	if daily:                                  # everyone starts equal: map modifiers only
+		var dm: Array = []
+		for m in map_mods:
+			if m == "hexed": dm.append(["regen", "more", 0.5]); dm.append(["flask_charge", "more", 0.5])
+		stats.set_source("map", dm)
+		return
 	for s in Content.SLOTS:
 		var it: Dictionary = Save.data.equipped.get(s, {})
 		if not it.is_empty():
@@ -278,6 +294,7 @@ func _apply_meta() -> void:
 	stats.set_source("sky", Moon.mods(moon, sky_date))
 
 func has_leg(id: String) -> bool:
+	if daily: return false
 	if Save.data.codex_active.has(id):
 		return true
 	for s in Content.SLOTS:
@@ -1184,8 +1201,8 @@ func _step_surfaces(dt: float) -> void:
 			Terrain.Surf.OIL:
 				sw.apply_status(i, Content.El.COLD, 0.5, 0.6)       # sticky: a light chill
 	match terrain.surf_at(pp):
-		Terrain.Surf.FIRE: hurt_player(6.0, "burning oil")
-		Terrain.Surf.POISON: hurt_player(2.5, "poison")
+		Terrain.Surf.FIRE: hurt_player(5.0, "burning oil")
+		Terrain.Surf.POISON: hurt_player(1.5, "poison")
 
 func _water_chain(i: int) -> void:
 	var fp := sw.pos[i]
@@ -1899,7 +1916,9 @@ func end_run(win: bool) -> void:
 	if not win:
 		d.stats.deaths = int(d.stats.deaths) + 1
 		bosses.on_player_death()
-	if win and mode == "campaign":
+	if daily:
+		_daily_end(d)
+	elif win and mode == "campaign":
 		while d.cleared.size() <= stage: d.cleared.append(false)
 		d.cleared[stage] = true
 	# Echoes for the Shard Web: a share of kills, a win bonus, rift depth and the torment tier
@@ -1907,7 +1926,7 @@ func end_run(win: bool) -> void:
 	if not bargains.is_empty():
 		d.stats["bargains"] = int(d.stats.get("bargains", 0)) + bargains.size()
 	d.echoes = int(d.get("echoes", 0)) + echoes_run
-	if win and mode != "rift" and torment >= int(d.get("torment_max", 0)) and torment < Content.TORMENT.size() - 1:
+	if win and not daily and mode != "rift" and torment >= int(d.get("torment_max", 0)) and torment < Content.TORMENT.size() - 1:
 		d.torment_max = torment + 1                  # beating a tier opens the next
 	Save.mark_dirty()
 	if not headless:
@@ -1956,6 +1975,21 @@ func gloom() -> float:
 ## 0..1: how far below the Engulfed line the light has fallen.
 func engulfed() -> float:
 	return clampf((LIGHT_ENGULF - light) / LIGHT_ENGULF, 0.0, 1.0) if light < LIGHT_ENGULF else 0.0
+
+# ================================================================= the Daily Rift
+func _daily_end(d: Dictionary) -> void:
+	daily_score = Daily.score(self)
+	var D: Dictionary = d.daily
+	var prev := int(D.best.get(daily_code, -1))
+	daily_best = daily_score > prev
+	if daily_best:
+		D.best.erase(daily_code)
+		D.best[daily_code] = daily_score                  # re-inserted: the dict stays in recency order
+		while D.best.size() > 30: D.best.erase(D.best.keys()[0])
+	if won and daily_date != "" and D.claimed != daily_date:   # today's rift, first clear: a small reward
+		D.claimed = daily_date
+		hoard_echoes += 3
+		metrics.daily_reward = true
 
 # ================================================================= prophecies
 ## [current, target] for the active prophecy, from this run's metrics.

@@ -37,7 +37,8 @@ func defaults() -> Dictionary:
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
 		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0},
 		"selftest": {}, "bench": {},
-		"prophecy": {"offers": [], "active": {}, "done": 0},   # offers: [[id, [reward ids]]], active: {id, reward}          # graphics self-test progress (survives a crash), last benchmark
+		"prophecy": {"offers": [], "active": {}, "done": 0},
+		"daily": {"best": {}, "claimed": ""},            # best: code -> score (newest 30); claimed: date of the last first-clear reward   # offers: [[id, [reward ids]]], active: {id, reward}          # graphics self-test progress (survives a crash), last benchmark
 	}
 
 func load_profile() -> void:
@@ -61,7 +62,7 @@ func _merge(dst: Dictionary, src: Dictionary) -> void:
 	for k in dst:
 		if not src.has(k):
 			continue
-		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench", "prophecy"].has(k):
+		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench", "prophecy", "daily"].has(k):
 			_merge(dst[k], src[k])
 		else:
 			dst[k] = src[k]

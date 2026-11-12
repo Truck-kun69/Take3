@@ -29,6 +29,7 @@ func _ready() -> void:
 		_surface_tests()
 		_hoard_tests()
 		_prophecy_tests()
+		_daily_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -552,6 +553,42 @@ func _prophecy_tests() -> void:
 	ok(_world({"mode": "pinnacle", "hero": 0, "seed": 54, "prophecy": {"id": "reaper", "reward": "gold"}}).prophecy.is_empty(), "no prophecies in the pinnacle")
 	Save.data.prophecy = saved
 
+func _daily_tests() -> void:
+	print("== daily rift")
+	var s := Daily.seed_for_date("20261112")
+	ok(s == Daily.seed_for_date("20261112") and s != Daily.seed_for_date("20261113"), "one seed per day")
+	var code := Daily.code_for(s)
+	ok(code.begins_with("SHARD-") and code.length() == 10 and Daily.seed_from_code(code) == s, "codes round-trip (%s)" % code)
+	ok(Daily.seed_from_code(code.to_lower().replace("shard-", " ")) == s, "codes forgive case, spaces and a missing prefix")
+	ok(Daily.seed_from_code("SHARD-0O1I") == -1 and Daily.seed_from_code("nope") == -1, "bad codes are refused")
+	var c1 := Daily.config(s)
+	var c2 := Daily.config(s)
+	ok(c1.stage == c2.stage and c1.hero == c2.hero and c1.mods == c2.mods and c1.mods.size() == 2 and c1.mods[0] != c1.mods[1], "a code always means the same rift")
+	# no gear, passives or legendaries
+	var eq0: Dictionary = Save.data.equipped.duplicate(true)
+	Save.data.equipped.weapon = {"slot": "weapon", "rarity": 3, "base": "", "mods": [["damage", "inc", 5.0]], "leg": "phoenix"}
+	var cfg := c1.duplicate()
+	cfg["hero"] = int(c1.hero)
+	var w := _world(cfg)
+	ok(w.daily and w.map_mods == c1.mods and w.stats.value("damage", 1.0) < 2.0 and not w.has_leg("phoenix"), "the rift ignores gear and legendaries")
+	Save.data.equipped = eq0
+	# score and best
+	var dsv: Dictionary = Save.data.daily.duplicate(true)
+	Save.data.daily = {"best": {}, "claimed": ""}
+	w.kills = 300
+	w.t = 100.0
+	w.daily_date = "20261112"
+	var cl0: Array = Save.data.cleared.duplicate()
+	w.end_run(true)
+	ok(w.daily_score == 300 + 200 + 1500 and w.daily_best and int(Save.data.daily.best[w.daily_code]) == w.daily_score, "score = kills + 2/s + 1500 for a win (%d)" % w.daily_score)
+	ok(Save.data.daily.claimed == "20261112" and w.hoard_echoes >= 3, "the first clear of the day pays 3 Echoes")
+	ok(Save.data.cleared == cl0, "a daily win leaves campaign progress alone")
+	var w2 := _world(cfg)
+	w2.kills = 10
+	w2.end_run(false)
+	ok(not w2.daily_best and int(Save.data.daily.best[w.daily_code]) == w.daily_score, "a worse run keeps the best")
+	Save.data.daily = dsv
+
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true
 	cfg["season"] = cfg.get("season", "")
@@ -598,6 +635,7 @@ func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
 
 func _sims() -> void:
 	print("== sim (bot-played runs)")
+	Save.data.nemesis = {}            # unit tests end runs in defeat, which raises a nemesis the bots would then meet
 	run_bot({"mode": "campaign", "hero": 0, "seed": 1}, 20.0, 0)     # warm-up: first-use script paths cost ~15 ms once
 	var rows: Array = []
 	for h in 4:

@@ -175,7 +175,7 @@ func start(cfg: Dictionary) -> void:
 	_free_world()
 	menu_stage.hide_stage()
 	last_cfg = cfg.duplicate()
-	cfg["hero"] = int(Save.data.hero)
+	cfg["hero"] = int(cfg.get("hero", Save.data.hero)) if cfg.get("daily", false) else int(Save.data.hero)
 	Diag.mark("start %s gfx=%s scale=%.2f crowd=%s" % [str(cfg), Quality.NAMES[Quality.tier()], get_viewport().scaling_3d_scale, "gpu" if crowd != null else "cpu"])
 	if not cfg.has("moon"):
 		cfg["moon"] = Moon.now()
@@ -444,6 +444,8 @@ func _on_act(what: String, arg) -> void:
 		"codex": screens.show_codex()
 		"web": screens.show_web()
 		"prophecy": screens.show_prophecies()
+		"daily": screens.show_daily()
+		"daily_go": start(arg)
 		"options": screens.show_options("menu")
 		"bench": start_bench()
 		"selftest": start_selftest(false)

@@ -316,3 +316,72 @@ Calendar omens:
 
 `main.start` passes `moon` and `sky_date` in the run cfg. Tests and sims omit them, which gives no
 sky effects and keeps them deterministic.
+
+## Five innovations from the genre survey (Nov 2026)
+
+Chosen from a survey of survivor-likes and ARPGs (Vampire Survivors, Ball x Pit, Deep Rock Galactic:
+Survivor, Brotato, Halls of Torment, Hades, Balatro, Last Epoch, Path of Exile 2) as the ideas that
+build most on systems Shardfall already had.
+
+**Weapon Fusion** (`Content.FUSIONS`, `World.fused`). Once two weapons are evolved and unfused, a gold
+Fusion card can appear at level-up. Both weapons keep firing, deal 25% more damage, carry each
+other's element (so fused weapons trigger the reaction engine), and gain the pair's behaviour:
+
+| Fusion | Weapons | Behaviour |
+|---|---|---|
+| Glacial Nova | Rime Bolt + Shock Pulse | each pulse also fires a ring of 8 frost bolts |
+| Frost Halo | Rime Bolt + Spin Blades | the blades shed frost bolts outward |
+| Hailstorm | Rime Bolt + Skyfall | each strike bursts into 4 shards |
+| Solar Wheel | Shock Pulse + Spin Blades | each pulse flings the blades wide, and they burn |
+| Thunderclap | Shock Pulse + Skyfall | each strike detonates a small pulse where it lands |
+| Tempest Blades | Spin Blades + Skyfall | blades call lightning on foes they cut, at most once per 0.4 s |
+
+**Surfaces** (`Terrain.surf`, `World._surface_react`). Pools that the fight itself pours onto land
+or shallows:
+
+| Pool | Where it comes from |
+|---|---|
+| Oil | barrels; Act II tar seeps open on their own |
+| Poison | spitters' deaths |
+| Blood | elites and brutes; 6% of other kills |
+
+Reactions:
+- Fire ignites oil, and the fire spreads along connected oil, one cell per 0.12 s.
+- Fire detonates poison in a toxic blast, which uses up the pool.
+- Cold turns poison into crystal spikes.
+- Lightning arcs through every foe standing in blood.
+
+Four times a second, things standing in a pool are affected:
+- Burning oil and spikes damage foes; burning oil also hurts the hero.
+- Poison poisons foes and lightly hurts the hero.
+- Oil slows.
+
+Rendered from a fourth global texture, `terrain_f` (R oil, G poison, B blood, A fire; R and G
+together mean spikes), with noisy pool edges, an oily sheen, bubbling poison, charred flame licks,
+crystal shards, and flame puffs above burning cells.
+
+**Bank or push** (`World.hoard`, Director `gate` objects):
+- Filling the Hoard: kills +1, elites +15, completed events +40, bosses and exiles +60.
+- Gates: from about 55 s, a Rift Gate opens every 55–70 s and stays for 22 s.
+- Banking: stepping into a gate banks the Hoard at its multiplier. The payout is half the banked
+  value in gold, 1 Echo per 300, and 1 rare item per 150 (at most 4), which spill out of the gate.
+- Pushing: each gate left to close raises the multiplier by 0.5, up to x3.
+- End of run: death loses the unbanked Hoard; a win banks it.
+
+**Prophecies** (`Content.PROPHECIES`, the `prophecy` profile key). Three objectives are offered on
+the menu, each with three reward choices: a legendary, three rares, chaos, exalted, Echoes or gold.
+The chosen prophecy stays active until it is fulfilled within a single run or abandoned. Progress
+comes from run metrics, and the reward pays out mid-run as soon as the objective is met.
+
+**Daily Rift** (`scripts/sim/daily.gd`):
+- Seed and code: the date hashes to a 20-bit seed, shared as a code like `SHARD-HXEL`.
+- What the seed fixes: the act, the exile, two map modifiers and the run's RNG.
+- Left out for fairness: gear, the Shard Web, legendary powers, the Moon and prophecies.
+- Score: kills + 2 per second survived + 1500 for a win + half the banked Hoard.
+- Records: the best score per code is kept for the newest 30 codes; the first clear of the day pays
+  3 Echoes; any code can be typed in to play a friend's rift.
+- A daily win never changes campaign progress or Torment unlocks.
+
+The bot now steps out of fire, poison and spikes. Without that, poison chip damage during Rogue
+Exile fights cost 2 of the 6 campaign sims. The sims reset the nemesis before running, because the
+unit tests' defeats would otherwise raise one.

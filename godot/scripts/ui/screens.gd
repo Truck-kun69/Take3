@@ -605,6 +605,62 @@ func show_options(back: String = "menu") -> void:
 			v.add_child(info)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null)))
 
+## The Daily Rift: today's seeded run (act, exile, two modifiers), its share code, your best scores,
+## and a field to enter a friend's code.
+func show_daily(msg: String = "") -> void:
+	var v := _open(900)
+	var D: Dictionary = Save.data.daily
+	var td := Daily.today()
+	var dd := Time.get_date_dict_from_system()
+	_title(v, "Daily Rift", "%s %d. The same rift for everyone today. Gear, passives and legendaries stay behind." % [["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][int(dd.month) - 1], int(dd.day)])
+	var code := UIKit.label(String(td.code), 40, UIKit.GOLD, false, "display_heavy")
+	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(code)
+	var info := UIKit.label("Act %s: %s   \u00b7   Exile: %s   \u00b7   %s" % [["I", "II", "III", "IV", "V"][int(td.stage)], Content.STAGES[td.stage].name,
+		Content.HEROES[td.hero].name, " + ".join(td.mods.map(func(m): return Content.MAP_MODS[m].name))], 18, UIKit.TEXT, true, "body")
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(info)
+	var best := int(D.best.get(td.code, -1))
+	var bl := UIKit.label(("Your best today: %d" % best) if best >= 0 else "Not attempted yet today. First clear: +3 Echoes.", 17, Color("cfc5b0"), true, "italic")
+	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(bl)
+	var row := _grid(2, 10)
+	var go := UIKit.button("Enter today's rift", func(): act.emit("daily_go", td), 56)
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(go)
+	var cp := UIKit.button("Copy code", func(): DisplayServer.clipboard_set(String(td.code)); show_daily("Copied " + String(td.code)), 56)
+	cp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(cp)
+	v.add_child(row)
+	v.add_child(_section("A friend's rift"))
+	var er := UIKit.hbox(10)
+	var le := LineEdit.new()
+	le.placeholder_text = "SHARD-XXXX"
+	le.max_length = 10
+	le.custom_minimum_size = Vector2(220, 50)
+	le.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	le.add_theme_font_size_override("font_size", 22)
+	er.add_child(le)
+	er.add_child(UIKit.button("Play this code", func():
+		var s := Daily.seed_from_code(le.text)
+		if s < 0: show_daily("That is not a rift code (it looks like SHARD-7KQ2).")
+		else: act.emit("daily_go", Daily.config(s)), 50))
+	v.add_child(er)
+	if msg != "":
+		var ml := UIKit.label(msg, 16, Color("ffd27a"), true, "italic")
+		ml.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(ml)
+	if not D.best.is_empty():
+		v.add_child(_section("Your rifts"))
+		var keys: Array = D.best.keys()
+		keys.reverse()
+		var hl := ""
+		for k in keys.slice(0, 5): hl += "%s   %d\n" % [k, int(D.best[k])]
+		var hv := UIKit.label(hl.strip_edges(), 16, UIKit.DIM, true, "body")
+		hv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(hv)
+	v.add_child(UIKit.button("Back", func(): act.emit("menu", null), 50))
+
 ## Prophecies: three offers, each with three rewards to choose from; the active one can be abandoned.
 func show_prophecies() -> void:
 	var v := _open(1000)
@@ -950,6 +1006,7 @@ func show_end(w: World) -> void:
 	var rows := [["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Gold", str(int(w.gold))],
 		["Items", str(w.loot_run.size())], ["Reactions", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
 	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
+	if w.daily: rows.push_front(["Rift score" + ("  NEW BEST" if w.daily_best else ""), str(w.daily_score)])
 	rows.append(["Echoes", "+%d" % w.echoes_run])
 	if w.hoard_banked > 0.0: rows.append(["Hoard banked", str(int(w.hoard_banked))])
 	if w.hoard_lost > 0.0: rows.append(["Hoard lost", str(int(w.hoard_lost))])
