@@ -25,6 +25,7 @@ func _ready() -> void:
 		_terrain_tests()
 		_meta_tests()
 		_sky_tests()
+		_fusion_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -366,6 +367,47 @@ func _sky_tests() -> void:
 	pin.director.whisper_t = 0.0
 	pin.step(0.05)
 	ok(pin.director.objects.filter(func(o): return o.kind == "whisper").is_empty() and pin.light == 1.0, "no Whisperer and no dark in the pinnacle")
+
+func _fusion_tests() -> void:
+	print("== weapon fusion")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 21})
+	for id in ["bolt", "nova", "storm", "orbit"]:
+		w.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+		w.wlocal[id] = Stats.new()
+	var ch := w.make_choices()
+	var fuses := ch.filter(func(c): return c.kind == "fuse")
+	ok(not fuses.is_empty(), "two evolved weapons offer a fusion")
+	var c := {"kind": "fuse", "id": Content.fusion_key("nova", "bolt"), "a": "bolt", "b": "nova"}
+	ok(c.id == "bolt+nova" and Content.FUSIONS.has(c.id), "fusion keys are sorted pairs")
+	var em0 := w.elmask("bolt")
+	w.pending = 1
+	w.apply_choice(c)
+	ok(w.fused("bolt") == "nova" and w.fused("nova") == "bolt", "fusing links both weapons")
+	ok(w.elmask("bolt") & (1 << Content.El.FIRE) != 0 and em0 & (1 << Content.El.FIRE) == 0, "a fused weapon carries its partner's element")
+	ok(w.wlocal["bolt"].value("damage", 1.0) > 1.2, "fused weapons deal 25% more damage")
+	for c2 in w.make_choices():
+		ok(not (c2.kind == "fuse" and (c2.a in ["bolt", "nova"] or c2.b in ["bolt", "nova"])), "a fused weapon is never offered again")
+	# Glacial Nova: a pulse with foes nearby adds a ring of bolts
+	for k in 6: w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(60, 0).rotated(k), 0)
+	w.grid.build(w.sw)
+	var n0 := w.projs.size()
+	w._nova(Content.WEAPONS.nova.evo_s, 1.0)
+	ok(w.projs.size() >= n0 + 8, "Glacial Nova hurls eight frost bolts (%d)" % (w.projs.size() - n0))
+	# all six fusions run for a few seconds without errors
+	for key in Content.FUSIONS:
+		var ww := _world({"mode": "campaign", "hero": 0, "seed": 22})
+		var ab: PackedStringArray = key.split("+")
+		for id in ab:
+			ww.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+			ww.wlocal[id] = Stats.new()
+		ww.apply_choice({"kind": "fuse", "id": key, "a": ab[0], "b": ab[1]})
+		ww.stats.set_source("t", [["max_hp", "add", 1e6]])
+		var k0 := ww.kills
+		for f in 300:
+			if f % 10 == 0 and ww.sw.n < 60: ww.spawn_foe(Content.E.GRUNT, ww.pp + Vector2(randf_range(-150, 150), randf_range(-150, 150)), 0)
+			ww.step(1.0 / 30.0)
+		ok(ww.kills > k0 and not ww.over, "%s fights (%d kills)" % [Content.FUSIONS[key].name, ww.kills - k0])
+		ww.dispose()
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

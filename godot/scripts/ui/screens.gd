@@ -735,7 +735,7 @@ func show_levelup(w: World) -> void:
 	var o := ""
 	for id in w.weapons:
 		var wd: Dictionary = w.weapons[id]
-		o += "%s %s%d   %s\n" % [Content.WEAPONS[id].name, "Evolved " if wd.evo else "Lv ", wd.lv, ("Linked: " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else "no links"]
+		o += "%s %s%d   %s\n" % [Content.WEAPONS[id].name, ("Fused " if wd.get("fuse", "") != "" else ("Evolved " if wd.evo else "Lv ")), wd.lv, ("Linked: " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else "no links"]
 	var al := UIKit.label(o.strip_edges(), 16, UIKit.DIM, true, "italic")
 	al.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(al)
@@ -800,7 +800,7 @@ func show_pause(w: World) -> void:
 	var build := ""
 	for id in w.weapons:
 		var wd: Dictionary = w.weapons[id]
-		build += "%s  %s%d%s\n" % [Content.WEAPONS[id].name, "Evolved " if wd.evo else "Lv ", wd.lv,
+		build += "%s  %s%d%s\n" % [Content.WEAPONS[id].name, ("Fused " if wd.get("fuse", "") != "" else ("Evolved " if wd.evo else "Lv ")), wd.lv,
 			("  \u00b7  " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else ""]
 	var perks := []
 	for id in w.perks: perks.append("%s %d" % [Content.PERKS[id].name, w.perks[id]])
@@ -1036,11 +1036,11 @@ class Gem extends Control:
 		var r := minf(size.x, size.y) * 0.42
 		draw_circle(c, r * 1.25, Color(col.r, col.g, col.b, 0.12))
 		draw_circle(c, r * 0.95, Color(col.r, col.g, col.b, 0.16))
-		var n := {"w": 4, "e": 8, "p": 24, "g": 6, "key": 5}.get(kind, 24) as int
+		var n := {"w": 4, "e": 8, "fuse": 12, "p": 24, "g": 6, "key": 5}.get(kind, 24) as int
 		var pts := PackedVector2Array()
 		for i in n:
 			var a := -PI / 2.0 + TAU * float(i) / float(n)
-			var rr := r if kind != "e" or i % 2 == 0 else r * 0.55
+			var rr := r if (kind != "e" and kind != "fuse") or i % 2 == 0 else r * (0.55 if kind == "e" else 0.7)
 			pts.append(c + Vector2(cos(a), sin(a)) * rr * (0.82 if kind == "p" else 1.0))
 		draw_colored_polygon(pts, col.darkened(0.45))
 		# facets: light from the top-left

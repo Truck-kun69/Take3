@@ -742,6 +742,7 @@ func elmask(id: String) -> int:
 	var m := 0
 	if not stats.flag("no_status", loc):
 		m = 1 << int(Content.WEAPONS[id].elem)
+		if fused(id) != "": m |= 1 << int(Content.WEAPONS[fused(id)].elem)     # fusion: the partner's element too
 		if stats.flag("apply_fire", loc): m |= 1 << Content.El.FIRE
 		if stats.flag("apply_cold", loc): m |= 1 << Content.El.COLD
 		if stats.flag("apply_light", loc): m |= 1 << Content.El.LIGHT
@@ -749,6 +750,27 @@ func elmask(id: String) -> int:
 		if stats.flag("apply_phys", loc): m |= 1 << Content.El.PHYS
 	_elmask_cache[id] = m
 	return m
+
+## The weapon this one is fused with, or "".
+func fused(id: String) -> String:
+	return String(weapons[id].get("fuse", "")) if weapons.has(id) else ""
+
+func _fused_pair(a: String, b: String) -> bool:
+	return fused(a) == b
+
+## A ring of frost bolts from a point (Glacial Nova, Hailstorm, Frost Halo).
+func _bolt_ring(at: Vector2, n: int, dmg: float, a0: float = 0.0, spd: float = 420.0) -> void:
+	var em := elmask("bolt")
+	for k in n:
+		var a := a0 + TAU * k / n
+		var p: Proj = _new_proj()
+		p.pos = at; p.vel = Vector2(cos(a), sin(a)) * spd; p.life = 0.8; p.r = 6.0
+		p.dmg = dmg; p.pierce = 1; p.chain = 0; p.el = em; p.wid = "bolt"; p.col = Color("c8f6ff")
+		projs.append(p)
+
+var _nova_t := -9.0
+var _halo_t := 0.0
+var _tempest_t := 0.0
 
 func _dmg_scale(id: String) -> float:
 	var s := stats.value("damage", 1.0, wlocal[id])
@@ -850,6 +872,9 @@ func _nova(s: Dictionary, mul: float) -> bool:
 		return false
 	_cast(face)
 	nova_at(pp, r, float(s.dmg) * _dmg_scale("nova") * mul, elmask("nova"), Color("ff7b50"), 520.0 if weapons.nova.evo else 260.0)
+	_nova_t = t
+	if _fused_pair("nova", "bolt"):                                  # Glacial Nova
+		_bolt_ring(pp, 8, float(s.dmg) * 0.45 * _dmg_scale("bolt") * mul, rng.randf() * TAU)
 	Sfx.play("nova")
 	Sfx.play("fire", 1.0, 0.7)
 	return true
@@ -880,6 +905,10 @@ func _storm(s: Dictionary, mul: float) -> bool:
 		var i := picks_i[rng.randi_range(0, cands - 1)]
 		if i >= sw.n: continue
 		strike_at(sw.pos[i], r, dmg, em)
+		if _fused_pair("storm", "bolt"):                             # Hailstorm
+			_bolt_ring(sw.pos[i] if i < sw.n else pp, 4, dmg * 0.3, rng.randf() * TAU, 360.0)
+		elif _fused_pair("storm", "nova") and i < sw.n:              # Thunderclap
+			nova_at(sw.pos[i], 75.0, dmg * 0.5, elmask("nova"), Color("ff9ae0"), 160.0)
 	Sfx.play("thunder")
 	shake = minf(1.0, shake + 0.05)
 	return true
@@ -904,6 +933,8 @@ func _orbit(dt: float, s: Dictionary) -> void:
 	var w: Dictionary = weapons.orbit
 	var cyc := buffs.has("cyclone")
 	var rad := float(s.rad) * stats.value("area", 1.0, wlocal["orbit"]) * (2.0 if cyc else 1.0)
+	if _fused_pair("orbit", "nova"):                                  # Solar Wheel: each pulse flings the blades wide
+		rad *= 1.0 + 0.7 * clampf(1.0 - (t - _nova_t) / 0.6, 0.0, 1.0)
 	var spd := float(s.spd) / maxf(0.2, stats.value("cooldown", 1.0, wlocal["orbit"]))
 	w.t += spd * dt
 	var n := int(s.n) + int(stats.value("proj_count", 0.0, wlocal["orbit"]))
@@ -913,6 +944,13 @@ func _orbit(dt: float, s: Dictionary) -> void:
 		blades[k] = pp + Vector2(cos(a), sin(a)) * rad
 	var dmg := float(s.dmg) * _dmg_scale("orbit") * (3.0 if cyc else 1.0)
 	var em := elmask("orbit")
+	if _fused_pair("orbit", "bolt"):                                  # Frost Halo
+		_halo_t += dt
+		if _halo_t >= 0.55:
+			_halo_t = 0.0
+			for b in mini(n, 4):
+				var bp: Vector2 = blades[(b * n) / mini(n, 4)]
+				_bolt_ring(bp, 1, dmg * 0.6, (bp - pp).angle(), 380.0)
 	if not breakables.is_empty():
 		for b in n: shatter(blades[b], 12.0)
 	var c := grid.query(pp, rad + 30.0, sw)
@@ -927,6 +965,9 @@ func _orbit(dt: float, s: Dictionary) -> void:
 			if p.distance_squared_to(blades[b]) < rr * rr:
 				sw.set_hit_t(i, t)
 				hit(i, dmg, em, (p - pp).normalized(), 120.0, 0)
+				if _fused_pair("orbit", "storm") and t - _tempest_t > 0.4 and i < sw.n:   # Tempest Blades
+					_tempest_t = t
+					strike_at(sw.pos[i], 42.0, dmg * 1.6, elmask("storm"))
 				Sfx.play("impact", 1.0, 0.55)
 				break
 
@@ -1651,6 +1692,11 @@ func make_choices() -> Array:
 			pool.append({"kind": "w", "id": id})
 		elif not weapons[id].evo and int(perks.get(Content.WEAPONS[id].pair, 0)) >= 1:
 			evos.append({"kind": "e", "id": id})
+	for a in weapons:                                       # fusions: two evolved, unfused weapons
+		for b in weapons:
+			if a < b and weapons[a].evo and weapons[b].evo and fused(a) == "" and fused(b) == "":
+				evos.append({"kind": "fuse", "id": Content.fusion_key(a, b), "a": a, "b": b})
+	for id in Content.WEAPON_IDS:
 		if weapons.has(id) and weapons[id].gems.size() < Content.SOCKETS:
 			for g in Content.GEM_IDS:
 				var req: String = Content.GEMS[g].req
@@ -1678,6 +1724,8 @@ func choice_text(c: Dictionary) -> Dictionary:
 			var W: Dictionary = Content.WEAPONS[c.id]
 			return {"tag": "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1], "name": W.name, "d": W.d[lv] + "  [%s]" % Content.EL_NAME[W.elem], "col": W.col}
 		"e": return {"tag": "Evolution", "name": Content.WEAPONS[c.id].evo, "d": Content.WEAPONS[c.id].evo_d, "col": "f4c04e"}
+		"fuse": return {"tag": "Fusion: %s + %s" % [Content.WEAPONS[c.a].evo, Content.WEAPONS[c.b].evo], "name": Content.FUSIONS[c.id].name,
+			"d": Content.FUSIONS[c.id].d + " Both deal 25% more damage and carry each other's element.", "col": Content.FUSIONS[c.id].col}
 		"p":
 			var pl := int(perks.get(c.id, 0))
 			return {"tag": "New perk" if pl == 0 else "Perk Lv %d -> %d" % [pl, pl + 1], "name": Content.PERKS[c.id].name, "d": Content.PERKS[c.id].d, "col": "ece8dd"}
@@ -1692,6 +1740,15 @@ func apply_choice(c: Dictionary) -> void:
 			else:
 				weapons[c.id] = {"lv": 1, "evo": false, "t": 0.0, "gems": []}
 				wlocal[c.id] = Stats.new()
+		"fuse":
+			weapons[c.a].fuse = c.b
+			weapons[c.b].fuse = c.a
+			for id in [c.a, c.b]: wlocal[id].set_source("fusion", [["damage", "more", 1.25]])
+			_elmask_ver = -1
+			shake = 1.0
+			fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 240.0, "col": Content.col(Content.FUSIONS[c.id].col), "life": 0.5, "t": 0.0})
+			banner.emit(Content.FUSIONS[c.id].name, Content.FUSIONS[c.id].d, Content.col(Content.FUSIONS[c.id].col))
+			metrics.fusions = int(metrics.get("fusions", 0)) + 1
 		"e":
 			weapons[c.id].evo = true
 			shake = 0.8

@@ -92,6 +92,7 @@ static func pick(choices: Array, w: World) -> Dictionary:
 		var s := 1.0
 		match c.kind:
 			"e": s = 100.0
+			"fuse": s = 90.0
 			"key": s = 50.0 if c.id in ["equilibrium", "chainreact", "glass", "pain"] else 20.0
 			"w": s = 30.0 if w.weapons.has(c.id) else 18.0
 			"g": s = 25.0

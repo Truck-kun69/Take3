@@ -52,6 +52,22 @@ const WEAPONS := {
 }
 const WEAPON_IDS := ["bolt", "orbit", "nova", "storm"]
 
+# ---------------------------------------------------------------- weapon fusion
+# Two evolved weapons can be fused at a level-up (a gold "Fusion" card). Both keep firing; each also
+# carries its partner's element (so fusions feed the reaction engine), deals 25% more damage, and the
+# pair gains the hybrid behaviour below (World._fusion hooks). Key = the two ids sorted, joined by "+".
+const FUSIONS := {
+	"bolt+nova": {"name": "Glacial Nova", "d": "Every pulse also hurls a ring of eight frost bolts.", "col": "9fe8ff"},
+	"bolt+orbit": {"name": "Frost Halo", "d": "The blades shed frost bolts outward as they spin.", "col": "c8f0ff"},
+	"bolt+storm": {"name": "Hailstorm", "d": "Each lightning strike bursts into four frost shards.", "col": "b8d8ff"},
+	"nova+orbit": {"name": "Solar Wheel", "d": "Each pulse flings the blades wide, and the blades burn.", "col": "ffb04a"},
+	"nova+storm": {"name": "Thunderclap", "d": "Each strike detonates a shock pulse where it lands.", "col": "ff9ae0"},
+	"orbit+storm": {"name": "Tempest Blades", "d": "The blades call lightning down on foes they cut.", "col": "d0b8ff"},
+}
+
+static func fusion_key(a: String, b: String) -> String:
+	return (a + "+" + b) if a < b else (b + "+" + a)
+
 # Passive perks: [stat, kind, value per level]. kind: add | inc | more
 const PERKS := {
 	"might": {"name": "Sharpened Edge", "d": "+15% increased damage.", "mods": [["damage", "inc", 0.15]]},
