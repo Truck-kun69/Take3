@@ -28,12 +28,16 @@ var _last_step_sign := 0.0
 var _last_roll := 0.0
 var _frame := 0
 
+# Ambient motes (polish pass: there were 36 at 55% opacity that bloom turned into ever-present white
+# dust). Now a handful per act, small, faint, tinted, only inside the torch's pool, and they can be
+# switched off (option "ambient").
+const MOTE_N := 14
 const MOTES := [
-	{"col": Color(0.75, 1.0, 0.45), "rise": 0.0, "blink": true},     # Mossglen: fireflies
-	{"col": Color(1.0, 0.55, 0.2), "rise": 28.0, "blink": false},    # Cinder: rising embers
-	{"col": Color(0.8, 0.8, 0.9), "rise": 4.0, "blink": false},      # Crypt: dust motes
-	{"col": Color(0.3, 0.9, 1.0), "rise": 10.0, "blink": true},      # Neon: data sparks
-	{"col": Color(1.0, 0.82, 0.5), "rise": 6.0, "blink": true},      # Drowned Cathedral: candle sparks over the water
+	{"col": Color(0.62, 0.9, 0.3), "rise": 0.0, "blink": true, "a": 0.5},       # Mossglen: fireflies, mostly dark
+	{"col": Color(1.0, 0.45, 0.12), "rise": 30.0, "blink": false, "a": 0.38},   # Cinder: rising embers
+	{"col": Color(0.45, 0.55, 1.0), "rise": 3.0, "blink": true, "a": 0.28},     # Crypt: pale grave-wisps
+	{"col": Color(0.25, 0.85, 1.0), "rise": 10.0, "blink": true, "a": 0.4},     # Neon: data sparks
+	{"col": Color(1.0, 0.75, 0.4), "rise": 6.0, "blink": true, "a": 0.35},      # Drowned Cathedral: candle sparks
 ]
 
 func _ready() -> void:
@@ -249,8 +253,11 @@ func _breakables() -> void:
 	w.broken.clear()
 
 func _motes(dt: float) -> void:
+	if not Save.opt("ambient"):
+		motes.clear()
+		return
 	var cfg: Dictionary = MOTES[w.stage]
-	while motes.size() < 36:
+	while motes.size() < MOTE_N:
 		motes.append([Vector3(w.pp.x + randf_range(-300, 300), randf_range(8, 90), w.pp.y + randf_range(-260, 260)), randf() * TAU])
 	for m in motes:
 		var p: Vector3 = m[0]
@@ -259,10 +266,13 @@ func _motes(dt: float) -> void:
 		if p.y > 120.0 or absf(p.x - w.pp.x) > 340.0 or absf(p.z - w.pp.y) > 300.0:
 			p = Vector3(w.pp.x + randf_range(-300, 300), randf_range(4, 30), w.pp.y + randf_range(-260, 260))
 		m[0] = p
-		var a := 0.55
-		if cfg.blink: a = clampf(sin(m[1] * 2.2) * 1.4, 0.0, 1.0) * 0.8
+		var a: float = cfg.a
+		if cfg.blink: a *= clampf(sin(m[1] * 1.4 + float(m[1]) * 0.0) * 2.0 - 0.6, 0.0, 1.0)     # lit a third of the time
+		var dh := Vector2(p.x - w.pp.x, p.z - w.pp.y).length()
+		a *= clampf(1.0 - (dh - 140.0) / 160.0, 0.0, 1.0)                                       # only in the torch's pool
+		if a <= 0.01: continue
 		var c: Color = cfg.col
-		view.fx.ext_glow.append([p, 6.0, Color(c.r, c.g, c.b, a), 0.0])
+		view.fx.ext_glow.append([p, 3.4, Color(c.r, c.g, c.b, a), 0.0])
 
 func _sim(dt: float) -> void:
 	var i := 0

@@ -275,3 +275,45 @@ memory, which points at the GPU driver. Tools added to find the cause:
   keeps the save. `tools/build_android.sh debug` still builds the debug template.
 - **Frame cap.** Auto caps phones at 60 FPS. The S22's 120 Hz panel otherwise asks for twice the frames,
   and twice the heat, for no visible gain.
+
+## Look-and-feel pass (Nov 2026)
+
+**The swarm sparkled because of 16-bit per-instance data.** Godot stores MultiMesh per-instance colour
+and custom data on the GPU as half floats, which hold whole numbers exactly only up to 2048. The foe
+custom.w packed `flags + 256 * seed`, up to about 16,000, so the flag bits decoded as noise. Random foes
+were drawn as allies and elites, and their fresnel rim glows lit individual sub-pixel facets: the swarm
+looked like confetti. The bug showed in Forward+ too. It was found by bisecting the foe shader's
+outputs (flat albedo: clean; no emission: clean; no ally glow: lilac gone).
+
+The fix keeps every per-instance value small:
+- flags alone in `custom.w`;
+- the seed in the instance colour's alpha (seed / 63);
+- the walk phase wrapped to 8 full cycles (`fposmod(..., TAU * 8)`). It used to grow without bound,
+  which would have made walking stutter in long runs.
+
+Other changes in the pass:
+- **Ambient motes.** 36 at 55% opacity, which bloom turned into ever-present white dust, became 14
+  small, faint motes tinted per act (crypt dust is now pale blue grave-wisps). They show only inside
+  the torch's pool, and Options > Graphics > Ambient particles turns them off.
+- **Death debris.** Ash and gore tones instead of the foe's pale body colour, no emission, gone in about
+  a second.
+- **Hit sparks.** 6 per burst instead of 12, smaller and shorter-lived; pale colours are warmed.
+- **Foe shader.**
+  - The hit flash is one flat warm tone; it used to be the surface colour × 2, which amplified every
+    facet.
+  - Frozen foes are frosted (roughness 0.45) instead of mirror-like (0.1).
+  - Shard crystals glow at 0.5× instead of 1.2×; the elite rim is 1.4× instead of 2.5×.
+  - Corpses sink into the ground and darken instead of crumbling through noise holes with glowing
+    edges.
+- **Enemy shots.** A saturated red-magenta ring around a hot core, instead of a pale soft orb that read
+  as dust.
+- **Glow levels.** Crystal props glow at 0.6× instead of 1.4×; terrain shard veins at 0.2× instead of
+  0.35×; the breach ring is quieter.
+- **FXAA** on Medium and High (not WebGL) smooths the swarm's sub-pixel triangles.
+- **UI motion.**
+  - Sheets fade in and settle 18 px upward the first time they open (refreshes don't animate).
+  - Level-up cards are dealt in 70 ms apart.
+  - Buttons and tiles dip to 96% while pressed.
+  - Banners land with a small scale punch.
+  - Toasts sit on a dark plate with a coloured edge and fade in.
+  - The small HUD lines (Hoard, prophecy, Engulfed) are 13 px with an outline.

@@ -242,8 +242,10 @@ func _consume_feed() -> void:
 	for b in w.bursts:
 		var pos: Vector2 = b[0]
 		var cnt: int = b[2]
-		for i in mini(cnt, 12):
-			_spark(Vector3(pos.x, 10, pos.y), Vector3(randf_range(-1, 1), randf_range(0.4, 1.6), randf_range(-1, 1)) * float(b[3]) * 0.9, b[1], randf_range(0.3, 0.7), randf_range(4.0, 8.0))
+		var sc: Color = b[1]
+		if sc.s < 0.25: sc = sc.lerp(Color(1.0, 0.7, 0.4), 0.6)         # pale hit colours read as white dust: warm them
+		for i in mini(cnt, 6):
+			_spark(Vector3(pos.x, 10, pos.y), Vector3(randf_range(-1, 1), randf_range(0.4, 1.6), randf_range(-1, 1)) * float(b[3]) * 0.9, sc, randf_range(0.16, 0.36), randf_range(2.5, 4.5))
 	w.bursts.clear()
 	for d in w.deaths:
 		var pos2: Vector2 = d[0]
@@ -251,8 +253,9 @@ func _consume_feed() -> void:
 		var r: float = d[2]
 		var elite: bool = d[3]
 		if d.size() > 6: view.add_corpse(int(d[4]), pos2, d[5], r, int(d[6]))
-		for i in (8 if elite else 3):
-			_debris(Vector3(pos2.x, r * 0.9, pos2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(120, 260), col, r * randf_range(0.18, 0.4))
+		var dc := col.darkened(0.55).lerp(Color(0.22, 0.03, 0.03), 0.35)   # ash and gore, not pale chips
+		for i in (5 if elite else 2):
+			_debris(Vector3(pos2.x, r * 0.9, pos2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(120, 240), dc, r * randf_range(0.14, 0.3), randf_range(0.6, 1.1))
 		_mark(pos2, r * (1.6 if elite else 1.1), 0)
 		if elite: add_light(Vector3(pos2.x, 30, pos2.y), Color(1, 0.8, 0.4), 3.0, 180.0, 0.35)
 	w.deaths.clear()
@@ -284,11 +287,11 @@ func _spark(p: Vector3, v: Vector3, c: Color, life: float, size: float) -> void:
 	s_pos[s_n] = p; s_vel[s_n] = v; s_life[s_n] = life; s_max[s_n] = life; s_col[s_n] = c; s_size[s_n] = size
 	s_n += 1
 
-func _debris(p: Vector3, v: Vector3, c: Color, size: float) -> void:
+func _debris(p: Vector3, v: Vector3, c: Color, size: float, life: float = -1.0) -> void:
 	var cap := DEBRIS_CAP if Quality.tier() >= 1 else DEBRIS_CAP / 3
 	if d_n >= cap: return
 	d_pos[d_n] = p; d_vel[d_n] = v; d_rot[d_n] = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
-	d_spin[d_n] = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12)); d_life[d_n] = randf_range(1.4, 2.4)
+	d_spin[d_n] = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12)); d_life[d_n] = life if life > 0.0 else randf_range(1.0, 1.6)
 	d_size[d_n] = size; d_col[d_n] = c
 	d_n += 1
 
@@ -357,11 +360,14 @@ func _projectiles(gn: int) -> int:
 			var tp := pos - v * 0.018 * (k + 1)
 			_g(gn * 20, tp, p.r * (5.0 - k * 1.2), Color(p.col.r, p.col.g, p.col.b, 0.5 - k * 0.14), 0.0); gn += 1
 	for q in w.eshots:
-		if gn >= GLOW_CAP - 2: break
+		if gn >= GLOW_CAP - 3: break
 		var qp := Vector3(q.pos.x, 14, q.pos.y)
-		var qc := Color(q.col.r, q.col.g, q.col.b).lerp(Color(1.0, 0.25, 0.4), 0.35)
-		_g(gn * 20, qp, q.r * 3.6, Color(qc.r, qc.g, qc.b, 0.95), 0.0, 0.3); gn += 1
-		_g(gn * 20, qp - Vector3(q.vel.x, 0, q.vel.y) * 0.03, q.r * 2.6, Color(qc.r, qc.g, qc.b, 0.35), 0.0); gn += 1
+		# hostile shots: a saturated ring around a hot core reads as a threat (soft pale orbs read as dust)
+		var qc := Color(q.col.r, q.col.g, q.col.b).lerp(Color(1.0, 0.18, 0.32), 0.6)
+		qc = Color.from_hsv(qc.h, maxf(qc.s, 0.85), minf(qc.v, 0.8))
+		_g(gn * 20, qp, q.r * 3.0, Color(qc.r, qc.g, qc.b, 0.8), 3.0); gn += 1
+		_g(gn * 20, qp, q.r * 1.6, Color(1.0, 0.4, 0.3, 0.9), 2.0); gn += 1
+		_g(gn * 20, qp - Vector3(q.vel.x, 0, q.vel.y) * 0.03, q.r * 2.2, Color(qc.r, qc.g, qc.b, 0.3), 0.0); gn += 1
 	var mm := proj_mm.multimesh
 	mm.buffer = _pb
 	mm.visible_instance_count = pn
@@ -435,7 +441,7 @@ func _debris_upload() -> void:
 		_db[o + 4] = b.x.y; _db[o + 5] = b.y.y; _db[o + 6] = b.z.y; _db[o + 7] = p.y
 		_db[o + 8] = b.x.z; _db[o + 9] = b.y.z; _db[o + 10] = b.z.z; _db[o + 11] = p.z
 		_db[o + 12] = c.r; _db[o + 13] = c.g; _db[o + 14] = c.b; _db[o + 15] = 1.0
-		_db[o + 16] = 0.15; _db[o + 17] = 0.5; _db[o + 18] = 0.0; _db[o + 19] = 0.0
+		_db[o + 16] = 0.0; _db[o + 17] = 0.6; _db[o + 18] = 0.0; _db[o + 19] = 0.0      # x emission 0 (chips glowed pale), y rough
 	var mm := debris_mm.multimesh
 	mm.buffer = _db
 	mm.visible_instance_count = d_n
@@ -590,8 +596,8 @@ func _decals() -> void:
 		var col := Content.col(Content.EVENTS[ev.id].col)
 		match ev.id:
 			"breach":
-				_circle(ev.pos, ev.r, 6, Color(0.75, 0.5, 1.0, 0.8), 1.0)
-				_circle(ev.pos, ev.r * 0.98, 5, Color(0.5, 0.25, 0.9, 0.25), 1.0)
+				_circle(ev.pos, ev.r, 6, Color(0.75, 0.5, 1.0, 0.45), 1.0)
+				_circle(ev.pos, ev.r * 0.98, 5, Color(0.5, 0.25, 0.9, 0.12), 1.0)
 			"cursed":
 				_circle(ev.pos, 40.0, 6, col, 1.0)
 				if ev.state == 1: _circle(ev.pos, 260.0, 1, Color(1, 0.3, 0.35, 0.6), 1.0, 0.985)

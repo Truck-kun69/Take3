@@ -588,12 +588,16 @@ func _foes() -> void:
 		_fb[o + 4] = 0.0; _fb[o + 5] = s; _fb[o + 6] = 0.0; _fb[o + 7] = 0.0
 		_fb[o + 8] = dir.y * s; _fb[o + 9] = 0.0; _fb[o + 10] = dir.x * s; _fb[o + 11] = p.y
 		var c := _kind_col[k]
-		_fb[o + 12] = c.r; _fb[o + 13] = c.g; _fb[o + 14] = c.b; _fb[o + 15] = 1.0
+		# per-instance colour and custom data reach the GPU as 16-bit halves (exact integers only to
+		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
+		# wrapped to whole cycles (it used to grow with time, and flag+256*seed decoded as random elite
+		# and ally bits: the swarm sparkled with their rim glows)
+		_fb[o + 12] = c.r; _fb[o + 13] = c.g; _fb[o + 14] = c.b; _fb[o + 15] = float(sw.uid[i] % 64) / 63.0
 		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
-		_fb[o + 16] = time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37
+		_fb[o + 16] = fposmod(time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
 		_fb[o + 17] = maxf(0.0, sw.flash[i])
 		_fb[o + 18] = _status_code(i)
-		_fb[o + 19] = float(f & 0xff) + 256.0 * float(sw.uid[i] % 64)
+		_fb[o + 19] = float(f & 0xff)
 		_foe_n[k] = n + 1
 		if (f & Swarm.F_ELITE) != 0 and dpl < 520.0:
 			var naff := 0
@@ -660,12 +664,12 @@ func _corpses() -> void:
 		_fb[o + 4] = xa.y * s; _fb[o + 5] = ya.y * s; _fb[o + 6] = za.y * s; _fb[o + 7] = 0.42 * s * fall + bounce
 		_fb[o + 8] = xa.z * s; _fb[o + 9] = ya.z * s; _fb[o + 10] = za.z * s; _fb[o + 11] = p.y
 		var col := _kind_col[k]
-		_fb[o + 12] = col.r; _fb[o + 13] = col.g; _fb[o + 14] = col.b; _fb[o + 15] = 1.0
+		_fb[o + 12] = col.r; _fb[o + 13] = col.g; _fb[o + 14] = col.b; _fb[o + 15] = float(c[5]) / 63.0
 		_fb[o + 16] = 0.0
 		_fb[o + 17] = clampf((age - 1.2) / (CORPSE_LIFE - 1.2), 0.0, 1.0)  # dissolve
 		if age > 1.2: Diag.first("corpse dissolving")
 		_fb[o + 18] = 7.0
-		_fb[o + 19] = 256.0 * float(c[5])
+		_fb[o + 19] = 0.0
 		_foe_n[k] = n + 1
 
 # ---------------------------------------------------------------- magic / rare monster auras

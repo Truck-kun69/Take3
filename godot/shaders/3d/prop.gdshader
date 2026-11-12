@@ -50,8 +50,8 @@ void fragment() {
 	ALBEDO = COLOR.rgb * tint;
 	ROUGHNESS = 0.9;
 	if (v_part > 6.5 && v_part < 7.5) {
-		ALBEDO = mix(ALBEDO, glow_col, 0.5);
-		EMISSION = glow_col * (1.4 + 0.5 * sin(time * 2.0 + wpos.x * 0.05));
+		ALBEDO = mix(ALBEDO, glow_col, 0.35);
+		EMISSION = glow_col * (0.6 + 0.25 * sin(time * 1.2 + wpos.x * 0.05));       // accents, not beacons
 		ROUGHNESS = 0.15;
 	}
 }

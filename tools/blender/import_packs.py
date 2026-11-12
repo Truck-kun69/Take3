@@ -177,7 +177,14 @@ def bake(arm, meshes, weapon=None, eyes_from_dark=False):
             mi = f.material_index if f.material_index < len(mats) else 0
             if mats and glow_mat[mi]:
                 p = EYE
-            cols = [samplers[mi](lo[uvl].uv) if (mats and uvl) else (0.7, 0.7, 0.7) for lo in f.loops]
+            # one colour per face, sampled at the face's UV centroid: per-corner samples straddle palette
+            # swatches once the mesh is decimated, and the swarm read as speckled confetti (polish pass)
+            if mats and uvl:
+                cu = sum((lo[uvl].uv for lo in f.loops), Vector((0.0, 0.0))) / len(f.loops)
+                c1 = samplers[mi](cu)
+                cols = [c1] * len(f.loops)
+            else:
+                cols = [(0.7, 0.7, 0.7)] * len(f.loops)
             lum = sum(0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2] for c in cols) / len(cols)
             if p == HEAD and lum < 0.13 and eyes_from_dark:
                 p = EYE                     # pupils and maw: lit from inside, like the procedural foes' eyes

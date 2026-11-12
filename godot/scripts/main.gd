@@ -120,6 +120,9 @@ func _render_scale() -> void:
 	var hi := Quality.high()
 	vp.mesh_lod_threshold = 1.0 if hi else 1.5
 	vp.msaa_3d = Viewport.MSAA_2X if (Quality.tier() >= 2 and Quality.on("msaa") and not compat) else Viewport.MSAA_DISABLED
+	# FXAA: a cheap screen-space pass that smooths the swarm's sub-pixel triangles (a ~40 px foe has
+	# ~1,000 triangles, which read as speckle from the game camera). Medium and up, not on WebGL.
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (Quality.tier() >= 1 and Quality.on("msaa") and not compat) else Viewport.SCREEN_SPACE_AA_DISABLED
 	if not compat:
 		RenderingServer.directional_shadow_atlas_set_size(4096 if hi else 2048, true)
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if hi else RenderingServer.SHADOW_QUALITY_HARD)

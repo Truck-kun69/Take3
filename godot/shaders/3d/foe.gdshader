@@ -2,7 +2,8 @@ shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx, cull_back;
 // Instanced swarm. One baked mesh per foe kind; UV2 carries (part id, pivot height) so the vertex
 // stage can walk legs, swing arms, bob heads and wave tendrils without skeletons.
-// INSTANCE_CUSTOM = (walk phase, hit flash | corpse dissolve, status code, flag bits + 256 * seed)
+// INSTANCE_CUSTOM = (walk phase (wrapped), hit flash | corpse dissolve, status code, flag bits); instance
+// colour alpha = seed / 63. Instance data is stored as 16-bit halves, so every value stays small.
 //   status: 0 none 1 burn 2 chill 3 shock 4 poison 5 bleed 6 frozen 7 CORPSE (lying, crumbling)
 //   flags: 1 elite, 2 boss, 8 exile, 16 goblin, 64 ally;  seed 0..63 varies the skin per foe
 uniform float time = 0.0;
@@ -78,6 +79,11 @@ void vertex() {
 		v.x -= flash * 3.0;
 		VERTEX = v;
 	}
+	if (INSTANCE_CUSTOM.z > 6.5) {
+		// corpses sink into the ground as they fade (polish: the noise-holed crumble with glowing edges
+		// read as confetti from the game camera once a fight left dozens of bodies)
+		VERTEX.y -= INSTANCE_CUSTOM.y * 0.9;
+	}
 	// stand on the terrain under the instance's origin (elevation pass)
 	vec3 wo = MODEL_MATRIX[3].xyz;
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(wo.xz), 0.0);
@@ -86,15 +92,15 @@ void vertex() {
 void fragment() {
 	vec3 base = COLOR.rgb;
 	float flags = mod(v_custom.w, 256.0);
-	float seed = floor(v_custom.w / 256.0);
+	float seed = floor(COLOR.a * 63.0 + 0.5);
 	bool corpse = v_custom.z > 6.5;
 	// organic detail: mottled skin, darker crevices toward the feet, faint veins, per-foe variation
 	vec3 mp = v_mpos * 2.2 + seed * 1.37;
-	float n = vn3(mp) * 0.6 + vn3(mp * 2.3) * 0.4;
+	float n = vn3(mp) * 0.78 + vn3(mp * 2.3) * 0.22;     // polish: the fine octave shimmered as speckle from the game camera
 	float vein = smoothstep(0.03, 0.0, abs(vn3(mp * 1.3 + 9.0) - 0.5));
 	// grim and dark (loop 1: foes read as clean pink plastic)
 	base = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))), 0.35) * 0.55;
-	base *= 0.6 + 0.65 * n;
+	base *= 0.68 + 0.5 * n;
 	base *= mix(0.45, 1.0, smoothstep(0.0, 1.2, v_mpos.y));
 	base = mix(base, base * vec3(0.5, 0.25, 0.22), vein * 0.6);
 
@@ -108,26 +114,26 @@ void fragment() {
 		base = vec3(0.05);
 		em += eye_col * 4.0;
 	} else if (v_part > 6.5 && v_part < 7.5) {
-		em += glow_col * (1.2 + 0.6 * sin(time * 3.0 + v_custom.x));
+		em += glow_col * (0.5 + 0.25 * sin(time * 3.0 + v_custom.x));    // shard crystals: embers, not white specks
 		rough = 0.2;
 	}
 	vec3 sc = status_col(v_custom.z);
 	if (v_custom.z > 0.5 && !corpse) {
-		if (v_custom.z > 5.5) { base = mix(base, vec3(0.7, 0.9, 1.0), 0.75); rough = 0.1; }
-		em += sc * (0.25 + fres * 2.2) * (0.8 + 0.2 * sin(time * 9.0));
+		if (v_custom.z > 5.5) { base = mix(base, vec3(0.62, 0.8, 0.95), 0.6); rough = 0.45; }   // frosted, not mirror: rough 0.1 threw a sun glint off every facet (speckle)
+		em += sc * (0.16 + fres * 0.6) * (0.85 + 0.15 * sin(time * 9.0));
 	}
-	if (elite) em += vec3(1.0, 0.75, 0.25) * fres * 2.5;
+	if (elite) em += vec3(1.0, 0.75, 0.25) * fres * 1.4;
 	if (exile) em += vec3(1.0, 0.45, 0.15) * fres * 3.0;
 	if (ally) { base *= 0.4; em += vec3(0.6, 0.45, 1.0) * (0.6 + fres * 2.0); }
 	float fl = clamp(v_custom.y * 10.0, 0.0, 1.0);
-	em += mix(base * 2.0, vec3(1.0, 0.85, 0.75), 0.35) * fl * fl * fl * 0.9;    // short, curved, tinted hit pop
+	// short, curved hit pop in one flat warm tone (it used to be base x2, which amplified every facet and
+	// noise detail into bright dots; a hammered crowd read as confetti; found by bisecting the shader)
+	em += vec3(0.95, 0.72, 0.6) * fl * fl * fl * 0.55;
 	if (corpse) {
 		// crumble from the edges, glowing at the burn line, then gone
-		float cut = vn3(v_mpos * 2.4 + seed) - v_custom.y * 1.1 + 0.05;
-		if (cut < 0.0) discard;
-		base *= 0.4;
+		base *= 0.4 * (1.0 - 0.6 * v_custom.y);
 		rough = 0.9;
-		em = glow_col * smoothstep(0.035, 0.0, cut) * 1.6 * step(0.01, v_custom.y);
+		em = vec3(0.0);
 	}
 	ALBEDO = base;
 	ROUGHNESS = rough;

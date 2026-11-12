@@ -23,9 +23,20 @@ func close() -> void:
 
 func _open(max_w: int = 980) -> VBoxContainer:
 	_choices = []
+	var fresh := get_child_count() == 0          # opening over the game, not refreshing an open sheet
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	return UIKit.sheet(self, max_w)
+	var v := UIKit.sheet(self, max_w)
+	if fresh:                                    # fade in and settle up a few pixels (polish pass)
+		modulate.a = 0.0
+		var m: Control = get_child(get_child_count() - 1)
+		m.position.y = 18.0
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(self, "modulate:a", 1.0, 0.16)
+		tw.tween_property(m, "position:y", 0.0, 0.22).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+	else:
+		modulate.a = 1.0
+	return v
 
 func _title(v: VBoxContainer, t: String, sub: String = "") -> void:
 	v.add_child(UIKit.title(t, 38))
@@ -580,6 +591,7 @@ func show_options(back: String = "menu") -> void:
 			_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
 			_cycle(v, "Frame rate cap", "frame_cap", ["Auto (%s)" % ("60" if OS.has_feature("mobile") else "none"), "30 (cool, saves battery)", "60", "None"], back)
 			_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
+			_toggle(v, "Ambient particles (fireflies, embers)", "ambient", back)
 			_toggle(v, "Show FPS", "show_fps", back)
 			if not Save.opt("gfx_off").is_empty():
 				v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
@@ -835,7 +847,12 @@ func show_levelup(w: World) -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
 	for i in choices.size():
-		row.add_child(_choice_card(w, choices[i], i, portrait))
+		var card := _choice_card(w, choices[i], i, portrait)
+		row.add_child(card)
+		card.modulate.a = 0.0                     # cards are dealt in, one after another
+		var tw := card.create_tween()
+		tw.tween_interval(0.08 + 0.07 * i)
+		tw.tween_property(card, "modulate:a", 1.0, 0.18)
 	# weapon + gem overview so links are visible while choosing
 	v.add_child(_section("Your arsenal"))
 	var o := ""
@@ -861,6 +878,7 @@ func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool) -> Button:
 	b.add_theme_stylebox_override("pressed", UIKit.nine("card", 46, pad, Color("f2c76a")))
 	b.add_theme_stylebox_override("focus", UIKit.nine("card", 46, pad, frame.lightened(0.2)))
 	b.pressed.connect(func(): act.emit("pick", c))
+	UIKit.press_fx(b)
 	var v := UIKit.vbox(6)
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = 22; v.offset_right = -22; v.offset_top = 26; v.offset_bottom = -24

@@ -113,7 +113,7 @@ void fragment() {
 	float vein = smoothstep(0.004, 0.0, v) * smoothstep(0.55, 0.62, fbm(p / 900.0 + 7.0));
 	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.3);       // desaturate
 	float rough = mix(mix(0.95, 0.6, stones), 0.25, shore);
-	vec3 emit = acc * vein * (0.35 + 0.25 * sin(time * 1.6 + p.x * 0.01 + p.y * 0.007));
+	vec3 emit = acc * vein * (0.2 + 0.14 * sin(time * 1.6 + p.x * 0.01 + p.y * 0.007));     // veins: an undertone, not a web of neon
 	// surfaces: oil, poison, blood pools; burning oil; crystallised poison (noisy edges, organic blobs)
 	vec4 sf = tsurf(p);
 	if (sf.r + sf.g + sf.b + sf.a > 0.02) {

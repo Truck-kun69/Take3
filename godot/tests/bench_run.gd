@@ -17,6 +17,7 @@ func _ready() -> void:
 	sv.data.options.show_fps = true
 	if a.size() > 1: sv.data.options.gfx = int(a[1])
 	if a.size() > 2: sv.data.options.gpu_crowd = int(a[2])
+	if OS.get_environment("BENCH_OFF") != "": sv.data.options.gfx_off = Array(OS.get_environment("BENCH_OFF").split(","))
 	main = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 

@@ -149,7 +149,19 @@ static func button(txt: String, cb: Callable, min_h: int = 56) -> Button:
 	b.text = txt
 	b.custom_minimum_size = Vector2(0, min_h)
 	b.pressed.connect(func(): Sfx.play("click"); cb.call())
+	press_fx(b)
 	return b
+
+## Tactile press: the control dips to 96% while held and springs back (polish pass).
+static func press_fx(b: BaseButton) -> void:
+	b.resized.connect(func(): b.pivot_offset = b.size * 0.5)
+	b.button_down.connect(func():
+		var tw := b.create_tween()
+		tw.tween_property(b, "scale", Vector2(0.96, 0.96), 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT))
+	b.button_up.connect(func():
+		if not b.is_inside_tree(): return
+		var tw := b.create_tween()
+		tw.tween_property(b, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 
 ## A selectable tile (hero, stage, endgame mode): silver frame tinted by `tint`, gold when selected.
 ## title in Cinzel, sub-line in Garamond italic. Returns the Button; content is laid out inside it.
@@ -165,6 +177,7 @@ static func tile(title_txt: String, sub: String, cb: Callable, tint: Color = Col
 	b.add_theme_stylebox_override("pressed", nine("tile", 24, pad, sel_t))
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.add_theme_stylebox_override("disabled", nine("tile", 24, pad, Color(0.35, 0.33, 0.32)))
+	press_fx(b)
 	var v := vbox(2)
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = 18; v.offset_right = -18; v.offset_top = 5; v.offset_bottom = -6

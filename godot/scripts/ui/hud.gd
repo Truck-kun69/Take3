@@ -155,13 +155,25 @@ func show_banner(t: String, s: String, c: Color) -> void:
 func show_toast(t: String, c: Color) -> void:
 	if toasts.get_child_count() > 4:
 		toasts.get_child(0).queue_free()
-	var l := UIKit.label(t, 19, c, false, "body")
-	l.add_theme_constant_override("outline_size", 6)
-	toasts.add_child(l)
+	# a dark plate with a coloured edge, faded in (bare outlined text was hard to read over effects)
+	var pc := PanelContainer.new()
+	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.025, 0.03, 0.72)
+	sb.border_width_left = 3
+	sb.border_color = c
+	sb.content_margin_left = 12; sb.content_margin_right = 14; sb.content_margin_top = 3; sb.content_margin_bottom = 4
+	sb.corner_radius_top_right = 6; sb.corner_radius_bottom_right = 6
+	pc.add_theme_stylebox_override("panel", sb)
+	var l := UIKit.label(t, 18, c.lerp(Color("f6e7c8"), 0.25), false, "body")
+	pc.add_child(l)
+	toasts.add_child(pc)
+	pc.modulate.a = 0.0
 	var tw := create_tween()
+	tw.tween_property(pc, "modulate:a", 1.0, 0.14)
 	tw.tween_interval(2.2)
-	tw.tween_property(l, "modulate:a", 0.0, 0.5)
-	tw.tween_callback(l.queue_free)
+	tw.tween_property(pc, "modulate:a", 0.0, 0.45)
+	tw.tween_callback(pc.queue_free)
 
 func _touch() -> bool:
 	return UIKit.is_touch()
@@ -234,6 +246,9 @@ func _process(dt: float) -> void:
 		banner_time -= dt
 		a = clampf(banner_time / 0.5, 0, 1) * clampf((2.8 - banner_time) / 0.2, 0, 1)
 	banner_box.modulate.a = a
+	var punch := clampf(1.0 - (2.8 - banner_time) / 0.22, 0.0, 1.0) if banner_time > 0.0 else 0.0
+	banner_box.pivot_offset = Vector2(vs.x * 0.5, 40.0)
+	banner_box.scale = Vector2.ONE * (1.0 + 0.12 * punch * punch)        # lands with a small punch
 	banner_box.size = Vector2(vs.x, 0)
 	banner_box.position = Vector2(0, vs.y * 0.2)
 	toasts.position = Vector2(18, vs.y * 0.4)
@@ -291,6 +306,11 @@ func _draw() -> void:
 		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color("c99a50"), 1.5)
 	_lantern()
 
+## Small HUD text (hoard, prophecy, Engulfed): 13 px with a dark outline so it reads over effects.
+func _small(f: Font, p: Vector2, txt: String, c: Color) -> void:
+	draw_string_outline(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0.02, 0.015, 0.02, 0.85 * c.a))
+	draw_string(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, c)
+
 ## The lantern (World.light): a flame and a bar left of the timer plate. Gold while lit, guttering
 ## toward violet as it fades; below the Engulfed line it pulses and the flame shrinks to an ember.
 func _lantern() -> void:
@@ -327,18 +347,18 @@ func _lantern() -> void:
 	if w.hoard > 0.0 or w.hoard_mult > 1.0:                  # bank-or-push: what a death would cost
 		var f3 := UIKit.font("label")
 		var hc := Color("7fd8ff").lerp(Color("ffb347"), clampf((w.hoard_mult - 1.0) / 2.0, 0.0, 1.0))
-		draw_string(f3, Vector2(bar.position.x, bar.end.y + 15.0), "HOARD %d  x%.1f" % [int(w.hoard), w.hoard_mult], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, hc)
+		_small(f3, Vector2(bar.position.x, bar.end.y + 16.0), "HOARD %d  x%.1f" % [int(w.hoard), w.hoard_mult], hc)
 	if not w.prophecy.is_empty():                              # the active prophecy's progress
 		var f4 := UIKit.font("label")
 		var pr: Vector2 = w.prophecy_progress()
 		var pc := Color("ffd27a") if not w.prophecy_done else Color("8aff9a")
 		var ptx := ("%s  %d/%d" % [Content.PROPHECIES[w.prophecy.id].name.to_upper(), int(pr.x), int(pr.y)]) if not w.prophecy_done else "PROPHECY FULFILLED"
-		draw_string(f4, Vector2(bar.position.x, bar.end.y + 30.0), ptx, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, pc)
+		_small(f4, Vector2(bar.position.x, bar.end.y + 32.0), ptx, pc)
 	if eng:
 		var f2 := UIKit.font("label")
 		var et := "ENGULFED"
-		var ew := f2.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		draw_string(f2, Vector2(fc.x - 14.0 - ew, bar.end.y - 1.0), et, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))
+		var ew := f2.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		_small(f2, Vector2(fc.x - 14.0 - ew, bar.end.y - 1.0), et, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))
 
 
 ## Liquid globe with the bronze frame and a value in the num face.
