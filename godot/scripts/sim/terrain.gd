@@ -33,6 +33,16 @@ var frozen := {}                 # Vector2i cell -> seconds left
 var charged := {}                # Vector2i cell -> seconds left
 var steam := {}                  # Vector2i cell -> seconds left (renderer feed: puffs)
 var version := 0                 # bumps when ice/charge change, so the renderer re-uploads its state texture
+
+# ---------------------------------------------------------------- surfaces (oil, poison, blood, fire)
+# Pools poured on dry or shallow ground by the fight itself, which react with elements:
+#   OIL    barrels, Act II seeps        fire ignites it (FIRE, spreading along connected oil)
+#   POISON spitters' deaths             fire detonates it; cold crystallises it into SPIKES
+#   BLOOD  kills (elites: big pools)    lightning arcs through every foe standing in it
+# surf: cell -> [kind, seconds left]. World applies the per-tick effects and the reactions.
+enum Surf { NONE, OIL, POISON, BLOOD, FIRE, SPIKES }
+var surf := {}
+var surf_version := 0
 var generated := 0
 var tide := 0.0                  # Act V: how far the liquid rises over the act (cells reclassify live)
 var level0 := 0.0
@@ -294,10 +304,81 @@ func scald(p: Vector2, r: float) -> int:
 	if n > 0: version += 1
 	return n
 
+func surf_at(p: Vector2) -> int:
+	var s = surf.get(cell_of(p))
+	return int(s[0]) if s != null else Surf.NONE
+
+## Pours a pool (a disc of cells) on land or shallows; never over fire or spikes, never on cliffs/deep.
+func pour(p: Vector2, r: float, kind: int, secs: float) -> int:
+	var n := 0
+	var c0 := cell_of(p)
+	var cr := int(ceilf(r / CELL))
+	for dy in range(-cr, cr + 1):
+		for dx in range(-cr, cr + 1):
+			if dx * dx + dy * dy > cr * cr: continue
+			var c := c0 + Vector2i(dx, dy)
+			var t := cell_type(c.x, c.y)
+			if t == CLIFF or t == DEEP: continue
+			var cur = surf.get(c)
+			if cur != null and int(cur[0]) in [Surf.FIRE, Surf.SPIKES]: continue
+			surf[c] = [kind, maxf(secs, float(cur[1]) if cur != null and int(cur[0]) == kind else 0.0)]
+			n += 1
+	if n > 0: surf_version += 1
+	return n
+
+## Cells of `kind` within r of p become `to` for `secs` (ignite oil, crystallise poison). Returns the count.
+func convert(p: Vector2, r: float, kind: int, to: int, secs: float) -> int:
+	var n := 0
+	var c0 := cell_of(p)
+	var cr := int(ceilf(r / CELL))
+	for dy in range(-cr, cr + 1):
+		for dx in range(-cr, cr + 1):
+			var c := c0 + Vector2i(dx, dy)
+			var s = surf.get(c)
+			if s != null and int(s[0]) == kind and dx * dx + dy * dy <= cr * cr:
+				surf[c] = [to, secs]
+				n += 1
+	if n > 0: surf_version += 1
+	return n
+
+## Removes `kind` within r (a detonated poison pool is spent).
+func clear_surf(p: Vector2, r: float, kind: int) -> void:
+	var c0 := cell_of(p)
+	var cr := int(ceilf(r / CELL))
+	for dy in range(-cr, cr + 1):
+		for dx in range(-cr, cr + 1):
+			var c := c0 + Vector2i(dx, dy)
+			var s = surf.get(c)
+			if s != null and int(s[0]) == kind: surf.erase(c)
+	surf_version += 1
+
+var _spread_t := 0.0
+func _step_surf(dt: float) -> void:
+	if surf.is_empty(): return
+	var gone := []
+	for c in surf:
+		surf[c][1] -= dt
+		if surf[c][1] <= 0.0: gone.append(c)
+	for c in gone: surf.erase(c)
+	if not gone.is_empty(): surf_version += 1
+	# fire creeps along connected oil, a cell every 0.12 s
+	_spread_t += dt
+	if _spread_t < 0.12: return
+	_spread_t = 0.0
+	var lit := []
+	for c in surf:
+		if int(surf[c][0]) != Surf.FIRE: continue
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var s = surf.get(c + d)
+			if s != null and int(s[0]) == Surf.OIL: lit.append(c + d)
+	for c in lit: surf[c] = [Surf.FIRE, 4.0]
+	if not lit.is_empty(): surf_version += 1
+
 func is_charged(p: Vector2) -> bool:
 	return charged.has(cell_of(p))
 
 func step(dt: float) -> void:
+	_step_surf(dt)
 	for d in [frozen, charged, steam]:
 		var gone := []
 		for c in d:

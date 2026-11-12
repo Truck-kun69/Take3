@@ -264,6 +264,7 @@ func bind(world: World) -> void:
 	water_mat.set_shader_parameter("glow_col", Content.col(s.acc).lerp(Color(1.0, 0.45, 0.1), 0.6))
 	_tex_center = Vector2i(1 << 30, 0)
 	_ts_ver = -1
+	_sf_ver = -1
 	_cam_y = w.terrain.height(w.pp)
 	_liquid_kind = lk
 	for k in Models.FOE_KINDS.size():                # act-specific swarm variants (models/foes/<kind>_<stage>)
@@ -298,6 +299,7 @@ func _process(dt: float) -> void:
 	_hero(dt)
 	_bosses(dt)
 	env_fx.step(dt)
+	if Quality.on("effects"): _surf_fx()
 	fx.step(dt)
 	_assign_lights()
 	_features()
@@ -412,6 +414,10 @@ func _clear_props() -> void:
 const TEX_CHUNKS := 7
 var _th_img: Image
 var _th_tex: ImageTexture
+var _sf_img: Image
+var _sf_tex: ImageTexture
+var _sf_ver := -1
+var _sf_center := Vector2i(1 << 30, 0)
 var _ts_img: Image
 var _ts_tex: ImageTexture
 var _tex_center := Vector2i(1 << 30, 0)
@@ -441,6 +447,7 @@ func _terrain_tex(dt: float) -> void:
 		RenderingServer.global_shader_parameter_set("terrain_h", _th_tex)
 		RenderingServer.global_shader_parameter_set("terrain_o", Vector4(o.x, o.y, n if Quality.on("terrain") else 0, Terrain.CELL))
 		_ts_ver = -1
+	_surf_tex(T, cc, n, half)
 	_ts_t -= dt
 	var live := not T.frozen.is_empty() or not T.charged.is_empty()
 	if T.version != _ts_ver or (live and _ts_t <= 0.0) or _ts_tex == null:
@@ -462,6 +469,45 @@ func _terrain_tex(dt: float) -> void:
 			_ts_tex = ImageTexture.create_from_image(_ts_img)
 			RenderingServer.global_shader_parameter_set("terrain_s", _ts_tex)
 		else: _ts_tex.update(_ts_img)
+
+## Surfaces (oil / poison / blood / fire / spikes) as an RGBA8 texture over the same 7 x 7 chunks.
+func _surf_tex(T: Terrain, cc: Vector2i, n: int, half: int) -> void:
+	if T.surf_version == _sf_ver and cc == _sf_center and _sf_tex != null: return
+	_sf_ver = T.surf_version
+	_sf_center = cc
+	if _sf_img == null: _sf_img = Image.create(n, n, false, Image.FORMAT_RGBA8)
+	_sf_img.fill(Color(0, 0, 0, 0))
+	var base := (cc - Vector2i(half, half)) * Terrain.CN
+	for c in T.surf:
+		var q: Vector2i = c - base
+		if q.x < 0 or q.y < 0 or q.x >= n or q.y >= n: continue
+		var k := int(T.surf[c][0])
+		var fade := clampf(float(T.surf[c][1]) / 1.5, 0.0, 1.0)       # pools thin out in their last 1.5 s
+		match k:
+			Terrain.Surf.OIL: _sf_img.set_pixel(q.x, q.y, Color(fade, 0, 0, 0))
+			Terrain.Surf.POISON: _sf_img.set_pixel(q.x, q.y, Color(0, fade, 0, 0))
+			Terrain.Surf.BLOOD: _sf_img.set_pixel(q.x, q.y, Color(0, 0, fade, 0))
+			Terrain.Surf.FIRE: _sf_img.set_pixel(q.x, q.y, Color(0, 0, 0, 1.0 * fade))
+			Terrain.Surf.SPIKES: _sf_img.set_pixel(q.x, q.y, Color(fade, fade, 0, 0))     # oil + poison = spikes
+	if _sf_tex == null:
+		_sf_tex = ImageTexture.create_from_image(_sf_img)
+		RenderingServer.global_shader_parameter_set("terrain_f", _sf_tex)
+	else: _sf_tex.update(_sf_img)
+
+## Burning oil: flame puffs at a few burning cells in view each frame.
+func _surf_fx() -> void:
+	var T := w.terrain
+	if T.surf.is_empty(): return
+	var k := 0
+	for c in T.surf:
+		if int(T.surf[c][0]) != Terrain.Surf.FIRE: continue
+		var p := (Vector2(c) + Vector2(randf(), randf())) * Terrain.CELL
+		if p.distance_to(w.pp) > w.view_r: continue
+		if randf() < 0.35:
+			env_fx.puff(Vector3(p.x, ground_y(p) + 4.0, p.y), Vector3(randf_range(-6, 6), randf_range(30, 60), randf_range(-6, 6)),
+				Color(1.0, randf_range(0.35, 0.6), 0.1), randf_range(0.4, 0.8), randf_range(10.0, 18.0), 2.5)
+			k += 1
+			if k >= 5: break
 
 ## Ground height under a point (flat until the terrain heightfield exists).
 func ground_y(p: Vector2) -> float:

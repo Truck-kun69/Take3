@@ -68,3 +68,7 @@ terrain_l={
 "type": "vec4",
 "value": Vector4(-1000, 3, 0, 0)
 }
+terrain_f={
+"type": "sampler2D",
+"value": ""
+}

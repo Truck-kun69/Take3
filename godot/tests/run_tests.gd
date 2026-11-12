@@ -26,6 +26,7 @@ func _ready() -> void:
 		_meta_tests()
 		_sky_tests()
 		_fusion_tests()
+		_surface_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -408,6 +409,60 @@ func _fusion_tests() -> void:
 			ww.step(1.0 / 30.0)
 		ok(ww.kills > k0 and not ww.over, "%s fights (%d kills)" % [Content.FUSIONS[key].name, ww.kills - k0])
 		ww.dispose()
+
+func _surface_tests() -> void:
+	print("== surfaces")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 31})
+	var T := w.terrain
+	var at := T.nearest_passable(w.pp + Vector2(120, 0))
+	ok(T.pour(at, 40.0, Terrain.Surf.OIL, 10.0) > 0 and T.surf_at(at) == Terrain.Surf.OIL, "oil pools on dry ground")
+	var i := w.spawn_foe(Content.E.BRUTE, at, 0, 0, 50.0)
+	w.grid.build(w.sw)
+	w.apply_elements(i, 1 << Content.El.FIRE, 0)
+	ok(T.surf_at(at) == Terrain.Surf.FIRE, "fire ignites oil")
+	T.pour(at + Vector2(64, 0), 24.0, Terrain.Surf.OIL, 10.0)
+	T.pour(at + Vector2(32, 0), 24.0, Terrain.Surf.OIL, 10.0)
+	for k in 20: T.step(0.13)
+	ok(T.surf_at(at + Vector2(64, 0)) == Terrain.Surf.FIRE, "fire runs along connected oil")
+	var hp0 := w.sw.hp[w.sw.index_of(w.sw.uid[i])]
+	w._surf_t = 1.0
+	w._step_surfaces(0.05)
+	ok(w.sw.hp[i] < hp0, "foes standing in burning oil take damage")
+	# poison: fire detonates, cold crystallises
+	var at2 := T.nearest_passable(w.pp + Vector2(-200, 80))
+	T.pour(at2, 30.0, Terrain.Surf.POISON, 10.0)
+	var j := w.spawn_foe(Content.E.BRUTE, at2, 0, 0, 50.0)
+	w.grid.build(w.sw)
+	w.apply_elements(j, 1 << Content.El.COLD, 0)
+	ok(T.surf_at(at2) == Terrain.Surf.SPIKES, "cold crystallises poison into spikes")
+	var at3 := T.nearest_passable(w.pp + Vector2(0, -260))
+	T.pour(at3, 30.0, Terrain.Surf.POISON, 10.0)
+	var k3 := w.spawn_foe(Content.E.BRUTE, at3, 0, 0, 50.0)
+	w.grid.build(w.sw)
+	var h3 := w.sw.hp[k3]
+	w.apply_elements(k3, 1 << Content.El.FIRE, 0)
+	ok(T.surf_at(at3) == Terrain.Surf.NONE and w.sw.hp[k3] < h3 and int(w.metrics.terrain.get("blast", 0)) == 1, "fire detonates poison (and spends the pool)")
+	# blood conducts lightning to every foe standing in it
+	var at4 := T.nearest_passable(w.pp + Vector2(260, 200))
+	T.pour(at4, 48.0, Terrain.Surf.BLOOD, 10.0)
+	var a := w.spawn_foe(Content.E.BRUTE, at4, 0, 0, 50.0)
+	var b := w.spawn_foe(Content.E.BRUTE, at4 + Vector2(24, 0), 0, 0, 50.0)
+	w.grid.build(w.sw)
+	var hb := w.sw.hp[b]
+	w.apply_elements(a, 1 << Content.El.LIGHT, 0)
+	ok(w.sw.hp[b] < hb and int(w.metrics.terrain.get("conduct", 0)) == 1, "lightning arcs through blood")
+	# pools fade
+	for k in 100: T.step(0.2)
+	ok(T.surf.is_empty(), "pools dry up")
+	# sources: a spitter dies into a poison pool; Act II seeps open on their own
+	var s := w.spawn_foe(Content.E.SPITTER, T.nearest_passable(w.pp + Vector2(-100, -100)), 0)
+	var sp := w.sw.pos[s]
+	w.sw.take(s, 1e9)
+	w._reap()
+	ok(T.surf_at(sp) == Terrain.Surf.POISON, "spitters burst into poison")
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 32, "stage": 1})
+	for k in 400: w2._step_surfaces(0.05)
+	ok(not w2.terrain.surf.is_empty(), "Act II's tar seeps open by themselves")
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

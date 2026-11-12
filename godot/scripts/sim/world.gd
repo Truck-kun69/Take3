@@ -336,6 +336,7 @@ func _step(dt: float) -> void:
 	if fmod(t, 7.0) < dt: terrain.trim(pp)
 	buffs.step(dt)
 	_step_light(dt)
+	_step_surfaces(dt)
 	_refresh_max_hp()
 	shake = maxf(0.0, shake - dt * 1.8)
 	flash = maxf(0.0, flash - dt)
@@ -1045,6 +1046,8 @@ func _bestiary_bonus(k: int) -> float:
 func apply_elements(i: int, em: int, depth: int) -> void:
 	if depth == 0 and terrain.liquid != "none":
 		_terrain_react(i, em)
+	if depth == 0 and not terrain.surf.is_empty():
+		_surface_react(i, em)
 	var cap := Content.REACT_DEPTH + int(stats.value("react_depth", 0.0))
 	for el in 5:
 		if (em & (1 << el)) == 0:
@@ -1084,6 +1087,96 @@ func _terrain_react(i: int, em: int) -> void:
 		terrain.scald(fp, 44.0)
 		metrics.terrain.steam += 1
 		_burst(fp, Color(0.85, 0.88, 0.9, 0.6), 10, 70.0)
+
+# ================================================================= surfaces (oil, poison, blood)
+## Elements meeting a pool under the struck foe:
+##   fire + oil      -> the pool ignites (and the fire runs along connected oil)
+##   fire + poison   -> the pool detonates in a toxic blast and is spent
+##   cold + poison   -> crystal spikes that cut and slow whatever stands in them
+##   lightning+blood -> the charge arcs through every foe standing in blood nearby
+var _surf_react_t := -9.0
+var _blood_t := -9.0
+func _surface_react(i: int, em: int) -> void:
+	var fp := sw.pos[i]
+	var s := terrain.surf_at(fp)
+	if s == Terrain.Surf.NONE: return
+	if s == Terrain.Surf.OIL and (em & (1 << Content.El.FIRE)) != 0:
+		if terrain.convert(fp, 48.0, Terrain.Surf.OIL, Terrain.Surf.FIRE, 4.0) > 0:
+			metrics.terrain.ignite = int(metrics.terrain.get("ignite", 0)) + 1
+			Diag.first("surface: oil ignites")
+			fx.append({"k": "ring", "pos": fp, "r": 0.0, "max": 80.0, "col": Color("ff9a3c"), "life": 0.35, "t": 0.0})
+			Sfx.play_at("fire", fp)
+	elif s == Terrain.Surf.POISON and (em & (1 << Content.El.FIRE)) != 0 and t - _surf_react_t > 0.15:
+		_surf_react_t = t
+		terrain.clear_surf(fp, 40.0, Terrain.Surf.POISON)
+		nova_at(fp, 110.0, weapon_damage_base() * 3.0, (1 << Content.El.CHAOS) | (1 << Content.El.FIRE), Color("8aff4a"), 220.0)
+		_burst(fp, Color("8aff4a"), 18, 220.0)
+		shake = minf(1.0, shake + 0.25)
+		Sfx.play_at("explode", fp)
+		metrics.terrain.blast = int(metrics.terrain.get("blast", 0)) + 1
+		Diag.first("surface: poison blast")
+	elif s == Terrain.Surf.POISON and (em & (1 << Content.El.COLD)) != 0:
+		if terrain.convert(fp, 48.0, Terrain.Surf.POISON, Terrain.Surf.SPIKES, 6.0) > 0:
+			metrics.terrain.spikes = int(metrics.terrain.get("spikes", 0)) + 1
+			Diag.first("surface: poison spikes")
+			fx.append({"k": "ring", "pos": fp, "r": 0.0, "max": 60.0, "col": Color("d8ffb0"), "life": 0.3, "t": 0.0})
+			Sfx.play_at("ice", fp)
+	elif s == Terrain.Surf.BLOOD and (em & (1 << Content.El.LIGHT)) != 0 and t - _blood_t > 0.3:
+		_blood_t = t
+		_blood_chain(i)
+
+func _blood_chain(i: int) -> void:
+	var fp := sw.pos[i]
+	var c := grid.query(fp, 280.0, sw)
+	var near := []
+	for q in c: near.append(grid.results[q])
+	var pts := PackedVector2Array([fp])
+	var hits := 0
+	for j in near:
+		if j == i or j >= sw.n or sw.hp[j] <= 0.0: continue
+		if terrain.surf_at(sw.pos[j]) != Terrain.Surf.BLOOD: continue
+		hit(j, weapon_damage_base() * 1.1, 1 << Content.El.LIGHT, Vector2.ZERO, 0.0, 1)
+		sw.apply_status(j, Content.El.LIGHT, 1.0, 2.0)
+		pts.append(sw.pos[j])
+		hits += 1
+		if hits >= 12: break
+	if hits > 0:
+		fx.append({"k": "arc", "pos": fp, "col": Color("ff6b6b"), "life": 0.2, "t": 0.0, "pts": pts})
+		metrics.terrain.conduct = int(metrics.terrain.get("conduct", 0)) + 1
+		Diag.first("surface: blood conducts")
+		Sfx.play_at("zap", fp)
+
+## Standing in a pool, four times a second: fire burns (foes and the hero), spikes cut and chill,
+## poison poisons, oil slows. Act II's tar seeps open on their own every few seconds.
+var _surf_t := 0.0
+var _seep_t := 6.0
+func _step_surfaces(dt: float) -> void:
+	if stage == 1 and mode != "pinnacle":
+		_seep_t -= dt
+		if _seep_t <= 0.0:
+			_seep_t = rng.randf_range(7.0, 11.0)
+			var a := rng.randf() * TAU
+			terrain.pour(pp + Vector2(cos(a), sin(a)) * rng.randf_range(140.0, 300.0), rng.randf_range(36.0, 60.0), Terrain.Surf.OIL, 30.0)
+	if terrain.surf.is_empty(): return
+	_surf_t += dt
+	if _surf_t < 0.25: return
+	_surf_t = 0.0
+	var base := weapon_damage_base()
+	for i in sw.n:
+		if sw.hp[i] <= 0.0 or (sw.flags[i] & Swarm.F_ALLY) != 0: continue
+		match terrain.surf_at(sw.pos[i]):
+			Terrain.Surf.FIRE:
+				hit(i, base * 0.6, 1 << Content.El.FIRE, Vector2.ZERO, 0.0, 1)
+			Terrain.Surf.SPIKES:
+				hit(i, base * 0.45, 1 << Content.El.COLD, Vector2.ZERO, 0.0, 1)
+				sw.apply_status(i, Content.El.COLD, 1.0, 1.0)
+			Terrain.Surf.POISON:
+				sw.apply_status(i, Content.El.CHAOS, 1.0, 2.0)
+			Terrain.Surf.OIL:
+				sw.apply_status(i, Content.El.COLD, 0.5, 0.6)       # sticky: a light chill
+	match terrain.surf_at(pp):
+		Terrain.Surf.FIRE: hurt_player(6.0, "burning oil")
+		Terrain.Surf.POISON: hurt_player(2.5, "poison")
 
 func _water_chain(i: int) -> void:
 	var fp := sw.pos[i]
@@ -1588,6 +1681,10 @@ func _on_kill(i: int) -> void:
 	relight(0.5 if (f & (Swarm.F_BOSS | Swarm.F_EXILE | Swarm.F_RIFTG)) != 0 else (0.05 if elite else LIGHT_PER_KILL))
 	_burst(at, _foe_col(k), 14 if elite else 5, 200.0 if elite else 120.0)
 	director.on_kill(i, at)
+	# the fight leaves its marks: blood where the big ones fall, poison where spitters burst
+	if k == Content.E.SPITTER: terrain.pour(at, 30.0, Terrain.Surf.POISON, 12.0)
+	elif elite or k == Content.E.BRUTE: terrain.pour(at, 32.0 if elite else 18.0, Terrain.Surf.BLOOD, 14.0)
+	elif rng.randf() < 0.06: terrain.pour(at, 12.0, Terrain.Surf.BLOOD, 10.0)
 	if (f & (Swarm.F_BOSS | Swarm.F_HERALD | Swarm.F_RIFTG | Swarm.F_EXILE | Swarm.F_GOBLIN)) != 0:
 		bosses.on_kill(i, at)
 		return
@@ -1913,6 +2010,7 @@ func shatter(at: Vector2, r: float) -> bool:
 			breakables.remove_at(k)
 			any = true
 			if broken.size() < 32: broken.append([b.pos, b.kind])
+			if int(b.kind) == 1: terrain.pour(b.pos, 40.0, Terrain.Surf.OIL, 18.0)     # barrels spill oil
 			Sfx.play_at("break", b.pos)
 			var roll := rng.randf()
 			if mode == "rift" and roll >= 0.65: roll = 1.0       # rifts: urns pay coins only, no sustain from pots

@@ -8,6 +8,7 @@ global uniform sampler2D terrain_h;
 global uniform sampler2D terrain_s;
 global uniform vec4 terrain_o;
 global uniform vec4 terrain_l;
+global uniform sampler2D terrain_f;   // surfaces: R oil, G poison, B blood, A fire; R+G together = crystal spikes
 
 float th(vec2 xz) {
 	if (terrain_o.z < 2.0) return 0.0;
@@ -35,6 +36,20 @@ vec2 tstate(vec2 xz) {
 	vec2 s10 = texelFetch(terrain_s, a + ivec2(1, 0), 0).rg;
 	vec2 s01 = texelFetch(terrain_s, a + ivec2(0, 1), 0).rg;
 	vec2 s11 = texelFetch(terrain_s, a + ivec2(1, 1), 0).rg;
+	return mix(mix(s00, s10, t.x), mix(s01, s11, t.x), t.y);
+}
+
+// surfaces, bilinear over cell centres like tstate (pools get soft edges)
+vec4 tsurf(vec2 xz) {
+	if (terrain_o.z < 2.0) return vec4(0.0);
+	vec2 f = (xz - terrain_o.xy) / terrain_o.w - 0.5;
+	vec2 i = floor(f);
+	vec2 t = f - i;
+	ivec2 a = clamp(ivec2(i), ivec2(0), ivec2(int(terrain_o.z) - 2));
+	vec4 s00 = texelFetch(terrain_f, a, 0);
+	vec4 s10 = texelFetch(terrain_f, a + ivec2(1, 0), 0);
+	vec4 s01 = texelFetch(terrain_f, a + ivec2(0, 1), 0);
+	vec4 s11 = texelFetch(terrain_f, a + ivec2(1, 1), 0);
 	return mix(mix(s00, s10, t.x), mix(s01, s11, t.x), t.y);
 }
 

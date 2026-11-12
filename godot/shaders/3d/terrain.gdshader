@@ -112,7 +112,37 @@ void fragment() {
 	float v = abs(fbm(p / 300.0 + 4.0) - 0.5);
 	float vein = smoothstep(0.004, 0.0, v) * smoothstep(0.55, 0.62, fbm(p / 900.0 + 7.0));
 	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.3);       // desaturate
+	float rough = mix(mix(0.95, 0.6, stones), 0.25, shore);
+	vec3 emit = acc * vein * (0.35 + 0.25 * sin(time * 1.6 + p.x * 0.01 + p.y * 0.007));
+	// surfaces: oil, poison, blood pools; burning oil; crystallised poison (noisy edges, organic blobs)
+	vec4 sf = tsurf(p);
+	if (sf.r + sf.g + sf.b + sf.a > 0.02) {
+		float edge = (vn(p / 11.0) - 0.5) * 0.45;
+		// spikes are encoded as oil + poison together (the two never share a cell)
+		float spk = smoothstep(0.32, 0.55, min(sf.r, sf.g) + edge);
+		float oil = smoothstep(0.32, 0.55, sf.r + edge) * (1.0 - spk);
+		float poi = smoothstep(0.32, 0.55, sf.g + edge) * (1.0 - spk);
+		float bld = smoothstep(0.32, 0.55, sf.b + edge);
+		float fire = smoothstep(0.3, 0.6, sf.a + edge * 0.6);
+		vec3 sheen = 0.5 + 0.5 * cos(6.2831 * (vec3(0.0, 0.33, 0.67) + vn(p / 30.0) * 1.5 + time * 0.05));
+		col = mix(col, vec3(0.025, 0.022, 0.02) + sheen * 0.05, oil * 0.92);
+		float orim = oil * (1.0 - smoothstep(0.55, 0.9, sf.r + edge));          // a lighter tide line at the edge
+		emit += (sheen * 0.03 + vec3(0.012)) * oil + vec3(0.07, 0.065, 0.05) * orim;
+		col = mix(col, vec3(0.16, 0.42, 0.06), poi * 0.85);
+		col = mix(col, vec3(0.2, 0.01, 0.012), bld * 0.88);
+		rough = mix(rough, 0.12, max(max(oil, bld), poi * 0.6));
+		float bub = smoothstep(0.75, 0.95, vn(p / 6.0 + vec2(time * 0.7, -time * 0.4)));
+		emit += vec3(0.25, 0.9, 0.1) * poi * (0.12 + 0.35 * bub);
+		float fl = vn(p / 9.0 + vec2(0.0, -time * 2.4)) * 0.6 + vn(p / 4.0 + vec2(time * 1.3, -time * 3.1)) * 0.4;
+		col = mix(col, vec3(0.04, 0.025, 0.02), fire);                          // charred, with licks of flame
+		float lick = pow(clamp(fl, 0.0, 1.0), 2.2);
+		emit += mix(vec3(0.5, 0.08, 0.01), vec3(1.0, 0.5, 0.12), lick) * fire * (0.15 + 1.5 * lick);
+		vec2 sc = cell(p / 9.0);
+		float shard = smoothstep(0.12, 0.0, sc.x) * spk;
+		col = mix(col, vec3(0.75, 0.95, 0.7), spk * 0.6);
+		emit += vec3(0.6, 1.0, 0.55) * (spk * 0.18 + shard * 0.8);
+	}
 	ALBEDO = col * (0.55 + 0.25 * hc);
-	ROUGHNESS = mix(mix(0.95, 0.6, stones), 0.25, shore);
-	EMISSION = acc * vein * (0.35 + 0.25 * sin(time * 1.6 + p.x * 0.01 + p.y * 0.007));
+	ROUGHNESS = rough;
+	EMISSION = emit;
 }

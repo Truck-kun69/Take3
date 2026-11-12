@@ -45,6 +45,17 @@ func _process(dt: float) -> void:
 				main.start({"mode": "campaign", "stage": stages[si]})
 				main.world.stats.set_source("shot", [["max_hp", "add", 1e6]])
 				main.world.pp = _lake_spot(main.world.terrain)
+				if OS.get_environment("SHOT_SURF") != "":         # every surface around the hero
+					var T: Terrain = main.world.terrain
+					var p0: Vector2 = main.world.pp
+					T.pour(p0 + Vector2(-170, -40), 56.0, Terrain.Surf.OIL, 60.0)
+					T.pour(p0 + Vector2(-90, 110), 50.0, Terrain.Surf.OIL, 60.0)
+					T.convert(p0 + Vector2(-90, 110), 60.0, Terrain.Surf.OIL, Terrain.Surf.FIRE, 60.0)
+					T.pour(p0 + Vector2(160, -70), 48.0, Terrain.Surf.POISON, 60.0)
+					T.pour(p0 + Vector2(190, 90), 44.0, Terrain.Surf.POISON, 60.0)
+					T.convert(p0 + Vector2(190, 90), 50.0, Terrain.Surf.POISON, Terrain.Surf.SPIKES, 60.0)
+					T.pour(p0 + Vector2(30, -150), 40.0, Terrain.Surf.BLOOD, 60.0)
+					main.world.director.shrine_t = 1e9
 				if OS.get_environment("SHOT_WHISPER") != "":     # the Whisperer beside the hero, the lantern low
 					main.world.director.objects.append({"pos": main.world.pp + Vector2(130, -50), "kind": "whisper", "id": "whisper", "life": 30.0})
 					main.world.director.whisper_t = 1e9
