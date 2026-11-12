@@ -43,6 +43,7 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	await get_tree().process_frame          # the adapter name is only known once the renderer is up
 	mark("gpu %s | %s | %s" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_api_version(), RenderingServer.get_current_rendering_method()])
+	mark("device class %d (%s) auto tier %s" % [Quality.device_class(), Quality.dev_reason, Quality.NAMES[Quality.tier()]])
 
 ## The last error/warning lines from the previous session's engine log (Godot rotates it on boot).
 func _engine_errors() -> PackedStringArray:

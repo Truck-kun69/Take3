@@ -4,6 +4,9 @@
 #                                        checks; signed with SHARDFALL_KEYSTORE* if set, else the shared
 #                                        test key in tools/keys, so it installs over earlier test builds)
 #   tools/build_android.sh debug      -> build/shardfall-debug.apk  (debug template, same key)
+#   tools/build_android.sh lite       -> build/shardfall-lite.apk  ("Shardfall Lite", its own app id: the
+#                                        Compatibility renderer on OpenGL ES 3, for budget phones whose
+#                                        Vulkan drivers crash, e.g. Mali-G52; release template, same key)
 #   tools/build_android.sh aab        -> build/shardfall-release.aab (Gradle build; needs the Android
 #                                        build template and network access to Google Maven + Gradle)
 # Run tools/provision.sh first. Exits non-zero if the export or the signature check fails.
@@ -21,7 +24,7 @@ case "$MODE" in
   debug)
     OUT="$ROOT/build/shardfall-debug.apk"
     "$GODOT" --headless --path . --export-debug "Android" "$OUT" ;;
-  release)
+  release|lite)
     if [ -z "${SHARDFALL_KEYSTORE:-}" ]; then
       echo "note: no SHARDFALL_KEYSTORE; signing with the shared test key (fine for sideloading, not for the Play Store)"
       SHARDFALL_KEYSTORE="$ROOT/tools/keys/debug.keystore" SHARDFALL_KEYSTORE_USER=androiddebugkey SHARDFALL_KEYSTORE_PASS=android
@@ -29,8 +32,16 @@ case "$MODE" in
     export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$SHARDFALL_KEYSTORE"
     export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$SHARDFALL_KEYSTORE_USER"
     export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
-    OUT="$ROOT/build/shardfall.apk"
-    "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
+    if [ "$MODE" = "lite" ]; then
+      # the phone renderer is a project setting: switch it for this export only, restore it after
+      sed -i 's/^renderer\/rendering_method.mobile=.*/renderer\/rendering_method.mobile="gl_compatibility"/' project.godot
+      trap 'git -C "$ROOT" checkout -- godot/project.godot' EXIT
+      OUT="$ROOT/build/shardfall-lite.apk"
+      "$GODOT" --headless --path . --export-release "Android Lite" "$OUT"
+    else
+      OUT="$ROOT/build/shardfall.apk"
+      "$GODOT" --headless --path . --export-release "Android" "$OUT"
+    fi ;;
   aab)
     # Gradle builds need res://android/build (installed from the export templates' android_source.zip).
     if [ ! -d android/build ]; then

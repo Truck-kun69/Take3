@@ -28,8 +28,29 @@ static func load_saved() -> void:
 static func tier() -> int:
 	var o := int(Save.opt("gfx"))
 	if o > 0: return clampi(o - 1, 0, 2)
-	if OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility": return 1
-	return 2
+	var dc := device_class()
+	if OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility": return mini(dc, 1)
+	return dc
+
+## Device class for Auto: 0 budget, 1 mid-range, 2 flagship, from the GPU name and total RAM. The first
+## Auto picked High on every phone, and a Galaxy A05 (Mali-G52 MC2, 4 GB) crashed under it.
+static var _dev := -1
+static var dev_reason := ""
+static func device_class() -> int:
+	if _dev >= 0: return _dev
+	var gpu := RenderingServer.get_video_adapter_name().to_lower()
+	var ram_gb := float(OS.get_memory_info().get("physical", 8.0e9)) / 1.0e9
+	var c := 2
+	if OS.has_feature("mobile") or OS.has_feature("web"):
+		c = 1
+		var budget := RegEx.create_from_string("mali-(t|g31|g5\\d)|adreno \\(tm\\) ([3-5]\\d\\d|60\\d|61\\d)|powervr|ge8\\d\\d")
+		var flag := RegEx.create_from_string("adreno \\(tm\\) (6[5-9]\\d|[7-9]\\d\\d)|mali-g7[1-9]\\b|mali-g7\\d\\d|mali-g[89]\\d\\d|immortalis|xclipse")
+		if budget.search(gpu) != null: c = 0
+		elif flag.search(gpu) != null: c = 2
+		if ram_gb > 0.5 and ram_gb <= 4.5: c = 0                 # 4 GB phones share that RAM with the GPU
+	_dev = c
+	dev_reason = "%s, %.1f GB RAM" % [RenderingServer.get_video_adapter_name(), ram_gb]
+	return _dev
 
 static func high() -> bool:
 	return tier() >= 2 and on("high_detail")

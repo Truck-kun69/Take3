@@ -612,7 +612,9 @@ func show_options(back: String = "menu") -> void:
 				var st: Dictionary = Save.data.get("selftest", {})
 				if not st.get("results", []).is_empty() and not st.get("running", false):
 					v.add_child(UIKit.button("Last self-test results", func(): show_selftest(st), 46))
-			var info := UIKit.label("%s  \u00b7  %s  \u00b7  %s" % [OS.get_model_name(), RenderingServer.get_video_adapter_name(), RenderingServer.get_current_rendering_method()], 14, UIKit.DIM, true, "italic")
+			Quality.device_class()
+			var info := UIKit.label("%s  \u00b7  %s  \u00b7  %s\nDevice class: %s (Auto graphics: %s)" % [OS.get_model_name(), Quality.dev_reason, RenderingServer.get_current_rendering_method(),
+				["budget", "mid-range", "flagship"][Quality.device_class()], Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "overridden"], 14, UIKit.DIM, true, "italic")
 			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.add_child(info)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null)))
