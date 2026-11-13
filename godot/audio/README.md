@@ -1,9 +1,12 @@
-# Audio slots
+# Audio
 
-`sfx/<name>.(wav|ogg|mp3)` replaces the synthesized sound of the same name. Names:
-shoot, kill, impact, crit, gem, coin, hurt, nova, fire, ice, zap, thunder, explode, boss, roll,
-perfect, ult, flask, heal, event, pylon, level, win, lose, craft, click, react,
-drop_magic, drop_rare, drop_legendary, drop_currency.
+Everything here was generated for this game and replaces the synthesised placeholder of the same
+name (`Sfx` loads `sfx/<name>.wav` and `music/<act>.ogg` when they exist).
 
-`music/<stage>.(ogg|mp3)` (stage 0-3) replaces the generated wind-and-drone ambience loop.
-Set the import to loop for music files.
+- `sfx/*.wav`: ElevenLabs sound effects (via fal), trimmed, mono 44.1 kHz, peak-normalised to the
+  level of the synthesised sound each one replaces.
+- `music/0-4.ogg`: one 33 s loop per act from Google Lyria 2 (via fal), the tail cross-faded into
+  the head so the loop has no seam. Imported with `loop=true`.
+
+Regenerate with `python3 tools/fal/audio.py sfx <work dir> [names]` and `... music <work dir> [acts]`;
+the prompts are in that file. Delete a file to fall back to the synthesiser.
