@@ -49,8 +49,79 @@ const WEAPONS := {
 			{"cd": 1.4, "n": 3, "rad": 48.0, "dmg": 28.0}, {"cd": 1.0, "n": 5, "rad": 52.0, "dmg": 34.0}],
 		"evo_s": {"cd": 0.7, "n": 8, "rad": 64.0, "dmg": 50.0},
 		"d": ["Lightning strikes a foe.", "Two strikes.", "Wider blasts.", "Three strikes.", "Five strikes, faster."]},
+	# ---- eight more (alpha): each plays differently, and four slots mean choosing between them
+	"lance": {"name": "Storm Lance", "col": "ffe27a", "elem": El.LIGHT, "tags": ["projectile"], "pair": "magnet",
+		"evo": "Sunpiercer", "evo_d": "Five lances that cross the whole field.",
+		"lv": [{"cd": 1.7, "n": 1, "dmg": 22.0}, {"cd": 1.6, "n": 1, "dmg": 28.0}, {"cd": 1.6, "n": 2, "dmg": 28.0},
+			{"cd": 1.4, "n": 2, "dmg": 34.0}, {"cd": 1.3, "n": 3, "dmg": 40.0}],
+		"evo_s": {"cd": 0.95, "n": 5, "dmg": 58.0},
+		"d": ["A heavy lance pierces every foe in a line.", "More damage.", "Two lances.", "Faster, stronger.", "Three lances."]},
+	"mine": {"name": "Ember Mines", "col": "ff8a3c", "elem": El.FIRE, "tags": ["area"], "pair": "searing",
+		"evo": "Cinder Field", "evo_d": "Four huge mines at a time, twice as often.",
+		"lv": [{"cd": 2.2, "n": 1, "rad": 70.0, "dmg": 26.0}, {"cd": 2.2, "n": 2, "rad": 70.0, "dmg": 26.0}, {"cd": 2.2, "n": 2, "rad": 85.0, "dmg": 32.0},
+			{"cd": 1.8, "n": 2, "rad": 85.0, "dmg": 38.0}, {"cd": 1.8, "n": 3, "rad": 100.0, "dmg": 46.0}],
+		"evo_s": {"cd": 1.2, "n": 4, "rad": 125.0, "dmg": 70.0},
+		"d": ["Drops a mine behind you; it bursts when a foe steps near.", "Two mines.", "Bigger bursts.", "Faster, stronger.", "Three mines."]},
+	"glaive": {"name": "Frost Glaive", "col": "9fe8ff", "elem": El.COLD, "tags": ["projectile", "melee"], "pair": "cryo",
+		"evo": "Winter's Return", "evo_d": "Four great glaives that cut on the way out and back.",
+		"lv": [{"cd": 1.8, "n": 1, "dmg": 16.0}, {"cd": 1.8, "n": 1, "dmg": 20.0}, {"cd": 1.8, "n": 2, "dmg": 20.0},
+			{"cd": 1.5, "n": 2, "dmg": 24.0}, {"cd": 1.5, "n": 3, "dmg": 28.0}],
+		"evo_s": {"cd": 1.1, "n": 4, "dmg": 44.0},
+		"d": ["Throws a glaive that returns to you, cutting both ways.", "More damage.", "Two glaives.", "Faster, stronger.", "Three glaives."]},
+	"wisp": {"name": "Grave Wisps", "col": "8cff7a", "elem": El.CHAOS, "tags": ["projectile", "spell"], "pair": "venom",
+		"evo": "Hungering Swarm", "evo_d": "Ten wisps that pass through a foe.",
+		"lv": [{"cd": 1.4, "n": 2, "dmg": 7.0, "pierce": 0}, {"cd": 1.4, "n": 3, "dmg": 7.0, "pierce": 0}, {"cd": 1.4, "n": 3, "dmg": 9.0, "pierce": 0},
+			{"cd": 1.2, "n": 4, "dmg": 9.0, "pierce": 0}, {"cd": 1.2, "n": 6, "dmg": 11.0, "pierce": 0}],
+		"evo_s": {"cd": 0.9, "n": 10, "dmg": 15.0, "pierce": 1},
+		"d": ["Wisps hunt foes down on their own.", "Three wisps.", "More damage.", "Four wisps, faster.", "Six wisps."]},
+	"arc": {"name": "Chain Arc", "col": "d9c8ff", "elem": El.LIGHT, "tags": ["spell"], "pair": "static",
+		"evo": "Stormweave", "evo_d": "Lightning leaps between fourteen foes.",
+		"lv": [{"cd": 1.3, "n": 3, "dmg": 14.0}, {"cd": 1.3, "n": 4, "dmg": 14.0}, {"cd": 1.3, "n": 4, "dmg": 18.0},
+			{"cd": 1.1, "n": 6, "dmg": 18.0}, {"cd": 1.1, "n": 8, "dmg": 22.0}],
+		"evo_s": {"cd": 0.7, "n": 14, "dmg": 34.0},
+		"d": ["Lightning leaps between 3 foes.", "4 foes.", "More damage.", "6 foes, faster.", "8 foes."]},
+	"aura": {"name": "Withering Aura", "col": "b86bff", "elem": El.CHAOS, "tags": ["area"], "pair": "regen",
+		"evo": "Deathly Presence", "evo_d": "A wide aura that also slows everything inside it.",
+		"lv": [{"cd": 0.5, "rad": 70.0, "dmg": 4.0}, {"cd": 0.5, "rad": 70.0, "dmg": 5.5}, {"cd": 0.5, "rad": 84.0, "dmg": 5.5},
+			{"cd": 0.45, "rad": 84.0, "dmg": 7.0}, {"cd": 0.4, "rad": 100.0, "dmg": 8.5}],
+		"evo_s": {"cd": 0.33, "rad": 135.0, "dmg": 13.0},
+		"d": ["Foes close to you wither constantly.", "More damage.", "Wider.", "Faster ticks.", "Wider and stronger."]},
+	"cleave": {"name": "Reaper's Cleave", "col": "ff5a6e", "elem": El.PHYS, "tags": ["melee", "area"], "pair": "serrated",
+		"evo": "Executioner's Arc", "evo_d": "A vast sweep that hurls foes away.",
+		"lv": [{"cd": 1.3, "rad": 95.0, "dmg": 20.0}, {"cd": 1.3, "rad": 95.0, "dmg": 26.0}, {"cd": 1.3, "rad": 115.0, "dmg": 26.0},
+			{"cd": 1.1, "rad": 115.0, "dmg": 32.0}, {"cd": 1.1, "rad": 135.0, "dmg": 40.0}],
+		"evo_s": {"cd": 0.8, "rad": 175.0, "dmg": 64.0},
+		"d": ["A heavy sweep in front of you.", "More damage.", "Longer reach.", "Faster, stronger.", "Longer and stronger."]},
+	"meteor": {"name": "Meteor", "col": "ff6a2a", "elem": El.FIRE, "tags": ["area", "spell", "strike"], "pair": "might",
+		"evo": "Starfall", "evo_d": "Five meteors at once.",
+		"lv": [{"cd": 3.2, "n": 1, "rad": 90.0, "dmg": 60.0}, {"cd": 3.2, "n": 1, "rad": 90.0, "dmg": 75.0}, {"cd": 3.2, "n": 2, "rad": 90.0, "dmg": 75.0},
+			{"cd": 2.8, "n": 2, "rad": 110.0, "dmg": 80.0}, {"cd": 2.8, "n": 3, "rad": 110.0, "dmg": 95.0}],
+		"evo_s": {"cd": 2.0, "n": 5, "rad": 130.0, "dmg": 150.0},
+		"d": ["A meteor lands on a foe after a moment.", "More damage.", "Two meteors.", "Wider, faster.", "Three meteors."]},
+	"totem": {"name": "Rime Totem", "col": "7fe6ff", "elem": El.COLD, "tags": ["projectile", "spell"], "pair": "haste",
+		"evo": "Glacial Spire", "evo_d": "Four spires firing twice as fast.",
+		"lv": [{"cd": 6.0, "n": 1, "rate": 0.6, "dmg": 9.0, "dur": 8.0}, {"cd": 6.0, "n": 1, "rate": 0.6, "dmg": 12.0, "dur": 8.0}, {"cd": 5.0, "n": 2, "rate": 0.6, "dmg": 12.0, "dur": 9.0},
+			{"cd": 5.0, "n": 2, "rate": 0.45, "dmg": 14.0, "dur": 9.0}, {"cd": 4.0, "n": 3, "rate": 0.45, "dmg": 17.0, "dur": 10.0}],
+		"evo_s": {"cd": 3.0, "n": 4, "rate": 0.3, "dmg": 26.0, "dur": 10.0},
+		"d": ["Plants a totem that shoots nearby foes.", "More damage.", "Two totems.", "They fire faster.", "Three totems."]},
 }
-const WEAPON_IDS := ["bolt", "orbit", "nova", "storm"]
+const WEAPON_IDS := ["bolt", "orbit", "nova", "storm", "lance", "mine", "glaive", "wisp", "arc", "aura", "cleave", "meteor", "totem"]
+const MAX_WEAPONS := 4
+
+# ---------------------------------------------------------------- unlock track
+# The four starting weapons are always available. The rest are earned once, forever, by play
+# (Save.data.unlocked). "stat": a key of Save.data.stats, or a special key handled by Save.unlock_progress.
+const UNLOCKS := [
+	{"w": "lance", "stat": "kills", "need": 150, "d": "Slay 150 foes"},
+	{"w": "mine", "stat": "runs", "need": 2, "d": "Finish 2 runs"},
+	{"w": "wisp", "stat": "kills", "need": 600, "d": "Slay 600 foes"},
+	{"w": "cleave", "stat": "champions", "need": 1, "d": "Slay a Rift Champion"},
+	{"w": "glaive", "stat": "cleared", "need": 1, "d": "Clear Act I"},
+	{"w": "arc", "stat": "best_combo", "need": 80, "d": "Reach an 80 kill combo"},
+	{"w": "aura", "stat": "kills", "need": 2500, "d": "Slay 2,500 foes"},
+	{"w": "totem", "stat": "cleared", "need": 2, "d": "Clear two acts"},
+	{"w": "meteor", "stat": "champions", "need": 6, "d": "Slay 6 Rift Champions"},
+]
 
 # ---------------------------------------------------------------- weapon fusion
 # Two evolved weapons can be fused at a level-up (a gold "Fusion" card). Both keep firing; each also
@@ -64,6 +135,15 @@ const FUSIONS := {
 	"nova+storm": {"name": "Thunderclap", "d": "Each strike detonates a shock pulse where it lands.", "col": "ff9ae0"},
 	"orbit+storm": {"name": "Tempest Blades", "d": "The blades call lightning down on foes they cut.", "col": "d0b8ff"},
 }
+
+## Any two evolved weapons can fuse. The six original pairs have a named hybrid behaviour; every other
+## pair gets the shared bonus (each carries the other's element, +25% damage) under a generated name.
+static func fusion_def(key: String) -> Dictionary:
+	if FUSIONS.has(key): return FUSIONS[key]
+	var ab := key.split("+")
+	var wa: Dictionary = WEAPONS[ab[0]]; var wb: Dictionary = WEAPONS[ab[1]]
+	return {"name": String(wa.name).split(" ")[0] + " " + String(wb.name).split(" ")[-1],
+		"d": "%s and %s share their elements and deal 25%% more damage." % [wa.name, wb.name], "col": wa.col}
 
 static func fusion_key(a: String, b: String) -> String:
 	return (a + "+" + b) if a < b else (b + "+" + a)
@@ -258,7 +338,8 @@ static func passive_can_take(id: String, taken: Array) -> bool:
 		if taken.has(n): return true
 	return false
 
-const STAGE_TIME := 150.0
+const STAGE_TIME := 480.0      # an act: eight minutes, Rift Champions at each third, then the tyrant
+const PACE_REF := 150.0        # the difficulty ramps were tuned on 150 s acts; World.rt() maps the act onto them
 
 # ---------------------------------------------------------------- items
 const SLOTS := ["relic", "amulet", "ring", "boots"]

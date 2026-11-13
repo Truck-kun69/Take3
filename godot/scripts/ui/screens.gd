@@ -543,6 +543,27 @@ func show_codex() -> void:
 		r.add_child(UIKit.label("%s: %s" % [String(k).capitalize(), str(int(st[k])) if k != "playtime" else "%d min" % int(float(st[k]) / 60.0)], 18))
 	r.add_child(UIKit.label("Greater Rift best: %d   Herald kills: %d" % [Save.data.gr_best, Save.data.herald_kills], 18))
 	tabs.add_child(_scroll(r, "Records"))
+	# arsenal: every weapon, what it does, and how the locked ones are earned
+	var ar := UIKit.vbox(8)
+	var req := {}
+	for u in Content.UNLOCKS: req[u.w] = u
+	var pool: Array = Save.weapon_pool()
+	for id in Content.WEAPON_IDS:
+		var wd: Dictionary = Content.WEAPONS[id]
+		var have := pool.has(id)
+		var row := UIKit.hbox(12)
+		var nm := UIKit.label(wd.name, 19, Content.col(wd.col) if have else Color(0.5, 0.47, 0.44), false, "display")
+		nm.custom_minimum_size = Vector2(190, 0)
+		row.add_child(nm)
+		var txt := "%s  Evolves into %s." % [wd.d[0], wd.evo]
+		if not have:
+			var pr: Array = Save.unlock_progress(req[id])
+			txt = "Locked: %s (%d / %d)" % [req[id].d, pr[0], pr[1]]
+		var dl := UIKit.label(txt, 15, UIKit.DIM if have else Color("b89a6a"), true, "italic")
+		dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(dl)
+		ar.add_child(row)
+	tabs.add_child(_scroll(ar, "Arsenal"))
 	_back(v)
 
 func _scroll(c: Control, nm: String) -> ScrollContainer:
@@ -1023,7 +1044,7 @@ func show_end(w: World) -> void:
 	var sl := UIKit.label(sub, 19, UIKit.DIM, true, "italic")
 	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(sl)
-	var rows := [["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Gold", str(int(w.gold))],
+	var rows := [["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Champions", str(w.champions_slain)], ["Gold", str(int(w.gold))],
 		["Items", str(w.loot_run.size())], ["Reactions", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
 	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
 	if w.daily: rows.push_front(["Rift score" + ("  NEW BEST" if w.daily_best else ""), str(w.daily_score)])
@@ -1052,6 +1073,11 @@ func show_end(w: World) -> void:
 		var wl := UIKit.label(", ".join(w.bargains.map(func(x): return Content.WHISPERS[x].name)), 18, Color("c9a2ff"), true, "display")
 		wl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(wl)
+	if not w.new_unlocks.is_empty():
+		v.add_child(_section("New weapon unlocked"))
+		var ul := UIKit.label(", ".join(w.new_unlocks.map(func(x): return Content.WEAPONS[x].name)) + "  \u00b7  now offered at level-ups", 20, UIKit.GOLD, true, "display")
+		ul.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(ul)
 	var ev := ""
 	for e in w.director.history: ev += Content.EVENTS[e[1]].name + ", "
 	if ev != "":

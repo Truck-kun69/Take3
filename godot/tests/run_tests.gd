@@ -31,6 +31,7 @@ func _ready() -> void:
 		_prophecy_tests()
 		_daily_tests()
 		_anim_tests()
+		_alpha_weapon_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -590,6 +591,58 @@ func _daily_tests() -> void:
 	ok(not w2.daily_best and int(Save.data.daily.best[w.daily_code]) == w.daily_score, "a worse run keeps the best")
 	Save.data.daily = dsv
 
+func _alpha_weapon_tests() -> void:
+	print("== alpha weapons, pacing, champions, unlocks")
+	ok(Content.WEAPON_IDS.size() >= 12, "at least twelve weapons")
+	for id in ["lance", "mine", "glaive", "wisp", "arc", "aura", "cleave", "meteor", "totem"]:
+		var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 11})
+		w.weapons.clear()
+		w.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+		w.wlocal[id] = Stats.new()
+		w.stats.set_source("t", [["max_hp", "add", 1e6]])
+		w.hp = 1e6
+		for k in 40: w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(cos(k * 0.7), sin(k * 0.7)) * (50.0 + k * 3.0), 0, 0, 0.2)
+		var k0 := w.kills
+		for f in 360: w.step(1.0 / 60.0)
+		ok(w.kills > k0, "%s kills foes on its own (%d kills in 6 s)" % [Content.WEAPONS[id].name, w.kills - k0])
+		ok(Content.PERKS.has(Content.WEAPONS[id].pair) and Content.WEAPONS[id].lv.size() == 5, "%s has five levels and an evolution perk" % id)
+	var c := _world({"mode": "campaign", "hero": 0, "seed": 3})
+	ok(absf(c.rt() - 0.0) < 0.01 and c.pace < 1.0, "campaign acts are paced")
+	c.t = Content.STAGE_TIME
+	ok(absf(c.rt() - Content.PACE_REF) < 0.01, "the end of an act sits where the old 150 s ramps ended")
+	var r := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 3})
+	ok(r.pace == 1.0 and r.xp_scale == 1.0, "rifts keep real time")
+	var m := _world({"mode": "campaign", "hero": 0, "seed": 4})
+	m.stats.set_source("t", [["max_hp", "add", 1e6]]); m.hp = 1e6
+	m.t = Content.STAGE_TIME / 3.0 - 0.1
+	for f in 30: m.step(1.0 / 60.0)
+	ok(m.champions_met == 1 and m.champ_uids.size() == 1, "a Rift Champion arrives at a third of the act")
+	var ci := -1
+	for i in m.sw.n:
+		if m.sw.uid[i] == m.champ_uids[0]: ci = i
+	ok(ci >= 0 and (m.sw.flags[ci] & Swarm.F_ELITE) != 0 and m.sw.mhp[ci] > 1000.0, "the champion is a giant elite")
+	m.hit(ci, 1e9, 0, Vector2.ZERO, 0.0, 0)
+	for f in 5: m.step(1.0 / 60.0)
+	ok(m.champions_slain == 1, "killing it is counted")
+	# unlock track
+	var keep = Save.data.duplicate(true)
+	Save.data = Save.defaults()
+	ok(Save.weapon_pool().size() == 4, "a fresh profile offers the four starting weapons")
+	Save.data.stats.kills = 200
+	ok(Save.check_unlocks() == ["lance"] and Save.weapon_pool().has("lance"), "150 kills unlock the Storm Lance")
+	ok(Save.check_unlocks().is_empty(), "an unlock is granted once")
+	Save.data.cleared[0] = true
+	ok(Save.check_unlocks().has("glaive"), "clearing Act I unlocks the Frost Glaive")
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 5})
+	var offered := {}
+	for k in 60:
+		w2.lvl = 3
+		for ch in w2.make_choices():
+			if ch.kind == "w": offered[ch.id] = true
+	ok(offered.has("lance") and not offered.has("meteor"), "level-ups offer unlocked weapons only")
+	ok(Content.fusion_def(Content.fusion_key("lance", "meteor")).name != "", "any two weapons have a fusion")
+	Save.data = keep
+
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")
 	for kind in ["grunt", "runner", "brute", "spitter", "splitter", "mini", "charger", "breach", "goblin"]:
@@ -671,12 +724,17 @@ func _sims() -> void:
 	run_bot({"mode": "campaign", "hero": 0, "seed": 1}, 20.0, 0)     # warm-up: first-use script paths cost ~15 ms once
 	var rows: Array = []
 	for h in 4:
-		rows.append(run_bot({"mode": "campaign", "hero": h, "stage": 0, "seed": 100 + h}, 200.0, h))
-	rows.append(run_bot({"mode": "campaign", "hero": 1, "stage": 2, "seed": 77}, 200.0, 5))
-	rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 4, "seed": 55}, 240.0, 7))      # Act V: rising tide, Tide Bishop
+		rows.append(run_bot({"mode": "campaign", "hero": h, "stage": 0, "seed": 100 + h, "weapons_pool": Content.WEAPON_IDS}, 620.0, h))
+	if OS.get_environment("SIM_QUICK") != "":
+		rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 3, "seed": 78}, 660.0, 5))
+		for r in rows:
+			print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%5d dps=%5d foes=%3d hp_low=%s killer=%s" % [r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.peak_foes, r.hp_low, r.killer])
+		return
+	rows.append(run_bot({"mode": "campaign", "hero": 1, "stage": 2, "seed": 77}, 620.0, 5))
+	rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 4, "seed": 55}, 660.0, 7))      # Act V: rising tide, Tide Bishop
 	var at := Atlas.generate(99)
 	var node: Dictionary = at.nodes[0]
-	rows.append(run_bot({"mode": "atlas", "hero": 2, "node": node, "seed": 55}, 200.0, 6))
+	rows.append(run_bot({"mode": "atlas", "hero": 2, "node": node, "seed": 55}, 620.0, 6))
 	rows.append(run_bot({"mode": "rift", "hero": 3, "gr": 1, "seed": 31}, 320.0, 7))
 	rows.append(run_bot({"mode": "rift", "hero": 3, "gr": 8, "seed": 32}, 320.0, 8))
 	rows.append(run_bot({"mode": "rift", "hero": 1, "gr": 15, "seed": 33}, 320.0, 10))

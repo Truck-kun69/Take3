@@ -27,6 +27,10 @@ class Proj:
 	var hits: Array[int] = []
 	var dead := false
 	var col := Color.WHITE
+	var kind := 0             # 0 shot, 1 mine, 2 returning glaive, 3 homing wisp, 4 totem
+	var age := 0.0
+	var aux := 0.0            # mine/totem: blast radius or fire interval; glaive: 1 once it has turned back
+	var tick := 0.0
 
 class Tele:
 	var shape := 0            # 0 circle, 1 ring, 2 line (pos -> pos + dir * len), 3 cone
@@ -207,8 +211,11 @@ var metrics := {"reactions": 0, "react_by": {}, "texts": 0, "peak_foes": 0, "dmg
 # ================================================================= setup
 func setup(cfg: Dictionary) -> void:
 	mode = cfg.get("mode", "campaign")
+	pace = Content.PACE_REF / Content.STAGE_TIME if (mode == "campaign" or mode == "atlas") else 1.0
+	xp_scale = 3.0 if pace < 1.0 else 1.0
 	stage = int(cfg.get("stage", 0))
 	hero = int(cfg.get("hero", 0))
+	weapon_pool = cfg.get("weapons_pool", Content.WEAPON_IDS if cfg.get("daily", false) else Save.weapon_pool())
 	gr_level = int(cfg.get("gr", 1))
 	node = cfg.get("node", {})
 	map_mods = node.get("mods", []) if not node.is_empty() else []
@@ -308,29 +315,40 @@ func has_mod(id: String) -> bool:
 
 ## Superlinear past ~level 20 so long rifts do not snowball (cycle 1: bots hit level 50+).
 func _need(l: int) -> float:
-	return 5.0 + l * 4.0 + 0.15 * l * l
+	# long acts: quick early levels (a build forms in the first two minutes), then a steepening climb,
+	# so a run that snowballs ends near level 45 rather than 65
+	return (5.0 + l * 4.0 + 0.15 * l * l) * (xp_scale if pace >= 1.0 else 1.5 + 0.12 * l)
+
+## Acts last Content.STAGE_TIME; the difficulty ramps (spawn rate, foe mix, foe life) were tuned on
+## PACE_REF-second acts, so campaign and atlas runs read them through rt(): the same curve, stretched.
+## Rifts and the pinnacle fight keep real time.
+var pace := 1.0
+var xp_scale := 1.0
+func rt() -> float:
+	return t * pace
 
 # ================================================================= difficulty
 func hp_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
-	var m := float(s.hp) * (1.0 + t / 110.0)
+	var m := float(s.hp) * (1.0 + rt() / 110.0)
 	if mode == "atlas":
 		# cycle 3: full tier pressure ramps in over ~60 s so a fresh level-1 hero can draft first
-		m = (1.0 + 0.35 * (int(node.tier) - 1) * minf(1.0, 0.4 + t / 100.0)) * (1.0 + t / 110.0)
+		m = (1.0 + 0.35 * (int(node.tier) - 1) * minf(1.0, 0.4 + rt() / 100.0)) * (1.0 + rt() / 110.0)
 	if mode == "rift": m = 1.5 * float(s.hp) * Content.gr_hp_mult(gr_level) * (1.0 + t / 240.0)
+	if pace < 1.0: m *= 1.0 + 2.2 * pow(clampf(t / Content.STAGE_TIME, 0.0, 1.0), 2.0)     # long acts: builds grow further, so do foes
 	if has_mod("hardened"): m *= 1.4
 	return m * float(Content.TORMENT[torment].hp) * stats.value("foe_hp", 1.0)
 
 func dmg_mult() -> float:
 	var s: Dictionary = Content.STAGES[stage]
-	var m := float(s.dmg) * (1.0 + t / 300.0)     # cycle 2: late-run foes barely scratched the bot
-	if mode == "atlas": m = (1.0 + 0.12 * (int(node.tier) - 1)) * (1.0 + t / 300.0)
+	var m := float(s.dmg) * (1.0 + rt() / 300.0)     # cycle 2: late-run foes barely scratched the bot
+	if mode == "atlas": m = (1.0 + 0.12 * (int(node.tier) - 1)) * (1.0 + rt() / 300.0)
 	if mode == "rift": m *= Content.gr_dmg_mult(gr_level)
 	if has_mod("lethal"): m *= 1.3
 	return m * float(Content.TORMENT[torment].dmg) * stats.value("foe_dmg", 1.0) * (1.0 + 0.3 * engulfed())
 
 func spd_mult() -> float:
-	return float(Content.STAGES[stage].spd) * (1.0 + minf(0.25, t / 600.0)) * (1.2 if has_mod("swift") else 1.0)
+	return float(Content.STAGES[stage].spd) * (1.0 + minf(0.25, rt() / 600.0)) * (1.2 if has_mod("swift") else 1.0)
 
 # ================================================================= main step
 var step_us := 0.0               # smoothed cost of step() (diagnostics: CPU sim vs render)
@@ -378,6 +396,7 @@ func _step(dt: float) -> void:
 	_contact()
 	_step_weapons(dt)
 	_step_delayed()
+	_step_meteors()
 	_step_projs(dt)
 	_step_eshots(dt)
 	_step_teles(dt)
@@ -609,7 +628,7 @@ func charge_ult(v: float) -> void:
 
 # ================================================================= spawning
 func spawn_rate() -> float:
-	var r := (1.4 + t * 0.045) * director.rate_mult()
+	var r := (1.4 + rt() * 0.045) * director.rate_mult()
 	if mode == "rift": r = (2.6 + t * 0.05) * director.rate_mult()
 	if mode == "pinnacle": r = 1.8 if bosses.herald_uid < 0 else (0.6 if bosses.herald_phase() < 3 else 1.4)
 	if boss_spawned and mode != "rift": r *= 0.5
@@ -630,11 +649,37 @@ func _spawn(dt: float) -> void:
 		for k in 22:
 			var a := TAU * k / 22.0
 			spawn_foe(Content.E.RUNNER, pp + Vector2(cos(a), sin(a)) * (view_r + 40.0))
+	if (mode == "campaign" or mode == "atlas") and not boss_spawned and champions_met < 2 and t >= Content.STAGE_TIME * (champions_met + 1) / 3.0:
+		_spawn_champion()
 	if (mode == "campaign" or mode == "atlas") and not boss_spawned and t >= Content.STAGE_TIME:
 		bosses.spawn_stage_boss(has_mod("twinned"))
 
+## Rift Champions: a mid-boss at each third of an act. A giant twin-affix elite with an escort; it
+## pays out a burst of experience, pulls every crystal in, and counts toward the unlock track.
+var new_unlocks: Array = []        # weapon ids earned by this run (shown on the end screen)
+var champions_met := 0
+var champions_slain := 0
+var champ_uids: Array[int] = []
+const CHAMP_NAMES := ["Gorehowl the Unbroken", "Ashmaw, Hunger of the Rift", "Skarn the Many-Scarred", "Vexa Hollowcrown", "The Pale Warden", "Mordrath Rimebound"]
+func _spawn_champion() -> void:
+	champions_met += 1
+	var kind: int = [Content.E.BRUTE, Content.E.CHARGER][champions_met % 2]
+	var at := ring_point(60.0)
+	var i := spawn_foe(kind, at, 1, 0, 9.0 + 5.0 * champions_met)
+	if i < 0: return
+	sw.affix[i] |= _roll_affix() | Content.Aff.SHIELDED
+	sw.rad[i] *= 1.7
+	sw.dmg[i] *= 1.3
+	champ_uids.append(sw.uid[i])
+	for k in 6 + 3 * champions_met:
+		spawn_foe(Content.E.GRUNT if k % 3 != 0 else Content.E.RUNNER, at + Vector2(randf_range(-70, 70), randf_range(-70, 70)), 0)
+	banner.emit(CHAMP_NAMES[(stage * 2 + champions_met - 1) % CHAMP_NAMES.size()], "A Rift Champion hunts you.", Color("ffb02e"))
+	shake = maxf(shake, 0.5)
+	Sfx.play("boss")
+
 func _pick_type() -> int:
 	var r := rng.randf()
+	var t := rt()                                   # the foe mix follows the act's pace
 	var a := 0.0
 	var pb := 0.0 if t < 35.0 else minf(0.12, (t - 35.0) / 800.0)
 	var pr := 0.0 if t < 10.0 else minf(0.28, (t - 10.0) / 320.0 + 0.05)
@@ -675,7 +720,7 @@ func spawn_foe(k: int, at: Vector2 = Vector2.INF, elite: int = -1, extra_flags: 
 	var el := false
 	if elite == 1:
 		el = true
-	elif elite == -1 and k != Content.E.MINI and k != Content.E.RUNNER and t >= 35.0:
+	elif elite == -1 and k != Content.E.MINI and k != Content.E.RUNNER and rt() >= 35.0:
 		var ch := 0.025 * (3.0 if has_mod("elite") else 1.0) * (1.6 if mode == "rift" else 1.0)
 		el = rng.randf() < ch
 	var af := 0
@@ -695,9 +740,9 @@ func spawn_foe(k: int, at: Vector2 = Vector2.INF, elite: int = -1, extra_flags: 
 
 func _roll_affix() -> int:
 	var pool := [Content.Aff.HASTED, Content.Aff.SHIELDED]
-	if t >= 40.0 or stage >= 1: pool.append(Content.Aff.VOLATILE)
-	if t >= 70.0 or stage >= 2: pool.append(Content.Aff.VAMPIRIC)
-	if t >= 90.0 or stage >= 2: pool.append(Content.Aff.ARCANE)
+	if rt() >= 40.0 or stage >= 1: pool.append(Content.Aff.VOLATILE)
+	if rt() >= 70.0 or stage >= 2: pool.append(Content.Aff.VAMPIRIC)
+	if rt() >= 90.0 or stage >= 2: pool.append(Content.Aff.ARCANE)
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
 # ================================================================= foes
@@ -754,6 +799,8 @@ func _src_name(i: int) -> String:
 # ================================================================= weapons
 func weapon_damage_base() -> float:
 	return 10.0 * stats.value("damage", 1.0) * (1.0 + 0.03 * lvl)
+
+var weapon_pool: Array = Content.WEAPON_IDS      # what level-ups may offer this run (the unlock track)
 
 func _wstat(id: String) -> Dictionary:
 	var w: Dictionary = weapons[id]
@@ -838,7 +885,208 @@ func _fire(id: String, s: Dictionary, mul: float) -> bool:
 		"bolt": return _bolt(s, mul)
 		"nova": return _nova(s, mul)
 		"storm": return _storm(s, mul)
+		"lance": return _lance(s, mul)
+		"mine": return _mine(s, mul)
+		"glaive": return _glaive(s, mul)
+		"wisp": return _wisp(s, mul)
+		"arc": return _arc(s, mul)
+		"aura": return _aura_tick(s, mul)
+		"cleave": return _cleave(s, mul)
+		"meteor": return _meteor(s, mul)
+		"totem": return _totem(s, mul)
 	return false
+
+# ----------------------------------------------------------------- the alpha weapons
+func _shot(id: String, at: Vector2, vel: Vector2, dmg: float, r: float, life: float, pierce: int, col: Color, kind: int = 0) -> Proj:
+	var p: Proj = _new_proj()
+	p.pos = at; p.vel = vel; p.life = life; p.r = r; p.dmg = dmg; p.pierce = pierce
+	p.chain = int(stats.value("chain", 0.0, wlocal[id])) if kind == 0 else 0
+	p.el = elmask(id); p.wid = id; p.col = col; p.kind = kind
+	projs.append(p)
+	return p
+
+## Storm Lance: a heavy bolt that goes through everything in a line.
+func _lance(s: Dictionary, mul: float) -> bool:
+	var tg := _target(520.0)
+	if tg < 0: return false
+	var n := int(s.n) + int(stats.value("proj_count", 0.0, wlocal["lance"]))
+	var base := (sw.pos[tg] - pp).angle()
+	_cast(sw.pos[tg] - pp)
+	for k in n:
+		var a := base + (k - (n - 1) * 0.5) * 0.2
+		_shot("lance", pp, Vector2(cos(a), sin(a)) * 640.0, float(s.dmg) * _dmg_scale("lance") * mul, 11.0, 0.95, 99, Color("fff0a0"))
+	Sfx.play("shoot", 0.7)
+	Sfx.play("thunder", 1.6, 0.35)
+	return true
+
+## Ember Mines: dropped where you stand; a foe stepping near sets one off.
+func _mine(s: Dictionary, mul: float) -> bool:
+	if grid.nearest(pp, 520.0, sw) < 0: return false
+	var live := 0
+	for p in projs:
+		if p.kind == 1: live += 1
+	var n := int(s.n) + int(stats.value("proj_count", 0.0, wlocal["mine"]))
+	for k in n:
+		if live >= 18: break
+		var off := Vector2.ZERO if k == 0 else Vector2(cos(TAU * k / n + t), sin(TAU * k / n + t)) * 46.0
+		var m := _shot("mine", pp + off, Vector2.ZERO, float(s.dmg) * _dmg_scale("mine") * mul, 6.0, 10.0, 0, Color("ff9a4a"), 1)
+		m.aux = float(s.rad) * stats.value("area", 1.0, wlocal["mine"])
+		live += 1
+	Sfx.play("pickup", 0.6, 0.5)
+	return true
+
+## Frost Glaive: flies out, turns, and comes home, cutting on both passes.
+func _glaive(s: Dictionary, mul: float) -> bool:
+	var tg := _target(420.0)
+	if tg < 0: return false
+	var n := int(s.n) + int(stats.value("proj_count", 0.0, wlocal["glaive"]))
+	var base := (sw.pos[tg] - pp).angle()
+	_cast(sw.pos[tg] - pp)
+	for k in n:
+		var a := base + (k - (n - 1) * 0.5) * 0.5
+		_shot("glaive", pp, Vector2(cos(a), sin(a)) * 520.0, float(s.dmg) * _dmg_scale("glaive") * mul, 13.0 if weapons.glaive.evo else 10.0, 2.4, 99, Color("bfefff"), 2)
+	Sfx.play("roll", 1.3, 0.7)
+	return true
+
+## Grave Wisps: slow seekers that find their own targets.
+func _wisp(s: Dictionary, mul: float) -> bool:
+	if grid.nearest(pp, 480.0, sw) < 0: return false
+	var n := int(s.n) + int(stats.value("proj_count", 0.0, wlocal["wisp"]))
+	var a0 := rng.randf() * TAU
+	for k in n:
+		var a := a0 + TAU * k / n
+		_shot("wisp", pp, Vector2(cos(a), sin(a)) * 230.0, float(s.dmg) * _dmg_scale("wisp") * mul, 5.0, 2.6, int(s.pierce) + int(stats.value("pierce", 0.0, wlocal["wisp"])), Color("a8ff8c"), 3)
+	Sfx.play("shoot", 1.5, 0.5)
+	return true
+
+## Chain Arc: lightning that leaps from foe to foe, weakening a little each jump.
+func _arc(s: Dictionary, mul: float) -> bool:
+	var i := _target(380.0)
+	if i < 0: return false
+	_cast(sw.pos[i] - pp)
+	var dmg := float(s.dmg) * _dmg_scale("arc") * mul
+	var em := elmask("arc")
+	var seen: Array[int] = []
+	var pts := PackedVector2Array([pp])
+	var jumps := int(s.n) + int(stats.value("chain", 0.0, wlocal["arc"]))
+	var at := sw.pos[i]
+	for j in jumps:
+		var u := sw.uid[i]
+		seen.append(u)
+		at = sw.pos[i]
+		pts.append(at + Vector2(randf_range(-6, 6), randf_range(-6, 6)))
+		hit(i, dmg, em, Vector2.ZERO, 0.0, 0)
+		dmg *= 0.9
+		var c := grid.query(at, 170.0, sw)
+		var best := -1
+		var bd := INF
+		for q in c:
+			var k := grid.results[q]
+			if k >= sw.n or sw.hp[k] <= 0.0 or (sw.flags[k] & Swarm.F_ALLY) != 0 or seen.has(sw.uid[k]): continue
+			var d := sw.pos[k].distance_squared_to(at)
+			if d < bd:
+				bd = d; best = k
+		if best < 0: break
+		i = best
+	fx.append({"k": "arc", "pos": pp, "col": Color("e2d4ff"), "life": 0.16, "t": 0.0, "pts": pts})
+	Sfx.play("thunder", 1.8, 0.4)
+	return true
+
+## Withering Aura: everything close to you takes damage on every tick.
+func _aura_tick(s: Dictionary, mul: float) -> bool:
+	var r := float(s.rad) * stats.value("area", 1.0, wlocal["aura"])
+	aura_r = r
+	var c := grid.query(pp, r, sw)
+	if c == 0: return true
+	var hl := grid.results.slice(0, c)
+	var dmg := float(s.dmg) * _dmg_scale("aura") * mul
+	var em := elmask("aura")
+	var slow: bool = weapons.aura.evo
+	for q in hl.size():
+		var i := hl[q]
+		if i >= sw.n or (sw.flags[i] & Swarm.F_ALLY) != 0: continue
+		if slow: sw.chill_t[i] = maxf(sw.chill_t[i], 0.6)
+		hit(i, dmg, em, Vector2.ZERO, 0.0, 0)
+	if t - _aura_fx_t > 0.8:
+		_aura_fx_t = t
+		fx.append({"k": "ring", "pos": pp, "r": r * 0.5, "max": r, "col": Color("b86bff"), "life": 0.5, "t": 0.0})
+	return true
+var aura_r := 0.0
+var _aura_fx_t := -9.0
+
+## Reaper's Cleave: a wide sweep toward the nearest foe, with a hard shove.
+func _cleave(s: Dictionary, mul: float) -> bool:
+	var r := float(s.rad) * stats.value("area", 1.0, wlocal["cleave"])
+	var tg := grid.nearest(pp, r + 30.0, sw)
+	if tg < 0: return false
+	var dir := (sw.pos[tg] - pp).normalized()
+	_cast(dir)
+	var half := 1.25 if weapons.cleave.evo else 0.95
+	var c := grid.query(pp, r, sw)
+	var hl := grid.results.slice(0, c)
+	var dmg := float(s.dmg) * _dmg_scale("cleave") * mul
+	var em := elmask("cleave")
+	for q in hl.size():
+		var i := hl[q]
+		if i >= sw.n or (sw.flags[i] & Swarm.F_ALLY) != 0: continue
+		var dv := sw.pos[i] - pp
+		if dv.length() > 1.0 and absf(dir.angle_to(dv)) > half: continue
+		hit(i, dmg, em, dv.normalized(), 420.0 if weapons.cleave.evo else 240.0, 0)
+	var pts := PackedVector2Array()
+	for k in 9:
+		var a := dir.angle() + lerpf(-half, half, k / 8.0)
+		pts.append(pp + Vector2(cos(a), sin(a)) * r)
+	fx.append({"k": "arc", "pos": pp, "col": Color("ff8a96"), "life": 0.16, "t": 0.0, "pts": pts})
+	shatter(pp + dir * r * 0.6, r * 0.5)
+	Sfx.play("impact", 0.7, 0.9)
+	return true
+
+## Meteor: marks a foe's position, lands a moment later.
+var meteors: Array = []            # [land time, pos, radius, damage, element mask]
+func _meteor(s: Dictionary, mul: float) -> bool:
+	var cands := grid.query(pp, view_r * 0.8, sw)
+	if cands == 0: return false
+	var picks_i := grid.results.slice(0, cands)
+	var r := float(s.rad) * stats.value("area", 1.0, wlocal["meteor"])
+	_cast(sw.pos[picks_i[0]] - pp if picks_i[0] < sw.n else face)
+	for k in int(s.n):
+		var i := picks_i[rng.randi_range(0, cands - 1)]
+		if i >= sw.n: continue
+		var at := sw.pos[i]
+		meteors.append([t + 0.85, at, r, float(s.dmg) * _dmg_scale("meteor") * mul, elmask("meteor")])
+		fx.append({"k": "ring", "pos": at, "r": r, "max": r * 0.2, "col": Color("ff8a3c"), "life": 0.85, "t": 0.0})
+	return true
+
+func _step_meteors() -> void:
+	var k := meteors.size() - 1
+	while k >= 0:
+		var m: Array = meteors[k]
+		if t >= float(m[0]):
+			nova_at(m[1], float(m[2]), float(m[3]), int(m[4]), Color("ffb060"), 320.0)
+			_burst(m[1], Color("ff9a4a"), 16, 260.0)
+			shake = minf(1.0, shake + 0.12)
+			Sfx.play_at("explode", m[1])
+			meteors.remove_at(k)
+		k -= 1
+
+## Rime Totem: stays where it was planted and shoots what comes near.
+func _totem(s: Dictionary, mul: float) -> bool:
+	if grid.nearest(pp, 520.0, sw) < 0: return false
+	var cap := int(s.n)
+	var live: Array = []
+	for p in projs:
+		if p.kind == 4: live.append(p)
+	while live.size() >= cap:
+		var oldest: Proj = live[0]
+		for p in live:
+			if p.life < oldest.life: oldest = p
+		oldest.dead = true
+		live.erase(oldest)
+	var tot := _shot("totem", pp + face * 26.0, Vector2.ZERO, float(s.dmg) * _dmg_scale("totem") * mul, 9.0, float(s.dur), 0, Color("9fe8ff"), 4)
+	tot.aux = float(s.rate)
+	fx.append({"k": "ring", "pos": tot.pos, "r": 0.0, "max": 60.0, "col": Color("9fe8ff"), "life": 0.3, "t": 0.0})
+	Sfx.play("ice", 0.8, 0.7)
+	return true
 
 func _target(max_d: float) -> int:
 	match aim_mode:
@@ -1334,6 +1582,7 @@ func _new_proj() -> Proj:
 	p.chain = 0
 	p.el = 0
 	p.wid = ""
+	p.kind = 0; p.age = 0.0; p.aux = 0.0; p.tick = 0.0
 	return p
 
 func _step_projs(dt: float) -> void:
@@ -1342,6 +1591,16 @@ func _step_projs(dt: float) -> void:
 		var p: Proj = projs[k]
 		p.pos += p.vel * dt
 		p.life -= dt
+		if p.kind != 0 and not p.dead:
+			p.age += dt
+			if _step_special(p, dt):
+				if p.dead:
+					_pool.append(p)
+					projs[k] = projs[projs.size() - 1]
+					projs.pop_back()
+				else:
+					k += 1
+				continue
 		if not breakables.is_empty() and shatter(p.pos, p.r):
 			p.dead = p.pierce <= 0
 		if p.life <= 0.0:
@@ -1373,6 +1632,54 @@ func _step_projs(dt: float) -> void:
 			projs.pop_back()
 		else:
 			k += 1
+
+## Mines, glaives, wisps and totems. Returns true when the shot handled its own collisions this frame.
+func _step_special(p: Proj, dt: float) -> bool:
+	match p.kind:
+		1:  # mine: arms after a moment, bursts when a foe is close or its time runs out near foes
+			if p.life <= 0.0: p.dead = true
+			elif p.age > 0.35 and grid.nearest(p.pos, 24.0, sw) >= 0:
+				nova_at(p.pos, p.aux, p.dmg, p.el, Color("ff9a4a"), 220.0)
+				_burst(p.pos, Color("ff9a4a"), 8, 180.0)
+				Sfx.play_at("explode", p.pos)
+				p.dead = true
+			return true
+		2:  # glaive: slows, turns back at the top of its arc, forgets who it cut, flies home
+			if p.aux < 0.5:
+				p.vel *= maxf(0.0, 1.0 - 2.6 * dt)
+				if p.age > 0.55:
+					p.aux = 1.0
+					p.hits.clear()
+			else:
+				var home := pp - p.pos
+				if home.length() < 22.0 or p.life <= 0.0:
+					p.dead = true
+					return true
+				p.vel = p.vel.lerp(home.normalized() * 560.0, minf(1.0, dt * 9.0))
+			return false                     # ordinary collisions (it pierces everything)
+		3:  # wisp: steers toward the nearest foe
+			p.tick -= dt
+			if p.tick <= 0.0:
+				p.tick = 0.12
+				var j := grid.nearest(p.pos, 300.0, sw)
+				if j >= 0:
+					var want := (sw.pos[j] - p.pos).normalized() * 330.0
+					p.vel = p.vel.lerp(want, 0.45)
+			return false
+		4:  # totem: fires a shard at the nearest foe in range
+			if p.life <= 0.0:
+				p.dead = true
+				return true
+			p.tick -= dt
+			if p.tick <= 0.0:
+				p.tick = maxf(0.12, p.aux * stats.value("cooldown", 1.0, wlocal["totem"]))
+				var j := grid.nearest(p.pos, 300.0, sw)
+				if j >= 0:
+					var d := (sw.pos[j] - p.pos).normalized()
+					var sh := _shot("totem", p.pos, d * 460.0, p.dmg, 5.0, 0.8, int(stats.value("pierce", 0.0, wlocal["totem"])), Color("c8f6ff"))
+					sh.el = p.el
+			return true
+	return false
 
 func _chain_target(p: Proj, from_i: int) -> int:
 	var c := grid.query(sw.pos[from_i], 220.0, sw)
@@ -1622,7 +1929,7 @@ func equip(it: Dictionary) -> void:
 
 # ================================================================= drops
 func ilvl() -> int:
-	var b := 1 + stage * 6 + int(t / 30.0)
+	var b := 1 + stage * 6 + int(rt() / 30.0)
 	if mode == "atlas": b += int(node.tier) * 4
 	if mode == "rift": b += gr_level * 2
 	if mode == "pinnacle": b = 45
@@ -1720,6 +2027,15 @@ func _on_kill(i: int) -> void:
 		bosses.on_kill(i, at)
 		return
 	add_gem(at, sw.xp[i] * (4.0 if elite else 1.0))
+	if champ_uids.has(sw.uid[i]):
+		champ_uids.erase(sw.uid[i])
+		champions_slain += 1
+		for g in 10: add_gem(at + Vector2(randf_range(-40, 40), randf_range(-40, 40)), need * 0.12)
+		vacuum()
+		hoard += 80.0
+		gain_flask(40.0)
+		hitstop = maxf(hitstop, 0.12)
+		banner.emit("Champion slain", "Its hoard is yours.", Color("ffd84a"))
 	if mode == "rift":
 		progress = minf(Content.GR_PROGRESS, progress + (1.2 if elite else 0.07))
 		if elite: add_pick(at, "progress", 2.5, null, 20.0)
@@ -1813,9 +2129,10 @@ func make_choices() -> Array:
 		return ks.slice(0, 3)
 	var pool: Array = []
 	var evos: Array = []
+	var fresh: Array = []                                   # weapons not held yet: at most two offered per level-up
 	for id in Content.WEAPON_IDS:
 		if not weapons.has(id):
-			if weapons.size() < 4: pool.append({"kind": "w", "id": id})
+			if weapons.size() < Content.MAX_WEAPONS and weapon_pool.has(id): fresh.append({"kind": "w", "id": id})
 		elif int(weapons[id].lv) < 5:
 			pool.append({"kind": "w", "id": id})
 		elif not weapons[id].evo and int(perks.get(Content.WEAPONS[id].pair, 0)) >= 1:
@@ -1833,6 +2150,8 @@ func make_choices() -> Array:
 					if rng.randf() < 0.22: pool.append({"kind": "g", "id": g, "w": id})
 	for id in Content.PERK_IDS:
 		if int(perks.get(id, 0)) < 5: pool.append({"kind": "p", "id": id})
+	fresh.shuffle()
+	pool.append_array(fresh.slice(0, 2))
 	pool.shuffle()
 	var out: Array = evos.slice(0, 2)
 	var seen := {}
@@ -1852,8 +2171,8 @@ func choice_text(c: Dictionary) -> Dictionary:
 			var W: Dictionary = Content.WEAPONS[c.id]
 			return {"tag": "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1], "name": W.name, "d": W.d[lv] + "  [%s]" % Content.EL_NAME[W.elem], "col": W.col}
 		"e": return {"tag": "Evolution", "name": Content.WEAPONS[c.id].evo, "d": Content.WEAPONS[c.id].evo_d, "col": "f4c04e"}
-		"fuse": return {"tag": "Fusion: %s + %s" % [Content.WEAPONS[c.a].evo, Content.WEAPONS[c.b].evo], "name": Content.FUSIONS[c.id].name,
-			"d": Content.FUSIONS[c.id].d + " Both deal 25% more damage and carry each other's element.", "col": Content.FUSIONS[c.id].col}
+		"fuse": return {"tag": "Fusion: %s + %s" % [Content.WEAPONS[c.a].evo, Content.WEAPONS[c.b].evo], "name": Content.fusion_def(c.id).name,
+			"d": Content.fusion_def(c.id).d + " Both deal 25% more damage and carry each other's element.", "col": Content.fusion_def(c.id).col}
 		"p":
 			var pl := int(perks.get(c.id, 0))
 			return {"tag": "New perk" if pl == 0 else "Perk Lv %d -> %d" % [pl, pl + 1], "name": Content.PERKS[c.id].name, "d": Content.PERKS[c.id].d, "col": "ece8dd"}
@@ -1874,8 +2193,8 @@ func apply_choice(c: Dictionary) -> void:
 			for id in [c.a, c.b]: wlocal[id].set_source("fusion", [["damage", "more", 1.25]])
 			_elmask_ver = -1
 			shake = 1.0
-			fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 240.0, "col": Content.col(Content.FUSIONS[c.id].col), "life": 0.5, "t": 0.0})
-			banner.emit(Content.FUSIONS[c.id].name, Content.FUSIONS[c.id].d, Content.col(Content.FUSIONS[c.id].col))
+			fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 240.0, "col": Content.col(Content.fusion_def(c.id).col), "life": 0.5, "t": 0.0})
+			banner.emit(Content.fusion_def(c.id).name, Content.fusion_def(c.id).d, Content.col(Content.fusion_def(c.id).col))
 			metrics.fusions = int(metrics.get("fusions", 0)) + 1
 		"e":
 			weapons[c.id].evo = true
@@ -1915,6 +2234,7 @@ func end_run(win: bool) -> void:
 	d.stats.kills = int(d.stats.kills) + kills
 	d.stats.playtime = float(d.stats.playtime) + t
 	d.stats.best_combo = maxi(int(d.stats.best_combo), best_combo)
+	d.stats.champions = int(d.stats.get("champions", 0)) + champions_slain
 	if not win:
 		d.stats.deaths = int(d.stats.deaths) + 1
 		bosses.on_player_death()
@@ -1923,6 +2243,7 @@ func end_run(win: bool) -> void:
 	elif win and mode == "campaign":
 		while d.cleared.size() <= stage: d.cleared.append(false)
 		d.cleared[stage] = true
+	new_unlocks = Save.check_unlocks()
 	# Echoes for the Shard Web: a share of kills, a win bonus, rift depth and the torment tier
 	echoes_run = mini(12, kills / 250 + (2 if win else 0) + (gr_level / 3 if mode == "rift" else 0) + (int(Content.TORMENT[torment].echo) if win else 0) + bargains.size()) + hoard_echoes
 	if not bargains.is_empty():

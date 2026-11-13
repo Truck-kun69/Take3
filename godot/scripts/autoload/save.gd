@@ -35,7 +35,8 @@ func defaults() -> Dictionary:
 		"fragments": {"rupture": 0, "greed": 0, "dread": 0}, "splinters": 0,
 		"passives": ["start"], "echoes": 0, "torment": 0, "torment_max": 0,
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
-		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0},
+		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0, "champions": 0},
+		"unlocked": [],                                  # weapon ids earned on the unlock track (Content.UNLOCKS)
 		"selftest": {}, "bench": {},
 		"prophecy": {"offers": [], "active": {}, "done": 0},
 		"daily": {"best": {}, "claimed": ""},            # best: code -> score (newest 30); claimed: date of the last first-clear reward   # offers: [[id, [reward ids]]], active: {id, reward}          # graphics self-test progress (survives a crash), last benchmark
@@ -122,6 +123,37 @@ func _notification(what: int) -> void:
 		if _dirty: flush()
 
 # ---------------------------------------------------------------- helpers
+## Weapons a run may offer: the four starters plus everything earned.
+func weapon_pool() -> Array:
+	var out: Array = []
+	var locked := {}
+	for u in Content.UNLOCKS: locked[u.w] = true
+	for id in Content.WEAPON_IDS:
+		if not locked.has(id) or data.unlocked.has(id): out.append(id)
+	return out
+
+## Progress toward one unlock: [have, need].
+func unlock_progress(u: Dictionary) -> Array:
+	var have := 0
+	if u.stat == "cleared":
+		for c in data.cleared:
+			if c: have += 1
+	else:
+		have = int(data.stats.get(u.stat, 0))
+	return [mini(have, int(u.need)), int(u.need)]
+
+## Grants every unlock whose condition is now met; returns the newly earned weapon ids.
+func check_unlocks() -> Array:
+	var got: Array = []
+	for u in Content.UNLOCKS:
+		if data.unlocked.has(u.w): continue
+		var pr := unlock_progress(u)
+		if pr[0] >= pr[1]:
+			data.unlocked.append(u.w)
+			got.append(u.w)
+	if not got.is_empty(): mark_dirty()
+	return got
+
 func opt(k: String):
 	return data.options.get(k, DEFAULT_OPTIONS.get(k))
 
