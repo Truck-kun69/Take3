@@ -34,7 +34,8 @@ var key_light: OmniLight3D        # small fill on the camera side of the hero so
 var light_pool: Array[OmniLight3D] = []
 var ground: MeshInstance3D
 var terrain_mat: ShaderMaterial
-var foe_mat: ShaderMaterial
+var foe_mats: Array[ShaderMaterial] = []     # one per foe kind (same shader; each has its own animation texture)
+var _vc: Array = []                           # per kind: PackedFloat32Array of clip [first row, frames, fps] x 5, or empty
 var prop_mat: ShaderMaterial
 var decal_mat: ShaderMaterial
 var hero: HeroRig
@@ -146,8 +147,7 @@ func _ready() -> void:
 	water.material_override = water_mat
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(water)
-	foe_mat = ShaderMaterial.new()
-	foe_mat.shader = load("res://shaders/3d/foe.gdshader")
+	var foe_shader: Shader = load("res://shaders/3d/foe.gdshader")
 	prop_mat = ShaderMaterial.new()
 	prop_mat.shader = load("res://shaders/3d/prop.gdshader")
 	for k in Models.FOE_KINDS.size():
@@ -161,7 +161,11 @@ func _ready() -> void:
 		mm.visible_instance_count = 0
 		mm.custom_aabb = AABB(Vector3(-1e6, -100, -1e6), Vector3(2e6, 400, 2e6))
 		mmi.multimesh = mm
-		mmi.material_override = foe_mat
+		var fm := ShaderMaterial.new()
+		fm.shader = foe_shader
+		foe_mats.append(fm)
+		_vc.append(PackedFloat32Array())
+		mmi.material_override = fm
 		add_child(mmi)
 		_foe_mm.append(mmi)
 	_foe_n.resize(Models.FOE_KINDS.size())
@@ -223,9 +227,10 @@ func bind(world: World) -> void:
 	var tex_path := "res://textures/terrain/%d.png" % w.stage
 	terrain_mat.set_shader_parameter("has_tex", ResourceLoader.exists(tex_path))
 	if ResourceLoader.exists(tex_path): terrain_mat.set_shader_parameter("albedo_tex", load(tex_path))
-	foe_mat.set_shader_parameter("eye_col", _look.eye)
-	foe_mat.set_shader_parameter("glow_col", Content.col(s.acc))
-	foe_mat.set_shader_parameter("colorblind", w.colorblind)
+	for fm in foe_mats:
+		fm.set_shader_parameter("eye_col", _look.eye)
+		fm.set_shader_parameter("glow_col", Content.col(s.acc))
+		fm.set_shader_parameter("colorblind", w.colorblind)
 	prop_mat.set_shader_parameter("glow_col", Content.col(s.acc))
 	prop_mat.set_shader_parameter("tint", Content.col(s.g2).lerp(Color.WHITE, 0.55))
 	env.background_color = _look.bg
@@ -269,6 +274,12 @@ func bind(world: World) -> void:
 	_liquid_kind = lk
 	for k in Models.FOE_KINDS.size():                # act-specific swarm variants (models/foes/<kind>_<stage>)
 		_foe_mm[k].multimesh.mesh = Models.foe_mesh(Models.FOE_KINDS[k], w.stage)
+		var vat := Models.foe_vat(Models.FOE_KINDS[k], w.stage)
+		foe_mats[k].set_shader_parameter("has_vat", not vat.is_empty())
+		if not vat.is_empty():
+			foe_mats[k].set_shader_parameter("vat_pos", vat.pos)
+			foe_mats[k].set_shader_parameter("vat_nrm", vat.nrm)
+		_vc[k] = vat.clips if not vat.is_empty() else PackedFloat32Array()
 	_cam_pos = Vector3(w.pp.x, 0, w.pp.y)
 	_cam_target = _cam_pos
 	_kind_col.clear()
@@ -290,8 +301,9 @@ func _process(dt: float) -> void:
 		return
 	var t0 := Time.get_ticks_usec()
 	time += dt
-	for m in [terrain_mat, foe_mat, prop_mat, _aura_mm.material_override]:
+	for m in [terrain_mat, prop_mat, _aura_mm.material_override]:
 		m.set_shader_parameter("time", time)
+	for fm in foe_mats: fm.set_shader_parameter("time", time)
 	_camera(dt)
 	_lighting(dt)
 	_props()
@@ -594,7 +606,24 @@ func _foes() -> void:
 		# and ally bits: the swarm sparkled with their rim glows)
 		_fb[o + 12] = c.r; _fb[o + 13] = c.g; _fb[o + 14] = c.b; _fb[o + 15] = float(sw.uid[i] % 64) / 63.0
 		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
-		_fb[o + 16] = fposmod(time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
+		var ph := fposmod(time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
+		var vc: PackedFloat32Array = _vc[k]
+		if vc.is_empty():
+			_fb[o + 16] = ph
+		else:
+			# authored clips (vertex animation texture): spawn, then attack, then a flinch, else the walk
+			# cycle; the value is the frame row, which the shader blends with the next one
+			var age := w.t - sw.born[i]
+			var ta := w.t - sw.atk_t[i]
+			var th := w.t - sw.hit_at[i]
+			if vc[13] > 0.0 and age * vc[14] < vc[13] - 1.0:
+				_fb[o + 16] = vc[12] + age * vc[14]
+			elif vc[4] > 0.0 and ta * vc[5] < vc[4] - 1.0:
+				_fb[o + 16] = vc[3] + ta * vc[5]
+			elif vc[7] > 0.0 and th * vc[8] * 1.6 < vc[7] - 1.0:
+				_fb[o + 16] = vc[6] + th * vc[8] * 1.6
+			else:
+				_fb[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
 		_fb[o + 17] = maxf(0.0, sw.flash[i])
 		_fb[o + 18] = _status_code(i)
 		_fb[o + 19] = float(f & 0xff)
@@ -648,6 +677,23 @@ func _corpses() -> void:
 		var n := _foe_n[k]
 		if n >= Swarm.CAP: continue
 		var age: float = time - float(c[4])
+		var vcd: PackedFloat32Array = _vc[k]
+		if not vcd.is_empty() and vcd[10] > 0.0:           # an authored death clip: play it once, hold its last frame
+			var dd: Vector2 = c[2]
+			var ss: float = c[3]
+			var oo := k * span + n * FOE_STRIDE
+			var pd: Vector2 = c[1]
+			_fb[oo] = dd.x * ss; _fb[oo + 1] = 0.0; _fb[oo + 2] = -dd.y * ss; _fb[oo + 3] = pd.x
+			_fb[oo + 4] = 0.0; _fb[oo + 5] = ss; _fb[oo + 6] = 0.0; _fb[oo + 7] = 0.0
+			_fb[oo + 8] = dd.y * ss; _fb[oo + 9] = 0.0; _fb[oo + 10] = dd.x * ss; _fb[oo + 11] = pd.y
+			var cd := _kind_col[k]
+			_fb[oo + 12] = cd.r; _fb[oo + 13] = cd.g; _fb[oo + 14] = cd.b; _fb[oo + 15] = float(c[5]) / 63.0
+			_fb[oo + 16] = vcd[9] + minf(age * vcd[11], vcd[10] - 1.0)
+			_fb[oo + 17] = clampf((age - 1.6) / (CORPSE_LIFE - 1.6), 0.0, 1.0)
+			_fb[oo + 18] = 7.0
+			_fb[oo + 19] = 0.0
+			_foe_n[k] = n + 1
+			continue
 		var fall := clampf(age / 0.28, 0.0, 1.0)
 		fall = 1.0 - (1.0 - fall) * (1.0 - fall)                       # ease-out topple
 		var a := fall * PI * 0.5

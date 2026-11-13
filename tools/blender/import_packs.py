@@ -55,6 +55,22 @@ FOES = {
 
 LEG_L, LEG_R, ARM_L, ARM_R, HEAD, EYE, GLOW = 1, 2, 3, 4, 5, 6, 7
 
+# Vertex animation: the packs' own clips, baked per foe into <kind>.vat (see bake_vat). slot -> action name.
+CLIPS_QB = {"walk": "Walk", "attack": "Punch", "hit": "HitReact", "death": "Death", "spawn": "Jump_Land"}
+CLIPS_QB_RUN = dict(CLIPS_QB, walk="Run")
+CLIPS_BLOB = {"walk": "Walk", "attack": "Bite_Front", "hit": "HitRecieve", "death": "Death", "spawn": "Jump"}
+CLIPS_KK = {"walk": "Walking_A", "attack": "1H_Melee_Attack_Chop", "hit": "Hit_A", "death": "Death_A", "spawn": "Spawn_Ground_Skeletons"}
+CLIP_ORDER = ["walk", "attack", "hit", "death", "spawn"]
+CLIP_LOOP = {"walk": True}
+MAX_ROWS = 24                      # frames kept per clip (the shader interpolates between them)
+SKIN = []                          # per baked vertex, in creation order: [(bone name, weight), ...]
+
+def clips_for(kind, cfg):
+    if "clips" in cfg: return cfg["clips"]
+    if cfg["src"].startswith("KayKit"): return dict(CLIPS_KK, walk="Running_A") if kind == "grunt_4" else CLIPS_KK
+    if "/Blob/" in cfg["src"]: return CLIPS_BLOB
+    return CLIPS_QB_RUN if kind.split("_")[0] in ("runner", "charger") else CLIPS_QB
+
 
 def part_of_bone(name):
     """Part id from a bone name, for both KayKit (upperleg.l) and Quaternius (UpperLeg.L) rigs."""
@@ -162,8 +178,15 @@ def bake(arm, meshes, weapon=None, eyes_from_dark=False):
         src.transform(ob.matrix_world)
         uvl = src.loops.layers.uv.active
         vmap = {}
+        pbone = ob.parent_bone if ob.parent_type == "BONE" else ""
         for v in src.verts:
             vmap[v.index] = out.verts.new(v.co)
+            ws = []
+            if v.index < len(me.vertices):
+                ws = sorted(((names.get(g.group), g.weight) for g in me.vertices[v.index].groups if names.get(g.group) in bones and g.weight > 0.0),
+                            key=lambda t: -t[1])[:4]
+            if not ws and pbone: ws = [(pbone, 1.0)]
+            SKIN.append(ws)
         for f in src.faces:
             try:
                 nf = out.faces.new([vmap[v.index] for v in f.verts])
@@ -213,6 +236,7 @@ def bake(arm, meshes, weapon=None, eyes_from_dark=False):
                 wuv = w.loops.layers.uv.active
                 part = ARM_R if slot.endswith("r") else ARM_L
                 vm = {v.index: out.verts.new(v.co) for v in w.verts}
+                SKIN.extend([[(slot, 1.0)]] * len(w.verts))
                 for f in w.faces:
                     nf = out.faces.new([vm[v.index] for v in f.verts])
                     face_part.append(part)
@@ -235,26 +259,28 @@ def orient_and_scale(bm, pivots, height, forward="-Y"):
     ys = [v.co.y for v in bm.verts]
     cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
     bm.transform(Matrix.Scale(k, 4) @ Matrix.Translation((-cx, -cy, -z0)))
-    return {p: (z - z0) * k for p, z in pivots.items()}
+    T = Matrix.Scale(k, 4) @ Matrix.Translation((-cx, -cy, -z0)) @ Matrix.Rotation(rot, 4, "Z")
+    return {p: (z - z0) * k for p, z in pivots.items()}, T
 
 
 def grow_crystals(bm, face_part, n, height, seed):
     """Glowing shard crystals (part 7) on the upper back, pointing up and back."""
     rnd = random.Random(seed)
     col_l = bm.loops.layers.float_color["Col"]
-    cand = [v.co.copy() for v in bm.verts if 0.45 * height < v.co.z < 0.85 * height]
+    cand = [(v.co.copy(), v.index) for v in bm.verts if 0.45 * height < v.co.z < 0.85 * height]
     if not cand or n <= 0:
         return
-    cand.sort(key=lambda c: c.x)
+    cand.sort(key=lambda c: c[0].x)
     back = cand[: max(8, len(cand) // 12)]           # the most rearward band
     for i in range(n):
-        base = rnd.choice(back)
+        base, base_i = rnd.choice(back)
         size = height * rnd.uniform(0.12, 0.22)
         tilt = Euler((rnd.uniform(-0.6, 0.6), -0.7 - rnd.uniform(0, 0.5), rnd.uniform(0, math.pi)), "XYZ").to_matrix().to_4x4()
         c = bmesh.new()
         bmesh.ops.create_cone(c, cap_ends=True, cap_tris=True, segments=5, radius1=size * 0.22, radius2=0.0, depth=size)
         c.transform(Matrix.Translation(base + Vector((-size * 0.15, 0, size * 0.3))) @ tilt @ Matrix.Translation((0, 0, size * 0.45)))
         vm = {v: bm.verts.new(v.co) for v in c.verts}
+        SKIN.extend([SKIN[base_i] if base_i < len(SKIN) else []] * len(c.verts))     # the whole crystal rides one body vertex
         for f in c.faces:
             nf = bm.faces.new([vm[v] for v in f.verts])
             face_part.append(GLOW)
@@ -309,26 +335,115 @@ def split_decimate_join(bm, face_part, pivots, tris, name):
     bpy.ops.object.join()
     ob = bpy.context.view_layer.objects.active
     ob.name = name
-    ob.data.shade_flat()                       # the packs are faceted low-poly; keep the facets crisp
+    # weld coincident vertices: per-face colour and part ids live on the corners, so nothing is lost, the
+    # animation texture gets one column per real vertex, and its normals shade the body smoothly
+    wb = bmesh.new()
+    wb.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(wb, verts=wb.verts, dist=1e-4)
+    wb.to_mesh(ob.data)
+    wb.free()
+    ob.data.shade_smooth()
     ob.data.color_attributes.active_color = ob.data.color_attributes["Col"]
     return ob
 
 
+def bake_vat(kind, cfg, arm, ob, T, M0, src_pos, skin, path):
+    """Vertex animation texture: the final (decimated) mesh re-skinned against the pack's skeleton and
+    sampled through its own clips.
+      Each final vertex takes the bone weights of the nearest baked source vertex. Its position in a
+      frame is sum_b w_b * [T * B_b(frame) * B_b(bake pose)^-1 * T^-1] * p, so offsets from decimation,
+      held weapons and grown crystals all ride their bones rigidly.
+    File (little endian): "SVAT", u16 verts, u16 rows, u16 clips, u16 0; per clip: 8-byte name, u16 first
+    row, u16 frames, f32 fps, u8 loop, 3 pad; positions rows*verts RGBA float16 (Godot axes); normals
+    rows*verts RGBA8 (xyz * 0.5 + 0.5). Every clip carries one extra row (its first frame again when it
+    loops, its last when it does not) so the shader can always blend row r with r + 1.
+    The mesh's first UV channel is set to ((vertex + 0.5) / verts, 0.5): the texture column."""
+    import struct
+    from mathutils import kdtree
+    me = ob.data
+    n = len(me.vertices)
+    kd = kdtree.KDTree(len(src_pos))
+    for i, p in enumerate(src_pos): kd.insert(p, i)
+    kd.balance()
+    bone_ids = {b.name: i for i, b in enumerate(arm.pose.bones)}
+    W = np.zeros((n, 4)); BI = np.zeros((n, 4), dtype=np.int64)
+    P0 = np.ones((n, 4)); N0 = np.zeros((n, 3))
+    for v in me.vertices:
+        P0[v.index, :3] = v.co
+        N0[v.index] = v.normal
+        _, si, _ = kd.find(v.co)
+        ws = [(bone_ids[b], w) for b, w in (skin[si] if si < len(skin) else []) if b in bone_ids]
+        tot = sum(w for _, w in ws)
+        for k, (b, w) in enumerate(ws[:4]):
+            BI[v.index, k] = b; W[v.index, k] = w / tot
+        if not ws: W[v.index, 0] = 0.0
+    static = W.sum(axis=1) < 1e-6
+    Ti = T.inverted()
+    M0i = [M0[b.name].inverted() if b.name in M0 else Matrix.Identity(4) for b in arm.pose.bones]
+    rows_p, rows_n, table = [], [], []
+    fps_src = bpy.context.scene.render.fps
+    for slot in CLIP_ORDER:
+        act = bpy.data.actions.get(clips_for(kind, cfg).get(slot, ""))
+        if act is None:
+            print(f"  VAT {kind}: no clip for {slot}"); continue
+        f0, f1 = int(act.frame_range[0]), int(act.frame_range[1])
+        loop = CLIP_LOOP.get(slot, False)
+        last = f1 - 1 if loop else f1
+        step = max(1, math.ceil((last - f0 + 1) / MAX_ROWS))
+        frames = list(range(f0, last + 1, step))
+        first_row = len(rows_p)
+        for fr in frames + [frames[0] if loop else frames[-1]]:
+            pose(arm, act.name, fr)
+            D = np.array([np.array(T @ (arm.matrix_world @ pb.matrix) @ M0i[i] @ Ti) for i, pb in enumerate(arm.pose.bones)])   # bones x 4 x 4
+            P = np.zeros((n, 3)); Nn = np.zeros((n, 3))
+            for k in range(4):
+                Dk = D[BI[:, k]]                                                    # n x 4 x 4
+                P += W[:, k:k + 1] * np.einsum("nij,nj->ni", Dk, P0)[:, :3]
+                Nn += W[:, k:k + 1] * np.einsum("nij,nj->ni", Dk[:, :3, :3], N0)
+            P[static] = P0[static, :3]; Nn[static] = N0[static]
+            Nn /= np.maximum(1e-6, np.linalg.norm(Nn, axis=1, keepdims=True))
+            rows_p.append(P); rows_n.append(Nn)
+        table.append((slot, first_row, len(frames), fps_src / step, loop))
+    if not rows_p:
+        return
+    Pa = np.array(rows_p); Na = np.array(rows_n)                                    # rows x n x 3, Blender axes
+    pos = np.zeros((len(rows_p), n, 4), dtype=np.float16)
+    pos[..., 0] = Pa[..., 0]; pos[..., 1] = Pa[..., 2]; pos[..., 2] = -Pa[..., 1]    # Blender (x, y, z) -> Godot (x, z, -y)
+    nrm = np.zeros((len(rows_p), n, 4), dtype=np.uint8)
+    nrm[..., 0] = np.clip((Na[..., 0] * 0.5 + 0.5) * 255.0, 0, 255); nrm[..., 1] = np.clip((Na[..., 2] * 0.5 + 0.5) * 255.0, 0, 255)
+    nrm[..., 2] = np.clip((-Na[..., 1] * 0.5 + 0.5) * 255.0, 0, 255); nrm[..., 3] = 255
+    with open(path, "wb") as f:
+        f.write(b"SVAT" + struct.pack("<4H", n, len(rows_p), len(table), 0))
+        for slot, first_row, cnt, fps, loop in table:
+            f.write(slot.encode().ljust(8, b"\0") + struct.pack("<2Hf4B", first_row, cnt, fps, 1 if loop else 0, 0, 0, 0))
+        f.write(pos.tobytes()); f.write(nrm.tobytes())
+    uv = me.uv_layers["UVMap"].data
+    for lo in me.loops: uv[lo.index].uv = ((lo.vertex_index + 0.5) / n, 0.5)
+    pose(arm, cfg.get("action", "Idle"), cfg.get("frame", 1))
+    print(f"  VAT {kind}: {n} verts x {len(rows_p)} rows, clips {[(t[0], t[2], round(t[3], 1)) for t in table]}, {os.path.getsize(path) // 1024} KB")
+
+
 def build(kind, cfg, packs):
     arm, meshes = load(os.path.join(packs, cfg["src"]))
+    SKIN.clear()
     pose(arm, cfg.get("action", "Idle"), cfg.get("frame", 1))
+    M0 = {pb.name: (arm.matrix_world @ pb.matrix).copy() for pb in arm.pose.bones}     # the pose the mesh is baked in
     weapon = cfg.get("weapon")
     if weapon:
         weapon = (os.path.join(packs, weapon[0]), weapon[1])
     bm, face_part, pivots = bake(arm, meshes, weapon, eyes_from_dark=cfg["src"].startswith("quaternius"))
-    pivots = orient_and_scale(bm, pivots, cfg["height"], cfg.get("forward", "-Y"))
+    pivots, T = orient_and_scale(bm, pivots, cfg["height"], cfg.get("forward", "-Y"))
+    bm.verts.index_update()
     grow_crystals(bm, face_part, cfg.get("crystals", 0), cfg["height"], hash(kind) & 0xffff)
-    # drop the source scene, keep only the baked result
-    for o in list(bpy.data.objects): bpy.data.objects.remove(o)
+    bm.verts.ensure_lookup_table()
+    src_pos = np.array([v.co[:] for v in bm.verts], dtype=np.float64)
+    skin = list(SKIN)
     ob = split_decimate_join(bm, face_part, pivots, int(cfg["tris"] * (HI if "--hi" in sys.argv else 1.0)), kind)
     tris = sum(len(p.vertices) - 2 for p in ob.data.polygons)
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, kind + ".glb")
+    if "--hi" not in sys.argv:
+        bake_vat(kind, cfg, arm, ob, T, M0, src_pos, skin, os.path.join(OUT, kind + ".vat"))
     bpy.ops.object.select_all(action="DESELECT")
     ob.select_set(True)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,

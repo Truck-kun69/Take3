@@ -79,20 +79,32 @@ func _ready() -> void:
 			var ex := HeroRig.new(); add_child(ex); ex.build("ember", Color("4a2a2a")); ex.scale = Vector3.ONE * 1.35
 			rigs.append([ex, Vector2(250, 0)])
 		"foe":
-			# imported swarm meshes: each kind three times (front, three-quarter, side), walking
+			# imported swarm meshes with their baked clips. One row per kind, five columns: mid-walk, mid-attack,
+			# mid-flinch, end of death, mid-spawn (kinds without a .vat show the old shader animation).
 			var kinds2: PackedStringArray = (a[2] if a.size() > 2 else "grunt").split(",")
-			cam.position = Vector3(30.0 * kinds2.size(), 60, 150); cam.look_at(Vector3(30.0 * kinds2.size(), 14, 0))
-			var fm2 := ShaderMaterial.new(); fm2.shader = load("res://shaders/3d/foe.gdshader")
-			fm2.set_shader_parameter("glow_col", Color("8fd8ff")); fm2.set_shader_parameter("eye_col", Color(1, 0.6, 0.2))
+			var rows := kinds2.size()
+			cam.position = Vector3(110, 60.0 + 26.0 * rows, 120.0 + 60.0 * rows); cam.look_at(Vector3(110, 10, -22.0 * (rows - 1)))
+			var fracs := [0.3, 0.45, 0.4, 1.0, 0.5]
+			if a.size() > 3: fracs = [float(a[3]), float(a[3]), float(a[3]), float(a[3]), float(a[3])]
 			for k in kinds2.size():
+				var fm2 := ShaderMaterial.new(); fm2.shader = load("res://shaders/3d/foe.gdshader")
+				fm2.set_shader_parameter("glow_col", Color("8fd8ff")); fm2.set_shader_parameter("eye_col", Color(1, 0.6, 0.2))
+				var vat := Models.foe_vat(kinds2[k])
+				fm2.set_shader_parameter("has_vat", not vat.is_empty())
+				if not vat.is_empty():
+					fm2.set_shader_parameter("vat_pos", vat.pos); fm2.set_shader_parameter("vat_nrm", vat.nrm)
 				var mmi := MultiMeshInstance3D.new(); var mm := MultiMesh.new()
 				mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.use_custom_data = true
-				mm.mesh = Models.foe_mesh(kinds2[k]); mm.instance_count = 3
-				for j in 3:
+				mm.mesh = Models.foe_mesh(kinds2[k]); mm.instance_count = 5
+				for j in 5:
 					var s2 := 13.0
-					mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, [-PI / 2, -0.8, 0.0][j]).scaled(Vector3(s2, s2, s2)), Vector3(k * 60.0 + (j - 1) * 18.0, 0, -j * 22.0)))
-					mm.set_instance_color(j, Color(0.85, 0.8, 0.78))
-					mm.set_instance_custom_data(j, Color(1.2 + j, 0, 0, 0))
+					mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, -0.9).scaled(Vector3(s2, s2, s2)), Vector3(j * 55.0, 0, -k * 44.0)))
+					mm.set_instance_color(j, Color(0.85, 0.8, 0.78, 0.3))
+					var fr := 1.2 + j
+					if not vat.is_empty():
+						var vc: PackedFloat32Array = vat.clips
+						fr = vc[j * 3] + (vc[j * 3 + 1] - 1.0) * float(fracs[j])
+					mm.set_instance_custom_data(j, Color(fr, 0, 0, 0))
 				mmi.multimesh = mm; mmi.material_override = fm2
 				add_child(mmi)
 		"prop":

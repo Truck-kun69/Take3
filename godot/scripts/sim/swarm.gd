@@ -40,6 +40,10 @@ var affix := PackedInt32Array()
 var uid := PackedInt32Array()
 var tag := PackedInt32Array()         # owning event id (quota bookkeeping)
 var hit_t := PackedFloat32Array()     # last blade hit time
+var born := PackedFloat32Array()      # animation feed: sim time it spawned
+var atk_t := PackedFloat32Array()     # ... it last attacked (contact or shot)
+var hit_at := PackedFloat32Array()    # ... it last flinched (at most every 0.7 s)
+var clock := 0.0                      # World.t, set each step
 # statuses: one stack count and one timer per DoT element, timers for the rest
 var burn := PackedFloat32Array()
 var burn_t := PackedFloat32Array()
@@ -65,7 +69,7 @@ func _init() -> void:
 		v.resize(CAP)
 		set(a, v)
 	for a in ["hp", "mhp", "shield", "spd", "rad", "dmg", "xp", "flash", "ai_t", "hit_t", "burn", "burn_t", "pois", "pois_t", "bleed", "bleed_t",
-			"chill_t", "shock_t", "freeze_t", "cond_t", "react_cd", "ee_t", "dot_acc"]:
+			"chill_t", "shock_t", "freeze_t", "cond_t", "react_cd", "ee_t", "dot_acc", "born", "atk_t", "hit_at"]:
 		var f: PackedFloat32Array = get(a)
 		f.resize(CAP)
 		set(a, f)
@@ -92,6 +96,7 @@ func add(k: int, p: Vector2, h: float, s: float, r: float, d: float, x: float, f
 	ai_t[i] = randf_range(1.0, 2.5); ai_s[i] = 0; kind[i] = k; flags[i] = fl; affix[i] = af; tag[i] = 0; hit_t[i] = -9.0
 	burn[i] = 0.0; burn_t[i] = 0.0; pois[i] = 0.0; pois_t[i] = 0.0; bleed[i] = 0.0; bleed_t[i] = 0.0
 	chill_t[i] = 0.0; shock_t[i] = 0.0; freeze_t[i] = 0.0; cond_t[i] = 0.0; react_cd[i] = 0.0; ee_t[i] = 0.0; ee_el[i] = -1; dot_acc[i] = 0.0
+	born[i] = clock; atk_t[i] = -9.0; hit_at[i] = -9.0
 	uid[i] = _uid_next
 	uid_index[_uid_next] = i
 	_uid_next += 1
@@ -108,6 +113,7 @@ func remove(i: int) -> void:
 		burn[i] = burn[l]; burn_t[i] = burn_t[l]; pois[i] = pois[l]; pois_t[i] = pois_t[l]; bleed[i] = bleed[l]; bleed_t[i] = bleed_t[l]
 		chill_t[i] = chill_t[l]; shock_t[i] = shock_t[l]; freeze_t[i] = freeze_t[l]; cond_t[i] = cond_t[l]; react_cd[i] = react_cd[l]
 		ee_t[i] = ee_t[l]; ee_el[i] = ee_el[l]; dot_acc[i] = dot_acc[l]
+		born[i] = born[l]; atk_t[i] = atk_t[l]; hit_at[i] = hit_at[l]
 		uid_index[uid[i]] = i
 	n = l
 
@@ -146,6 +152,7 @@ func take(i: int, amt: float) -> float:
 		amt -= ab
 	hp[i] -= amt
 	flash[i] = 0.1
+	if clock - hit_at[i] > 0.7: hit_at[i] = clock
 	return ab
 
 ## Elemental statuses. Returns true when the status was newly applied (used for reactions).
@@ -240,6 +247,7 @@ func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float, te
 					shots_out.append(p)
 					shots_out.append(m)
 					shots_out.append(dmg[i])
+					atk_t[i] = clock
 			elif k == Content.E.CHARGER:
 				ai_t[i] -= dt
 				if ai_s[i] == 0:

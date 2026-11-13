@@ -10,6 +10,11 @@ uniform float time = 0.0;
 uniform vec3 eye_col : source_color = vec3(1.0, 0.8, 0.35);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
 uniform bool colorblind = false;
+// Vertex animation texture (Models.foe_vat): row = frame, column = vertex (UV.x). INSTANCE_CUSTOM.x is then
+// the frame coordinate into it (the CPU picks the clip and time), blended between two rows.
+uniform bool has_vat = false;
+uniform sampler2D vat_pos : filter_nearest, repeat_disable;
+uniform sampler2D vat_nrm : filter_nearest, repeat_disable;
 varying flat float v_part;
 varying vec4 v_custom;
 varying vec3 v_mpos;
@@ -48,7 +53,15 @@ void vertex() {
 	float part = floor(UV2.x + 0.5);
 	float piv = UV2.y;
 	v_part = part;
-	if (INSTANCE_CUSTOM.z < 6.5) {                                  // corpses (7) are not animated
+	if (has_vat) {
+		ivec2 sz = textureSize(vat_pos, 0);
+		int vi = clamp(int(UV.x * float(sz.x)), 0, sz.x - 1);
+		float fr = clamp(INSTANCE_CUSTOM.x, 0.0, float(sz.y - 2));
+		int f0 = int(floor(fr));
+		VERTEX = mix(texelFetch(vat_pos, ivec2(vi, f0), 0).xyz, texelFetch(vat_pos, ivec2(vi, f0 + 1), 0).xyz, fr - float(f0));
+		NORMAL = normalize(texelFetch(vat_nrm, ivec2(vi, f0), 0).xyz * 2.0 - 1.0);
+		v_mpos = VERTEX;
+	} else if (INSTANCE_CUSTOM.z < 6.5) {                           // corpses (7) are not animated
 		float ph = INSTANCE_CUSTOM.x;
 		float flash = INSTANCE_CUSTOM.y;
 		bool frozen = INSTANCE_CUSTOM.z > 5.5;
@@ -82,7 +95,7 @@ void vertex() {
 	if (INSTANCE_CUSTOM.z > 6.5) {
 		// corpses sink into the ground as they fade (polish: the noise-holed crumble with glowing edges
 		// read as confetti from the game camera once a fight left dozens of bodies)
-		VERTEX.y -= INSTANCE_CUSTOM.y * 0.9;
+		VERTEX.y -= INSTANCE_CUSTOM.y * (has_vat ? 0.6 : 0.9);
 	}
 	// stand on the terrain under the instance's origin (elevation pass)
 	vec3 wo = MODEL_MATRIX[3].xyz;

@@ -30,6 +30,7 @@ func _ready() -> void:
 		_hoard_tests()
 		_prophecy_tests()
 		_daily_tests()
+		_anim_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -588,6 +589,37 @@ func _daily_tests() -> void:
 	w2.end_run(false)
 	ok(not w2.daily_best and int(Save.data.daily.best[w.daily_code]) == w.daily_score, "a worse run keeps the best")
 	Save.data.daily = dsv
+
+func _anim_tests() -> void:
+	print("== foe animation (vertex animation textures)")
+	for kind in ["grunt", "runner", "brute", "spitter", "splitter", "mini", "charger", "breach", "goblin"]:
+		var v := Models.foe_vat(kind)
+		var good := not v.is_empty()
+		if good:
+			var vc: PackedFloat32Array = v.clips
+			for sl in 5:
+				if vc[sl * 3 + 1] < 2.0 or vc[sl * 3 + 2] <= 0.0 or vc[sl * 3] + vc[sl * 3 + 1] + 1.0 > float(v.rows): good = false
+			if v.pos.get_width() != v.verts or v.pos.get_height() != v.rows: good = false
+		ok(good, "%s has walk, attack, hit, death and spawn clips inside its texture" % kind)
+	ok(not Models.foe_vat("grunt", 4).is_empty() and Models.foe_vat("grunt", 4) != Models.foe_vat("grunt"), "Act V's skeleton variant has its own clips")
+	ok(Models.foe_vat("exile").is_empty(), "kinds without a baked file fall back to the shader animation")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 61})
+	for k in 20: w.step(0.05)
+	var i := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(200, 0), 0, 0, 50.0)
+	ok(is_equal_approx(w.sw.born[i], w.t), "a foe remembers when it spawned")
+	w.sw.take(i, 1.0)
+	ok(is_equal_approx(w.sw.hit_at[i], w.t), "a hit starts a flinch")
+	var u := w.sw.uid[i]
+	w.step(0.05)
+	w.sw.take(w.sw.index_of(u), 1.0)
+	ok(w.sw.hit_at[w.sw.index_of(u)] < w.t, "but not again within 0.7 s")
+	var j := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(6, 0), 0, 0, 50.0)
+	var uj := w.sw.uid[j]
+	w.inv_t = 0.0
+	w.grid.build(w.sw)
+	w._contact()
+	ok(is_equal_approx(w.sw.atk_t[w.sw.index_of(uj)], w.t), "touching the hero plays the attack")
+	w.dispose()
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

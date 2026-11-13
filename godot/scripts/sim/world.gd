@@ -353,6 +353,7 @@ func _step(dt: float) -> void:
 		slow_t -= dt
 		dt *= 0.4
 	t += dt
+	sw.clock = t
 	Sfx.listener = pp
 	terrain.step(dt)
 	terrain.prefetch(pp, 3, 1)
@@ -739,6 +740,7 @@ func _contact() -> void:
 		if (sw.flags[i] & Swarm.F_ALLY) != 0 or sw.freeze_t[i] > 0.0 or sw.dmg[i] <= 0.0:
 			continue
 		if pp.distance_to(sw.pos[i]) < sw.rad[i] + 11.0:
+			if t - sw.atk_t[i] > 0.9: sw.atk_t[i] = t          # animation feed: it swings
 			var d := sw.dmg[i] * (0.8 if sw.pois[i] > 0.0 else 1.0)
 			if hurt_player(d, _src_name(i)) and (sw.affix[i] & Content.Aff.VAMPIRIC) != 0:
 				sw.heal(i, sw.mhp[i] * 0.12)
