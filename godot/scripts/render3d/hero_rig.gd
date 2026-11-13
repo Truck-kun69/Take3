@@ -71,6 +71,7 @@ func _prepare_override(n: Node) -> void:
 	if anim != null:
 		for nm in ["idle", "run", "walk"]:
 			if anim.has_animation(nm): anim.get_animation(nm).loop_mode = Animation.LOOP_LINEAR
+		_build_tree()
 	if _flash_shader == null:
 		_flash_shader = Shader.new()
 		_flash_shader.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform float flash = 0.0; void fragment(){ ALBEDO = vec3(1.0, 0.22, 0.12) * flash; }"
@@ -339,7 +340,7 @@ func animate(st: Dictionary, dt: float) -> void:
 	for m in _mats:
 		m.set_shader_parameter("flash", _hit * _hit * 0.9)
 	if override != null:
-		_animate_override(st)
+		_animate_override(st, dt)
 		return
 	var mv: float = st.mv
 	var ph: float = st.ph
@@ -388,14 +389,121 @@ func animate(st: Dictionary, dt: float) -> void:
 		rotation.z = -_dead * PI * 0.5
 		position.y = -_dead * 4.0
 
-func _animate_override(st: Dictionary) -> void:
+## Stride lengths the retarget measured (model units per cycle): playback follows ground speed.
+const STRIDE_WALK := 45.0
+const STRIDE_RUN := 69.5
+const UPPER := ["spine", "chest", "neck", "head", "upperarm.L", "forearm.L", "hand.L", "upperarm.R", "forearm.R", "hand.R"]
+const CAST_RATE := 2.3            # the slash lands ~0.2 s after the weapon fires
+var tree: AnimationTree
+var _v_walk := 43.0
+var _v_run := 85.0
+var _last_cast_age := 9.0
+var _cast_flip := 0
+var _roll_k := 0.0
+var _spd := 0.0
+var _was_hit := false
+
+## idle/walk/run blended by speed -> upper-body cast layer (cast while running) -> full-body cast
+## (standing) -> roll (scrubbed by the dodge timer) -> hit flinch -> death.
+func _build_tree() -> void:
+	if anim == null or not anim.has_animation("walk") or not anim.has_animation("run"): return
+	for nm in ["cast", "cast2", "roll", "hit", "die"]:
+		if not anim.has_animation(nm): return
+	_v_walk = STRIDE_WALK / anim.get_animation("walk").length
+	_v_run = STRIDE_RUN / anim.get_animation("run").length
+	var bt := AnimationNodeBlendTree.new()
+	var loco := AnimationNodeBlendSpace1D.new()
+	loco.min_space = 0.0; loco.max_space = _v_run; loco.sync = true
+	loco.add_blend_point(_clip("idle"), 0.0, -1, "idle")
+	loco.add_blend_point(_clip("walk"), _v_walk, -1, "walk")
+	loco.add_blend_point(_clip("run"), _v_run, -1, "run")
+	bt.add_node("loco", loco)
+	bt.add_node("rate", AnimationNodeTimeScale.new())
+	bt.connect_node("rate", 0, "loco")
+	var prev := "rate"
+	for layer in ["up", "full"]:
+		var pick := AnimationNodeTransition.new()
+		pick.xfade_time = 0.0
+		pick.add_input("a"); pick.add_input("b")
+		bt.add_node("pick_" + layer, pick)
+		bt.add_node("c1_" + layer, _clip("cast")); bt.add_node("c2_" + layer, _clip("cast2"))
+		bt.connect_node("pick_" + layer, 0, "c1_" + layer); bt.connect_node("pick_" + layer, 1, "c2_" + layer)
+		bt.add_node("crate_" + layer, AnimationNodeTimeScale.new())
+		bt.connect_node("crate_" + layer, 0, "pick_" + layer)
+		var os := AnimationNodeOneShot.new()
+		os.fadein_time = 0.06; os.fadeout_time = 0.16
+		if layer == "up":
+			os.filter_enabled = true
+			var ca := anim.get_animation("cast")
+			for ti in ca.get_track_count():
+				var tp := ca.track_get_path(ti)
+				if UPPER.has(String(tp.get_concatenated_subnames())): os.set_filter_path(tp, true)
+		bt.add_node("cast_" + layer, os)
+		bt.connect_node("cast_" + layer, 0, prev); bt.connect_node("cast_" + layer, 1, "crate_" + layer)
+		prev = "cast_" + layer
+	bt.add_node("roll_clip", _clip("roll"))
+	bt.add_node("roll_seek", AnimationNodeTimeSeek.new()); bt.connect_node("roll_seek", 0, "roll_clip")
+	bt.add_node("roll", AnimationNodeBlend2.new())
+	bt.connect_node("roll", 0, prev); bt.connect_node("roll", 1, "roll_seek")
+	var hit := AnimationNodeOneShot.new()
+	hit.fadein_time = 0.05; hit.fadeout_time = 0.2
+	bt.add_node("hit_clip", _clip("hit")); bt.add_node("hit", hit)
+	bt.connect_node("hit", 0, "roll"); bt.connect_node("hit", 1, "hit_clip")
+	var life := AnimationNodeTransition.new()
+	life.xfade_time = 0.12
+	life.add_input("alive"); life.add_input("dead")
+	bt.add_node("die_clip", _clip("die")); bt.add_node("life", life)
+	bt.connect_node("life", 0, "hit"); bt.connect_node("life", 1, "die_clip")
+	bt.connect_node("output", 0, "life")
+	tree = AnimationTree.new()
+	tree.tree_root = bt
+	anim.get_parent().add_child(tree)
+	tree.anim_player = tree.get_path_to(anim)
+	tree.active = true
+	for layer in ["up", "full"]: tree.set("parameters/crate_%s/scale" % layer, CAST_RATE)
+
+func _clip(nm: String) -> AnimationNodeAnimation:
+	var n := AnimationNodeAnimation.new()
+	n.animation = nm
+	return n
+
+func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 	var cast_k := sin(_cast * PI * 0.5)
 	for g in _glow_over:
 		(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * (1.0 + cast_k * 2.5 + 0.12 * sin(float(st.t) * 3.0))
 	if anim == null: return
 	var mv: float = st.mv
-	var want := "run" if mv > 0.2 else "idle"
 	var roll: float = st.roll
+	if tree != null:
+		# ground speed in model units: from the real displacement, so slows, knockbacks and stops all read
+		var sc := maxf(0.01, global_transform.basis.get_scale().x)
+		var raw := (position - _prev_pos).length() / maxf(dt, 0.001) / sc
+		_prev_pos = position
+		if raw > 900.0: raw = 0.0                                 # teleports are not strides
+		if st.has("gs"): raw = float(st.gs) / sc                  # viewers that hold the model in place
+		if mv < 0.05: raw = 0.0
+		_spd = lerpf(_spd, raw, minf(1.0, dt * 12.0))
+		tree.set("parameters/loco/blend_position", minf(_spd, _v_run))
+		tree.set("parameters/rate/scale", clampf(_spd / _v_run, 1.0, 1.9))
+		var age := float(st.cast_age)
+		if age < _last_cast_age and age < 0.3 and roll < 0.0 and not st.dead:
+			var layer := "up" if _spd > _v_walk * 0.5 else "full"
+			if not bool(tree.get("parameters/cast_up/active")) and not bool(tree.get("parameters/cast_full/active")):
+				_cast_flip = 1 - _cast_flip
+				tree.set("parameters/pick_%s/transition_request" % layer, "a" if _cast_flip == 0 else "b")
+				tree.set("parameters/cast_%s/request" % layer, AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+		_last_cast_age = age
+		_roll_k = move_toward(_roll_k, 1.0 if roll >= 0.0 else 0.0, dt * 12.0)
+		tree.set("parameters/roll/blend_amount", _roll_k)
+		if roll >= 0.0:
+			tree.set("parameters/roll_seek/seek_request", clampf(roll, 0.0, 0.98) * anim.get_animation("roll").length)
+		var hit_now := _hit > 0.5
+		if hit_now and not _was_hit and roll < 0.0: tree.set("parameters/hit/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+		_was_hit = hit_now
+		var life := "dead" if st.dead else "alive"
+		if tree.get("parameters/life/current_state") != life: tree.set("parameters/life/transition_request", life)
+		return
+	var want := "run" if mv > 0.2 else "idle"
 	if roll >= 0.0: want = "roll"
 	elif _hit > 0.5: want = "hit"
 	elif float(st.cast_age) < 0.3: want = "cast"

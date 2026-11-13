@@ -20,6 +20,10 @@ var char_mats: Array[ShaderMaterial] = []
 var core_cmat: ShaderMaterial
 var light: OmniLight3D
 var override: Node3D
+const WALK_SPEED := 69.0          # retargeted walk: 111.9 units per 1.62 s cycle
+var _prev_pos := Vector3.ZERO
+var _gs := 0.0
+var _has_stride := false
 var anim: AnimationPlayer
 var _yaw := 0.0
 var _ph := 0.0
@@ -39,6 +43,7 @@ func build(k: String, c: Color, slot: String) -> void:
 	if p != "" and load(p) is PackedScene:
 		override = load(p).instantiate()
 		add_child(override)
+		_has_stride = p.contains("tyrant_4")           # the only boss on retargeted clips so far
 		anim = override.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		_prepare_override(override)
 		return
@@ -214,7 +219,14 @@ func animate(st: Dictionary) -> void:
 			if st.attack: want = "attack"
 			elif fl0 > 0.85 and not busy and anim.current_animation != "hit": want = "hit"
 			elif busy or (anim.current_animation == "hit" and anim.is_playing()): want = anim.current_animation
-			if anim.has_animation(want) and (anim.current_animation != want or not anim.is_playing()): anim.play(want, 0.15)
+			# the walk cadence follows the boss's real ground speed (stride measured by the retarget); it idles when held
+			var sc := maxf(0.01, global_transform.basis.get_scale().x)
+			var gs := (position - _prev_pos).length() / maxf(dt, 0.001) / sc
+			_prev_pos = position
+			_gs = lerpf(_gs, gs if gs < 900.0 else 0.0, minf(1.0, dt * 6.0))
+			if want == "walk" and _gs < 6.0 and anim.has_animation("idle"): want = "idle"
+			if anim.has_animation(want) and (anim.current_animation != want or not anim.is_playing()): anim.play(want, 0.2)
+			anim.speed_scale = clampf(_gs / WALK_SPEED, 0.6, 1.8) if want == "walk" and _has_stride else 1.0
 		return
 	var fl := clampf(float(st.flash) * 10.0, 0.0, 1.0)
 	for m in char_mats:

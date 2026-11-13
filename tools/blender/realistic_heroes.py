@@ -30,6 +30,28 @@ from mathutils import Euler, Matrix, Vector
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import build_models as B  # noqa: E402
+import retarget as RT  # noqa: E402
+
+# Authored clips, retargeted from KayKit's CC0 skeleton library (pass --packs <dir>; without it the old
+# procedural sine clips are used). name: (source action, loop, first frame, last frame)
+KK_SRC = "KayKit-Character-Pack-Skeletons-1.0/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Warrior.glb"
+CLIPS_MELEE = {"idle": ("Idle", True, None, None), "walk": ("Walking_A", True, None, None), "run": ("Running_A", True, None, None),
+               "cast": ("1H_Melee_Attack_Slice_Horizontal", False, None, None), "cast2": ("1H_Melee_Attack_Chop", False, None, None),
+               "roll": ("Dodge_Forward", False, None, None), "hit": ("Hit_A", False, None, None), "die": ("Death_A", False, None, None)}
+CLIPS_CASTER = dict(CLIPS_MELEE, idle=("2H_Melee_Idle", True, None, None), cast=("Spellcast_Shoot", False, None, None), cast2=("Spellcast_Raise", False, 0, 30))
+CLIPS_BOSS = {"idle": ("2H_Melee_Idle", True, None, None), "walk": ("Walking_C", True, None, None), "attack": ("2H_Melee_Attack_Chop", False, None, None),
+              "hit": ("Hit_B", False, None, None), "die": ("Death_B", False, None, None)}
+
+def cape_fns():
+    """The cape has no counterpart in the source rig: a light procedural pose per clip (as the old clips had)."""
+    S, fwd = B.S, B.fwd
+    def still(t): return {"cape1": fwd(-0.06 - 0.03 * S(6.28 * t + 0.5)), "cape2": fwd(-0.04 * S(6.28 * t + 1.2)), "cape3": fwd(-0.05 * S(6.28 * t + 2.0))}
+    def moving(amt):
+        return lambda t: {"cape1": fwd(-amt - 0.08 * S(12.56 * t)), "cape2": fwd(-amt * 0.33 - 0.1 * S(12.56 * t + 1.0)), "cape3": fwd(-amt * 0.22 - 0.14 * S(12.56 * t + 2.0))}
+    def burst(t):
+        k = math.sin(math.pi * min(1.0, t * 1.4))
+        return {"cape1": fwd(-0.15 - 0.3 * k), "cape2": fwd(-0.12 * k), "cape3": fwd(-0.1 * k)}
+    return {"idle": still, "walk": moving(0.3), "run": moving(0.55), "cast": burst, "cast2": burst, "attack": burst, "roll": moving(0.8), "hit": burst, "die": still}
 
 MODELS = B.MODELS
 HEROES = {
@@ -478,7 +500,14 @@ def build(hero, cfg, gen):
         d = J[f"elbow.{sd}"] - J[f"shoulder.{sd}"]
         out = math.atan2(abs(d.y), -d.z)
         rig.base[f"upperarm.{sd}"] = (-sign * (out - 0.14), 0.0, 0.0)
-    if cfg.get("boss"):
+    packs = PACKS
+    if packs:
+        src, src_obs = RT.load_source(os.path.join(packs, KK_SRC))
+        clips = CLIPS_BOSS if cfg.get("boss") else (CLIPS_MELEE if hero == "warden" else CLIPS_CASTER)
+        strides = RT.retarget(rig, src, clips, cape_fns())
+        for o in src_obs: bpy.data.objects.remove(o)
+        print(f"STRIDES {hero}: " + ", ".join(f"{n} {v:.1f}" for n, v in strides.items() if n in ("walk", "run")))
+    elif cfg.get("boss"):
         B.boss_clips(rig, SC, heavy=1.2)                 # idle, walk, attack (wind-up, slam), hit, die
     else:
         B.hero_clips(rig, "R", s=1.0, stride=0.55)      # long robes and capes read better with a shorter stride
@@ -496,8 +525,16 @@ def build(hero, cfg, gen):
     print(f"HERO {hero}: {tris} tris, arm offsets L {rig.base['upperarm.L'][0]:.2f} R {rig.base['upperarm.R'][0]:.2f} -> {path}")
 
 
+PACKS = ""
+
 if __name__ == "__main__":
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if "--packs" in argv:
+        PACKS = argv[argv.index("--packs") + 1]
+        del argv[argv.index("--packs"):argv.index("--packs") + 2]
+    if "--out" in argv:                    # build somewhere else (to compare against the shipped models)
+        MODELS = argv[argv.index("--out") + 1]
+        del argv[argv.index("--out"):argv.index("--out") + 2]
     gen = argv[0]
     for h in (argv[1:] or list(HEROES)):
         build(h, HEROES[h], gen)

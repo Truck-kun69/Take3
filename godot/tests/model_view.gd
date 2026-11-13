@@ -118,6 +118,22 @@ func _ready() -> void:
 					var mi := MeshInstance3D.new(); mi.mesh = Models.prop_mesh(kinds3[k]); mi.material_override = pmat
 					mi.position = Vector3(k * 90.0 + j * 40.0, 0, -j * 50.0); mi.rotation.y = j * 2.1
 					add_child(mi)
+		"strip":
+			# one authored clip of a hero or boss as six frames, seen three-quarter from the front
+			var sid := a[2] if a.size() > 2 else "warden"
+			var clip := a[3] if a.size() > 3 else "run"
+			var folder := "heroes" if Models.find_asset("heroes", sid) != "" else "bosses"
+			var big := 1.0 if folder == "heroes" else 2.6
+			cam.position = Vector3(140, 50, 200) * big; cam.look_at(Vector3(140, 24, 0) * big)
+			cam.fov = 24
+			for i in 6:
+				var n: Node3D = load(Models.find_asset(folder, sid)).instantiate()
+				add_child(n)
+				n.position = Vector3(i * 56.0 * big, 0, 0); n.rotation.y = -1.0
+				var ap := n.find_child("AnimationPlayer", true, false) as AnimationPlayer
+				if ap != null and ap.has_animation(clip):
+					ap.play(clip); ap.speed_scale = 0.0
+					ap.seek(ap.get_animation(clip).length * (i / 6.0 if a.size() < 5 else i / 5.0 * 0.999), true)
 		"one", "boss":
 			# close-up of one model in four states: idle (front), run (three-quarter), cast, roll/attack
 			var id := a[2] if a.size() > 2 else "warden"
@@ -147,7 +163,7 @@ func _process(dt: float) -> void:
 			var faces := [Vector2(0.05, 1), Vector2(0.9, 0.6), Vector2(-0.3, 1), Vector2(1, 0.15)]
 			r.animate({"pos": rigs[i][1], "face": faces[i].normalized(), "mv": 1.0 if i == 1 else 0.0, "ph": t * 10.0,
 				"cast_age": fmod(t, 0.9) if i == 2 else 9.0, "cast_dir": faces[i].normalized(), "roll": 0.3 if i == 3 else -1.0,
-				"hit": 0.0, "dead": false, "t": t}, dt)
+				"hit": 0.0, "dead": false, "t": t, "gs": 195.0 if i == 1 else 0.0}, dt)
 		elif r is BossRig and mode == "boss":
 			r.animate({"pos": rigs[i][1], "face": [Vector2(0.05, 1), Vector2(0.9, 0.6), Vector2(-0.3, 1), Vector2(1, 0.15)][i].normalized(), "hp_frac": 1.0,
 				"flash": 0.0, "t": t, "dt": dt, "attack": i == 2 and fmod(t, 1.5) < dt, "phase": 1})
