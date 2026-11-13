@@ -36,6 +36,7 @@ func _ready() -> void:
 	var g := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(3000, 3000); g.mesh = pm
 	var gm := ShaderMaterial.new(); gm.shader = load("res://shaders/3d/terrain.gdshader")
 	gm.set_shader_parameter("c0", Color("2a1210")); gm.set_shader_parameter("c1", Color("4a2019")); gm.set_shader_parameter("c2", Color("6a2a18")); gm.set_shader_parameter("acc", Color("ff9a3c"))
+	WorldView3D.apply_ground(gm, 1)
 	g.material_override = gm
 	add_child(g)
 	var cam := Camera3D.new()

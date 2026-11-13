@@ -103,7 +103,9 @@ func _render_scale() -> void:
 	match opt:
 		0:
 			s = 0.75 if (OS.has_feature("mobile") or OS.has_feature("web")) else 1.0
-			if Quality.high() and OS.has_feature("mobile"): s = 0.85        # High on a phone: closer to native, FSR sharpened
+			# flagship phones render at native resolution with MSAA: a scaled image is upsampled with a plain
+			# bilinear filter on the Mobile renderer (no FSR), which is where much of the soft, grainy look came from
+			if Quality.high() and OS.has_feature("mobile"): s = 1.0
 		2: s = 0.75
 		3: s = 0.5
 	var vp := get_viewport()

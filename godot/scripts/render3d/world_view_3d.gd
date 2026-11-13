@@ -11,9 +11,9 @@ extends Node3D
 ## gems 1, debris 1, projectiles 1, blades 1, pickups 4, beams 1, lightning 1, decal pool <= 96.
 
 const STAGE_LOOK := [
-	{"sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 60, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
-	{"sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 10, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
-	{"sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 20, "crystal": 1, "pillar": 2.5, "bones": 4}},
+	{"sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 34, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
+	{"sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 8, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
+	{"sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 14, "crystal": 1, "pillar": 2.5, "bones": 4}},
 	{"sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 8, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
 	{"sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85), "props": {"tree": 0.9, "rock": 2.5, "grass": 6, "crystal": 0.8, "pillar": 2.2, "bones": 1.5}}
 ]
@@ -27,6 +27,7 @@ const FOE_STRIDE := 20
 
 var w: World
 var cam: Camera3D
+var test_nudge := Vector3.ZERO      # tests/shimmer.gd moves the camera by a fraction of a pixel
 var env: Environment
 var sun: DirectionalLight3D
 var torch: OmniLight3D
@@ -205,6 +206,21 @@ void fragment() {
 	_aura_mm.material_override = asm
 	_aura_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_aura_mm)
+	# contact shadows: one soft blob per foe
+	_blob_mm = MultiMeshInstance3D.new()
+	var bmm := MultiMesh.new()
+	bmm.transform_format = MultiMesh.TRANSFORM_2D
+	var bq := QuadMesh.new(); bq.size = Vector2(2, 2)
+	bmm.mesh = bq
+	bmm.instance_count = Swarm.CAP
+	bmm.visible_instance_count = 0
+	bmm.custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))
+	_blob_mm.multimesh = bmm
+	var bsm := ShaderMaterial.new(); bsm.shader = load("res://shaders/3d/blob.gdshader")
+	_blob_mm.material_override = bsm
+	_blob_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_blob_mm)
+	_bb.resize(Swarm.CAP * 8)
 
 func _ground_mesh() -> void:
 	GROUND_Q = Quality.ground_q()
@@ -213,6 +229,18 @@ func _ground_mesh() -> void:
 	pm.subdivide_width = int(GROUND_SIZE / GROUND_Q) - 1
 	pm.subdivide_depth = int(GROUND_SIZE / GROUND_Q) - 1
 	ground.mesh = pm
+
+## Two tiling CC0 texture sets per act: [base, patches]. The shader blends and tints them.
+const GROUND_SETS := [["grass", "cobble_moss"], ["mulch", "rock"], ["rock", "cobble"], ["slate", "gravel"], ["mossdirt", "cobble_moss"]]
+static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
+	var gs: Array = GROUND_SETS[clampi(stage, 0, GROUND_SETS.size() - 1)]
+	var ok := ResourceLoader.exists("res://textures/terrain/%s.jpg" % gs[0])
+	mat.set_shader_parameter("has_tex", ok)
+	if not ok: return
+	mat.set_shader_parameter("tex_a", load("res://textures/terrain/%s.jpg" % gs[0]))
+	mat.set_shader_parameter("tex_b", load("res://textures/terrain/%s.jpg" % gs[1]))
+	mat.set_shader_parameter("nrm_a", load("res://textures/terrain/%s_n.jpg" % gs[0]))
+	mat.set_shader_parameter("nrm_b", load("res://textures/terrain/%s_n.jpg" % gs[1]))
 
 func bind(world: World) -> void:
 	w = world
@@ -224,9 +252,7 @@ func bind(world: World) -> void:
 	terrain_mat.set_shader_parameter("c2", Content.col(s.g2))
 	terrain_mat.set_shader_parameter("acc", Content.col(s.acc))
 	terrain_mat.set_shader_parameter("octaves", [3, 5, 6][Quality.tier()])
-	var tex_path := "res://textures/terrain/%d.png" % w.stage
-	terrain_mat.set_shader_parameter("has_tex", ResourceLoader.exists(tex_path))
-	if ResourceLoader.exists(tex_path): terrain_mat.set_shader_parameter("albedo_tex", load(tex_path))
+	apply_ground(terrain_mat, w.stage)
 	for fm in foe_mats:
 		fm.set_shader_parameter("eye_col", _look.eye)
 		fm.set_shader_parameter("glow_col", Content.col(s.acc))
@@ -359,7 +385,7 @@ func _camera(dt: float) -> void:
 	var off := Vector3(0, sin(pitch), cos(pitch)) * dist
 	var tr := w.shake * w.shake * float(Save.opt("shake"))
 	var shake := Vector3(sin(time * 53.0), sin(time * 41.0) * 0.6, cos(time * 47.0)) * tr * 16.0
-	cam.position = _cam_target + off + shake
+	cam.position = _cam_target + off + shake + test_nudge
 	cam.look_at(_cam_target + shake * 0.5, Vector3.UP)
 	cam.rotate_object_local(Vector3.FORWARD, sin(time * 37.0) * tr * 0.012)
 	ground.position = Vector3(snappedf(_cam_target.x, GROUND_Q), 0, snappedf(_cam_target.z, GROUND_Q))
@@ -569,6 +595,8 @@ func _build_cell(c: Vector2i) -> Node3D:
 ## Writing into an element of an Array of PackedFloat32Arrays would copy the whole array per write
 ## (copy-on-write through a temporary), so per-kind buffers are only sliced out at upload time.
 var _fb := PackedFloat32Array()
+var _blob_mm: MultiMeshInstance3D
+var _bb := PackedFloat32Array()      # blob shadows: 2D transform per foe
 
 func _foes() -> void:
 	var sw := w.sw
@@ -576,6 +604,7 @@ func _foes() -> void:
 	if _fb.size() != span * _foe_mm.size():
 		_fb.resize(span * _foe_mm.size())
 	_foe_n.fill(0)
+	var nb := 0
 	var cull := w.view_r + 60.0
 	var gl := w.gloom()
 	var dark_r := lerpf(2000.0, 280.0, gl) if gl > 0.05 else INF     # beyond the lantern's reach, foes are unseen
@@ -628,6 +657,10 @@ func _foes() -> void:
 		_fb[o + 18] = _status_code(i)
 		_fb[o + 19] = float(f & 0xff)
 		_foe_n[k] = n + 1
+		var bo := nb * 8
+		var br := sw.rad[i] * 1.15
+		_bb[bo] = br; _bb[bo + 1] = 0.0; _bb[bo + 3] = p.x; _bb[bo + 4] = 0.0; _bb[bo + 5] = br; _bb[bo + 7] = p.y
+		nb += 1
 		if (f & Swarm.F_ELITE) != 0 and dpl < 520.0:
 			var naff := 0
 			var af := sw.affix[i]
@@ -636,6 +669,8 @@ func _foes() -> void:
 				af >>= 1
 			_aura(p, sw.rad[i] * 2.2, Color("ffb02e") if naff >= 2 else Color("4f86ff"))
 	_corpses()
+	_blob_mm.multimesh.buffer = _bb
+	_blob_mm.multimesh.visible_instance_count = nb
 	var amm := _aura_mm.multimesh
 	amm.visible_instance_count = _aura_n
 	_aura_n = 0

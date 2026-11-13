@@ -251,8 +251,10 @@ static func _build_prop(kind: String) -> ArrayMesh:
 			k.add("sphere", Vector3(0, 4, 0), Vector3(8, 7, 8), Color(0.88, 0.85, 0.78))
 			k.add("capsule", Vector3(9, 1.5, 3), Vector3(2, 6, 2), Color(0.85, 0.82, 0.75), 0, 0, Vector3(0, 0.5, 1.57))
 			k.add("capsule", Vector3(-6, 1.5, -5), Vector3(2, 5, 2), Color(0.85, 0.82, 0.75), 0, 0, Vector3(0, -0.8, 1.57))
-		"grass":     # tuft of blades (tail channel sways in the wind)
-			for i in 7:
-				var a := TAU * i / 7.0
-				k.add("cone", Vector3(cos(a) * 3.0, 5, sin(a) * 3.0), Vector3(1.6, 10 + (i % 3) * 3, 1.0), Color(0.8, 0.85, 0.7), MeshKit.PART_TAIL, 0, Vector3(sin(a) * 0.3, a, -cos(a) * 0.3), 4)
+		"grass":     # a clump of five broad blades (tail channel sways in the wind). Each blade is several
+			# pixels wide from the game camera: the earlier seven thin cones were under a pixel and read as noise
+			for i in 5:
+				var a := TAU * i / 5.0 + 0.4
+				var hgt := 11.0 + (i % 3) * 3.5
+				k.add("cone", Vector3(cos(a) * 3.5, hgt * 0.45, sin(a) * 3.5), Vector3(5.0, hgt, 1.6), Color(0.62, 0.72, 0.5) if i % 2 == 0 else Color(0.8, 0.86, 0.66), MeshKit.PART_TAIL, 0, Vector3(sin(a) * 0.45, a, -cos(a) * 0.45), 3)
 	return k.commit()

@@ -57,6 +57,7 @@ func _ready() -> void:
 	terrain_mat.shader = load("res://shaders/3d/terrain.gdshader")
 	terrain_mat.set_shader_parameter("c0", Color("15131f")); terrain_mat.set_shader_parameter("c1", Color("2c2942"))
 	terrain_mat.set_shader_parameter("c2", Color("3a3658")); terrain_mat.set_shader_parameter("acc", Color("8fd8ff"))
+	WorldView3D.apply_ground(terrain_mat, 2)
 	var g := MeshInstance3D.new()
 	var pm := PlaneMesh.new(); pm.size = Vector2(1600, 1600)
 	g.mesh = pm
