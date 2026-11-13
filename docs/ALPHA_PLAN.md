@@ -4,7 +4,21 @@ This is the working plan for taking Shardfall from "runs on two phones" to an al
 judge fairly. Every finding below is backed by something checked in the code, in a captured frame or
 in a cited source. Anything not yet verified is marked **unverified**.
 
-## 1. Critique: where the game actually stands
+## 0. Status (13 Nov 2026, build 0.9.0-alpha)
+
+| Milestone | State | What was done | What is still open |
+|---|---|---|---|
+| M0 Measure | Done, except device numbers | Clip filmstrips (`tests/model_view` modes `foe`, `strip`); `tests/shimmer`; `tests/view_bench` | Benchmark screenshots from the S22 and A05 on this build |
+| M1 Animation | Done | Foes play the packs' own clips from vertex animation textures. Heroes and the Act V boss play CC0 KayKit clips retargeted in Blender (`tools/blender/retarget.py`), through an `AnimationTree`: speed-matched idle/walk/run, attacks while running, dodge, hit, death | Meshy rigging was not usable: fal's synchronous endpoint times out after 30 s and the queue endpoint is not authorised for this session's key. The three older procedural bosses (acts I to IV) still use sine-wave clips. No fingers or foot IK |
+| M2 Image | Done | Mipmapped CC0 ground textures per act, broad grass, contact shadows, native resolution + MSAA on flagship phones | Heroes are realistic and foes low-poly: the style gap remains. The shimmer metric read the same before and after (0.30 vs 0.35), so on this software renderer the old ground was dark and low-contrast rather than aliased; whether phones still shimmer needs a screen recording |
+| M3 Performance | Partly | Measured: 3.3 ms simulation + 2.2 ms view at 680 foes on the build server. Grunt cut from 1,130 to 703 triangles. Cheaper ground shader | No C++ extension and no sprite impostors: the measurements did not show the CPU as the limit, and the GPU side cannot be measured here. Decide from device numbers |
+| M4 Replayability | Mostly | 13 weapons, any-pair fusions, 8-minute acts, Rift Champions at each third, unlock track with a Codex page | No new regular foe behaviours (shielded, summoner, leaper). Boss life was raised 2.2x for the long acts; bots now take 9 to 43 s, which still needs a human check |
+| M5 Audio | Done | 33 generated sound effects and five looping act tracks in the override slots | Nobody has listened to them yet: I cannot hear audio. Levels were matched by peak, not by ear. No menu or boss music |
+| M6 Infrastructure | Done, except Play Console | CI workflow (tests, both APKs, bundle when the key is set), `docs/RELEASE.md` | Release key and secrets (owner), Play Console (owner), Firebase Test Lab |
+
+fal spend for this plan: about $0.60 (five Lyria tracks, 33 short sound effects, one image test).
+
+## 1. Critique: where the game stood before this plan
 
 ### Animation (the worst area)
 

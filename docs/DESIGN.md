@@ -2,7 +2,7 @@
 
 The original single-file HTML game (`reference/shardfall_survivors_web.html`, ~5,900 lines of
 canvas + three.js) was re-built as a Godot 4.7 project in `godot/`. The core loop is the same
-(auto-firing weapons, a swarm, XP gems, level-up cards, a boss at 2:30) and the four heroes, four
+(auto-firing weapons, a swarm, XP gems, level-up cards, Rift Champions at each third of an 8-minute act, then its boss) and the four heroes, four
 weapons, four stages, elemental perks and elite affixes were carried over. Around it sit 20 new or
 reworked systems, then three rounds of measured critique and fixes.
 

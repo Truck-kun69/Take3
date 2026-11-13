@@ -41,7 +41,7 @@ func spawn_stage_boss(twin: bool) -> void:
 	var s: Dictionary = Content.STAGES[w.stage]
 	var n := 2 if twin else 1
 	for k in n:
-		var i := w.sw.add(Content.E.BOSS, arrival_point(), 1400.0 * w.hp_mult() * (0.62 if twin else 1.0), 46.0 * w.spd_mult(), 36.0, 16.0, 0.0, Swarm.F_BOSS, 0)
+		var i := w.sw.add(Content.E.BOSS, arrival_point(), 1400.0 * w.hp_mult() * (0.62 if twin else 1.0) * (2.2 if w.pace < 1.0 else 1.0), 46.0 * w.spd_mult(), 36.0, 16.0, 0.0, Swarm.F_BOSS, 0)
 		if i < 0: continue
 		var u := w.sw.uid[i]
 		stage_uids.append(u)
