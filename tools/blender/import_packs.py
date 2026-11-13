@@ -37,17 +37,17 @@ QL = "quaternius_monsters/Blob/glTF"
 
 # kind -> source, pose, size (procedural foe height), triangle budget, shard crystals, extras
 FOES = {
-    "grunt":   {"src": f"{KK}/Characters/gltf/Skeleton_Minion.glb", "action": "Idle", "height": 2.1, "tris": 1000, "crystals": 3,
+    "grunt":   {"src": f"{KK}/Characters/gltf/Skeleton_Minion.glb", "action": "Idle", "height": 2.1, "tris": 560, "crystals": 3,
                 "weapon": (f"{KK}/Assets/gltf/Skeleton_Blade.gltf", "handslot.r")},
     "runner":  {"src": f"{QB}/Dino.blend", "action": "Idle", "height": 1.5, "tris": 800, "crystals": 4},
     "brute":   {"src": f"{QB}/Yeti.blend", "action": "Idle", "height": 2.6, "tris": 900, "crystals": 6},
-    "spitter": {"src": f"{QB}/Frog.blend", "action": "Idle", "height": 1.7, "tris": 800, "crystals": 3},
+    "spitter": {"src": f"{QB}/Frog.blend", "action": "Idle", "height": 1.7, "tris": 520, "crystals": 3},
     "charger": {"src": f"{QB}/Demon.blend", "action": "Idle", "height": 1.8, "tris": 800, "crystals": 4},
     "breach":  {"src": f"{QB}/Alien.blend", "action": "Idle", "height": 1.8, "tris": 800, "crystals": 2},
     "goblin":  {"src": f"{QB}/MushroomKing.blend", "action": "Idle", "height": 1.9, "tris": 900, "crystals": 3},
-    "splitter": {"src": f"{QL}/GreenSpikyBlob.gltf", "action": "Idle", "height": 2.0, "tris": 800, "crystals": 4},
+    "splitter": {"src": f"{QL}/GreenSpikyBlob.gltf", "action": "Idle", "height": 2.0, "tris": 560, "crystals": 4},
     # Act V, the Drowned Cathedral: drowned dead and fish-men (models/foes/<kind>_4 replace <kind> in that act)
-    "grunt_4": {"src": f"{KK}/Characters/gltf/Skeleton_Rogue.glb", "action": "Idle", "height": 2.1, "tris": 1000, "crystals": 2,
+    "grunt_4": {"src": f"{KK}/Characters/gltf/Skeleton_Rogue.glb", "action": "Idle", "height": 2.1, "tris": 560, "crystals": 2,
                 "weapon": (f"{KK}/Assets/gltf/Skeleton_Blade.gltf", "handslot.r")},
     "runner_4": {"src": f"{QB}/Fish.blend", "action": "Idle", "height": 1.6, "tris": 800, "crystals": 3},
     "mini":    {"src": f"{QL}/GreenBlob.gltf", "action": "Idle", "height": 1.0, "tris": 450, "crystals": 1},
