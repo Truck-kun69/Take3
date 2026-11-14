@@ -33,7 +33,7 @@ var sun: DirectionalLight3D
 var torch: OmniLight3D
 var key_light: OmniLight3D        # small fill on the camera side of the hero so the character always reads
 var light_pool: Array[OmniLight3D] = []
-var ground: MeshInstance3D
+var ground: Node3D                 # holds GROUND_TILES x GROUND_TILES mesh tiles
 var terrain_mat: ShaderMaterial
 var foe_mats: Array[ShaderMaterial] = []     # one per foe kind (same shader; each has its own animation texture)
 var _vc: Array = []                           # per kind: PackedFloat32Array of clip [first row, frames, fps] x 5, or empty
@@ -132,11 +132,8 @@ func _ready() -> void:
 	terrain_mat.shader = load("res://shaders/3d/terrain.gdshader")
 	# elevation pass: a grid of 20-unit quads that follows the camera (snapped to whole quads so it never
 	# swims) and is displaced by the terrain height texture in the vertex shader
-	ground = MeshInstance3D.new()
+	ground = Node3D.new()
 	_ground_mesh()
-	ground.material_override = terrain_mat
-	ground.custom_aabb = AABB(Vector3(-GROUND_SIZE * 0.5, -300, -GROUND_SIZE * 0.5), Vector3(GROUND_SIZE, 600, GROUND_SIZE))
-	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON      # hills shade the valleys
 	terrain_mat.set_shader_parameter("displace", true)
 	add_child(ground)
 	water = MeshInstance3D.new()
@@ -222,17 +219,57 @@ void fragment() {
 	add_child(_blob_mm)
 	_bb.resize(Swarm.CAP * 8)
 
+## The ground is a grid of separate mesh tiles, not one mesh. The Mobile renderer lights per mesh: as a
+## single 3000-unit plane, every ground pixel on screen evaluated every point light in the scene (the
+## S22 spent most of a late-fight frame there). A tile only computes the lights that reach it.
+const GROUND_TILES := 8
 func _ground_mesh() -> void:
 	GROUND_Q = Quality.ground_q()
+	for c in ground.get_children(): c.queue_free()
+	var cells := roundi(GROUND_SIZE / GROUND_TILES / GROUND_Q)       # whole quads per tile: seams share vertices
+	var ts := cells * GROUND_Q
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(GROUND_SIZE, GROUND_SIZE)
-	pm.subdivide_width = int(GROUND_SIZE / GROUND_Q) - 1
-	pm.subdivide_depth = int(GROUND_SIZE / GROUND_Q) - 1
-	ground.mesh = pm
+	pm.size = Vector2(ts, ts)
+	pm.subdivide_width = cells - 1
+	pm.subdivide_depth = cells - 1
+	for iz in GROUND_TILES:
+		for ix in GROUND_TILES:
+			var mi := MeshInstance3D.new()
+			mi.mesh = pm
+			mi.material_override = terrain_mat
+			mi.position = Vector3((ix - GROUND_TILES * 0.5 + 0.5) * ts, 0, (iz - GROUND_TILES * 0.5 + 0.5) * ts)
+			mi.custom_aabb = AABB(Vector3(-ts * 0.5, -300, -ts * 0.5), Vector3(ts, 600, ts))
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON      # hills shade the valleys
+			ground.add_child(mi)
 
 ## Two tiling CC0 texture sets per act: [base, patches]. The shader blends and tints them.
 const GROUND_SETS := [["grass", "cobble_moss"], ["mulch", "rock"], ["rock", "cobble"], ["slate", "gravel"], ["mossdirt", "cobble_moss"]]
+## Four independent, seamless fractal-noise fields in one 256x256 RGBA texture (built once, ~50 ms).
+static var _noise_tex: ImageTexture
+static func noise_tex() -> ImageTexture:
+	if _noise_tex != null: return _noise_tex
+	var chans: Array[PackedByteArray] = []
+	for c in 4:
+		var fn := FastNoiseLite.new()
+		fn.seed = 7 + c * 101
+		fn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		fn.frequency = 4.0 / 256.0
+		fn.fractal_octaves = 4
+		var im := fn.get_seamless_image(256, 256)
+		im.convert(Image.FORMAT_L8)
+		chans.append(im.get_data())
+	var data := PackedByteArray()
+	data.resize(256 * 256 * 4)
+	for i in 256 * 256:
+		data[i * 4] = chans[0][i]; data[i * 4 + 1] = chans[1][i]; data[i * 4 + 2] = chans[2][i]; data[i * 4 + 3] = chans[3][i]
+	var img := Image.create_from_data(256, 256, false, Image.FORMAT_RGBA8, data)
+	img.generate_mipmaps()
+	_noise_tex = ImageTexture.create_from_image(img)
+	return _noise_tex
+
 static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
+	mat.set_shader_parameter("noise_tex", noise_tex())
+	mat.set_shader_parameter("detail2", Quality.high())
 	var gs: Array = GROUND_SETS[clampi(stage, 0, GROUND_SETS.size() - 1)]
 	var ok := ResourceLoader.exists("res://textures/terrain/%s.jpg" % gs[0])
 	mat.set_shader_parameter("has_tex", ok)
@@ -251,7 +288,6 @@ func bind(world: World) -> void:
 	terrain_mat.set_shader_parameter("c1", Content.col(s.g1))
 	terrain_mat.set_shader_parameter("c2", Content.col(s.g2))
 	terrain_mat.set_shader_parameter("acc", Content.col(s.acc))
-	terrain_mat.set_shader_parameter("octaves", [3, 5, 6][Quality.tier()])
 	apply_ground(terrain_mat, w.stage)
 	for fm in foe_mats:
 		fm.set_shader_parameter("eye_col", _look.eye)
@@ -350,6 +386,9 @@ var _terr_on := true
 var _hi_on := true
 func _features() -> void:
 	sun.shadow_enabled = Quality.tier() >= 1 and Quality.on("sun_shadow")
+	# one shadow cascade below High: the camera looks down at a small patch, and every extra split is another
+	# scene pass plus a blend per pixel
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if Quality.high() else DirectionalLight3D.SHADOW_ORTHOGONAL
 	# the torch's omni shadow re-renders the scene around the hero (+865k triangles at 400 foes in the
 	# self-test): High tier only, and as a dual paraboloid (2 views) rather than a cube (6)
 	torch.shadow_enabled = Quality.tier() >= 2 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"

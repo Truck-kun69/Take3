@@ -109,7 +109,10 @@ func _render_scale() -> void:
 		2: s = 0.75
 		3: s = 0.5
 	var vp := get_viewport()
-	vp.scaling_3d_scale = s
+	_base_scale = s
+	_dyn_auto = opt == 0 and not RenderingServer.get_video_adapter_name().to_lower().contains("llvmpipe")
+	if not _dyn_auto: _dyn = 1.0
+	vp.scaling_3d_scale = s * _dyn
 	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	# FSR 1 exists only in Forward+ (the Mobile renderer warned and ignored it on the S22)
 	var fsr := RenderingServer.get_current_rendering_method() == "forward_plus" and s < 1.0
@@ -395,6 +398,37 @@ func _st_finish() -> void:
 	_menu()
 	screens.show_selftest(res)
 
+## Dynamic resolution (render scale on Auto): the frame is pixel-bound on phones, so when a fight drops
+## below ~70% of the target rate the 3D resolution steps down (to 55% at most), and creeps back up
+## once there is headroom. The UI always stays at full resolution. Not used in the benchmark.
+var _base_scale := 1.0
+var _dyn := 1.0
+var _dyn_auto := false
+var _dyn_acc := 0.0
+var _dyn_n := 0
+var _dyn_good := 0
+func _dyn_res(dt: float) -> void:
+	if not _dyn_auto: return
+	_dyn_acc += dt; _dyn_n += 1
+	if _dyn_acc < 1.2: return
+	var avg := _dyn_acc / _dyn_n
+	_dyn_acc = 0.0; _dyn_n = 0
+	var target := 1.0 / float(Engine.max_fps if Engine.max_fps > 0 else 60)
+	var was := _dyn
+	if avg > target * 1.4:
+		_dyn = maxf(0.55, _dyn - (0.15 if avg > target * 2.0 else 0.08))
+		_dyn_good = 0
+	elif avg < target * 1.12:
+		_dyn_good += 1
+		if _dyn_good >= 4:
+			_dyn = minf(1.0, _dyn + 0.05)
+			_dyn_good = 2
+	else:
+		_dyn_good = 0
+	if _dyn != was:
+		get_viewport().scaling_3d_scale = _base_scale * _dyn
+		Diag.mark("dyn res %.2f (avg %.1f ms)" % [_base_scale * _dyn, avg * 1000.0])
+
 func _process(dt: float) -> void:
 	if world == null:
 		return
@@ -408,6 +442,7 @@ func _process(dt: float) -> void:
 		_bench_step(dt)
 		return
 	if state == "play": Diag.beat(world, dt)
+	if state == "play": _dyn_res(dt)
 	if state == "play":
 		if not bot_drive:
 			world.in_move = touch.value if touch.stick_id >= 0 else Input.get_vector("move_left", "move_right", "move_up", "move_down")

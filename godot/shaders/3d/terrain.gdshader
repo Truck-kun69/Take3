@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode diffuse_burley, specular_schlick_ggx;
+render_mode diffuse_lambert, specular_schlick_ggx;
 // Ground in world space. Detail comes from two tiling, mipmapped CC0 texture sets per act (albedo +
 // normal), blended by a low-frequency mask and tinted by the act palette: the GPU filters them, so
 // the image stays stable under a moving camera. Noise is only used for broad, low-frequency variation
@@ -9,10 +9,13 @@ uniform vec3 c1 : source_color = vec3(0.1, 0.29, 0.17);
 uniform vec3 c2 : source_color = vec3(0.17, 0.48, 0.26);
 uniform vec3 acc : source_color = vec3(0.6, 0.8, 0.4);
 uniform float time = 0.0;
-uniform int octaves = 4;
+// four independent low-frequency noise fields in one small tiling texture (WorldView3D.noise_tex):
+// one filtered lookup replaces a dozen per-pixel hash evaluations (the S22 spent most of its frame here)
+uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
+uniform bool detail2 = false;        // High tier: sample each set at a second scale to hide the repeat
 uniform bool has_tex = false;
-uniform sampler2D tex_a : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D tex_b : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D tex_a : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D tex_b : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D nrm_a : filter_linear_mipmap, repeat_enable;
 uniform sampler2D nrm_b : filter_linear_mipmap, repeat_enable;
 uniform float tex_scale = 0.0045;       // one tile every ~220 world units
@@ -23,16 +26,6 @@ varying vec3 v_n;
 #include "res://shaders/3d/terrain_h.gdshaderinc"
 
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) {
-	vec2 i = floor(p); vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(h21(i), h21(i + vec2(1, 0)), u.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), u.x), u.y);
-}
-float fbm(vec2 p) {
-	float a = 0.5; float s = 0.0;
-	for (int i = 0; i < 6; i++) { if (i >= octaves) break; s += vn(p) * a; p = p * 2.03 + 17.0; a *= 0.5; }
-	return s;
-}
 // cellular distance for flagstones / cracks
 vec2 cell(vec2 p) {
 	vec2 i = floor(p); vec2 f = fract(p);
@@ -56,18 +49,23 @@ void vertex() {
 }
 void fragment() {
 	vec2 p = wp.xz;
-	float n = fbm(p / 420.0);
+	vec4 nz = texture(noise_tex, p / 1700.0);        // r: palette, g: stone patches, b: accents, a: dirt
+	float n = nz.r;
 	vec3 pal = mix(c0, c1, smoothstep(0.3, 0.62, n));
-	pal = mix(pal, c2, smoothstep(0.6, 0.85, vn(p / 260.0 + 9.0)) * 0.55);
-	float stones = smoothstep(0.42, 0.3, fbm(p / 400.0 + 3.0));      // paved / rocky patches
+	pal = mix(pal, c2, smoothstep(0.55, 0.8, nz.b) * 0.55);
+	float stones = smoothstep(0.45, 0.33, nz.g);      // paved / rocky patches
 	vec3 col; vec3 nw; float hc = 0.5;
 	if (has_tex) {
 		// each set is sampled at two scales and mixed: hides the repeat from the high camera
 		vec2 ua = p * tex_scale;
 		vec2 ub = vec2(p.y, -p.x) * tex_scale * 0.37 + 0.31;
-		float mixk = 0.35 + 0.3 * vn(p / 310.0 + 40.0);
-		vec3 a = mix(texture(tex_a, ua).rgb, texture(tex_a, ub).rgb, mixk);
-		vec3 b = mix(texture(tex_b, ua * 1.3).rgb, texture(tex_b, ub).rgb, mixk * 0.6);
+		vec3 a = texture(tex_a, ua).rgb;
+		vec3 b = texture(tex_b, ua * 1.3).rgb;
+		if (detail2) {
+			float mixk = 0.35 + 0.3 * nz.b;
+			a = mix(a, texture(tex_a, ub).rgb, mixk);
+			b = mix(b, texture(tex_b, ub).rgb, mixk * 0.6);
+		}
 		// the second set wins where the mask is high, breaking along the first set's dark crevices
 		float la = dot(a, vec3(0.33));
 		float k = smoothstep(0.35, 0.65, stones * 1.4 - la * 0.6 + 0.1);
@@ -84,16 +82,16 @@ void fragment() {
 		vec3 nn = mix(na, nb, k);
 		nw = normalize(vec3(nn.x * 1.3, nn.z, -nn.y * 1.3));
 	} else {
-		col = pal * (0.85 + 0.3 * vn(p / 40.0));
+		col = pal * (0.85 + 0.3 * nz.a);
 		nw = vec3(0.0, 1.0, 0.0);
 	}
 	// dirt paths and darker hollows break up the palette (broad, low-frequency only)
-	float dirt = smoothstep(0.45, 0.7, vn(p / 180.0 + 21.0));
+	float dirt = smoothstep(0.5, 0.72, nz.a);
 	col = mix(col, col * vec3(0.62, 0.55, 0.5), dirt * 0.5);
 	// elevation: steep faces turn to bare dark rock with strata, ground near the liquid is wet and dark
 	float slope = 1.0 - clamp(v_n.y, 0.0, 1.0);
 	float rock = smoothstep(0.28, 0.5, slope);
-	float strata = 0.75 + 0.25 * sin(wp.y * 0.55 + vn(p / 30.0) * 3.0);
+	float strata = 0.75 + 0.25 * sin(wp.y * 0.55 + nz.b * 6.0);
 	col = mix(col, mix(c0 * 0.9, vec3(0.2, 0.19, 0.2), 0.5) * strata, rock);
 	// read elevation from above: valleys darker and damper, ridges lighter and drier (critique 1: from the
 	// high camera, slope shading alone made hills invisible)
@@ -117,31 +115,33 @@ void fragment() {
 	nw = normalize(tt * nw.x * -1.0 + tn * nw.y + tb * nw.z);
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
 	// shard veins
-	float vf = fbm(p / 300.0 + 4.0) - 0.5;
+	vec4 nv = texture(noise_tex, p / 1150.0 + 0.37);
+	float vf = nv.a - 0.5;
 	float vw = max(fwidth(vf) * 1.5, 0.004);                          // never thinner than ~1.5 pixels: no crawling
-	float vein = smoothstep(vw, 0.0, abs(vf)) * smoothstep(0.55, 0.62, vn(p / 700.0 + 7.0));
+	float vein = smoothstep(vw, 0.0, abs(vf)) * smoothstep(0.5, 0.58, nv.r);
 	float rough = mix(mix(0.95, 0.6, stones), 0.25, shore);
 	vec3 emit = acc * vein * (0.2 + 0.14 * sin(time * 1.6 + p.x * 0.01 + p.y * 0.007));     // veins: an undertone, not a web of neon
 	// surfaces: oil, poison, blood pools; burning oil; crystallised poison (noisy edges, organic blobs)
 	vec4 sf = tsurf(p);
 	if (sf.r + sf.g + sf.b + sf.a > 0.02) {
-		float edge = (vn(p / 11.0) - 0.5) * 0.45;
+		vec4 ns = texture(noise_tex, p / 95.0);                 // fine noise, only inside surfaces
+		float edge = (ns.r - 0.5) * 0.6;
 		// spikes are encoded as oil + poison together (the two never share a cell)
 		float spk = smoothstep(0.32, 0.55, min(sf.r, sf.g) + edge);
 		float oil = smoothstep(0.32, 0.55, sf.r + edge) * (1.0 - spk);
 		float poi = smoothstep(0.32, 0.55, sf.g + edge) * (1.0 - spk);
 		float bld = smoothstep(0.32, 0.55, sf.b + edge);
 		float fire = smoothstep(0.3, 0.6, sf.a + edge * 0.6);
-		vec3 sheen = 0.5 + 0.5 * cos(6.2831 * (vec3(0.0, 0.33, 0.67) + vn(p / 30.0) * 1.5 + time * 0.05));
+		vec3 sheen = 0.5 + 0.5 * cos(6.2831 * (vec3(0.0, 0.33, 0.67) + ns.g * 1.5 + time * 0.05));
 		col = mix(col, vec3(0.025, 0.022, 0.02) + sheen * 0.05, oil * 0.92);
 		float orim = oil * (1.0 - smoothstep(0.55, 0.9, sf.r + edge));          // a lighter tide line at the edge
 		emit += (sheen * 0.03 + vec3(0.012)) * oil + vec3(0.07, 0.065, 0.05) * orim;
 		col = mix(col, vec3(0.16, 0.42, 0.06), poi * 0.85);
 		col = mix(col, vec3(0.2, 0.01, 0.012), bld * 0.88);
 		rough = mix(rough, 0.12, max(max(oil, bld), poi * 0.6));
-		float bub = smoothstep(0.75, 0.95, vn(p / 6.0 + vec2(time * 0.7, -time * 0.4)));
+		float bub = smoothstep(0.62, 0.78, texture(noise_tex, p / 50.0 + vec2(time * 0.09, -time * 0.05)).b);
 		emit += vec3(0.25, 0.9, 0.1) * poi * (0.12 + 0.35 * bub);
-		float fl = vn(p / 9.0 + vec2(0.0, -time * 2.4)) * 0.6 + vn(p / 4.0 + vec2(time * 1.3, -time * 3.1)) * 0.4;
+		float fl = texture(noise_tex, p / 75.0 + vec2(0.0, -time * 0.3)).g * 0.6 + texture(noise_tex, p / 33.0 + vec2(time * 0.16, -time * 0.4)).a * 0.4 + 0.12;
 		col = mix(col, vec3(0.04, 0.025, 0.02), fire);                          // charred, with licks of flame
 		float lick = pow(clamp(fl, 0.0, 1.0), 2.2);
 		emit += mix(vec3(0.5, 0.08, 0.01), vec3(1.0, 0.5, 0.12), lick) * fire * (0.15 + 1.5 * lick);

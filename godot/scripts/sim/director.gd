@@ -233,7 +233,10 @@ func _start_breach(ev: Dictionary) -> void:
 func _step_breach(ev: Dictionary, dt: float) -> void:
 	ev.r = minf(320.0, ev.r + 22.0 * dt)
 	ev.life -= dt
-	ev.acc += (5.0 + ev.t * 0.2) * dt
+	# a breach is a burst, not a second spawner: with 8-minute acts a strong build kept one open for minutes
+	# (kills extend it) while its rate climbed without limit, 4,500 kills from one breach on a tester's phone
+	if ev.t > 40.0: ev.life = minf(ev.life, 0.0)
+	ev.acc += minf(12.0, 5.0 + ev.t * 0.2) * dt
 	while ev.acc >= 1.0:
 		ev.acc -= 1.0
 		var i := _spawn_tagged(ev, Content.E.BREACH, _rand_in(ev.pos, ev.r), 1 if w.rng.randf() < 0.06 else 0, Swarm.F_BREACH)
