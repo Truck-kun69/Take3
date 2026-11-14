@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://behy1o17hhn0"
-path="res://.godot/imported/mossdirt_n.jpg-831b409ba4eac921833547eb9e09394c.ctex"
+path.s3tc="res://.godot/imported/mossdirt_n.jpg-831b409ba4eac921833547eb9e09394c.s3tc.ctex"
+path.etc2="res://.godot/imported/mossdirt_n.jpg-831b409ba4eac921833547eb9e09394c.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://textures/terrain/mossdirt_n.jpg"
-dest_files=["res://.godot/imported/mossdirt_n.jpg-831b409ba4eac921833547eb9e09394c.ctex"]
+dest_files=["res://.godot/imported/mossdirt_n.jpg-831b409ba4eac921833547eb9e09394c.s3tc.ctex", "res://.godot/imported/mossdirt_n.jpg-831b409ba4eac921833547eb9e09394c.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

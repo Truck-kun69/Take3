@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://54njtb8022h8"
-path="res://.godot/imported/cobble_moss_n.jpg-eb3626f3408cf595cd925c5308dcb7f3.ctex"
+path.s3tc="res://.godot/imported/cobble_moss_n.jpg-eb3626f3408cf595cd925c5308dcb7f3.s3tc.ctex"
+path.etc2="res://.godot/imported/cobble_moss_n.jpg-eb3626f3408cf595cd925c5308dcb7f3.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://textures/terrain/cobble_moss_n.jpg"
-dest_files=["res://.godot/imported/cobble_moss_n.jpg-eb3626f3408cf595cd925c5308dcb7f3.ctex"]
+dest_files=["res://.godot/imported/cobble_moss_n.jpg-eb3626f3408cf595cd925c5308dcb7f3.s3tc.ctex", "res://.godot/imported/cobble_moss_n.jpg-eb3626f3408cf595cd925c5308dcb7f3.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

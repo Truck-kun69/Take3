@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dhgpf2gfeod8b"
-path="res://.godot/imported/cobble.jpg-12b57b7209e8984db618c21489c0d773.ctex"
+path.s3tc="res://.godot/imported/cobble.jpg-12b57b7209e8984db618c21489c0d773.s3tc.ctex"
+path.etc2="res://.godot/imported/cobble.jpg-12b57b7209e8984db618c21489c0d773.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://textures/terrain/cobble.jpg"
-dest_files=["res://.godot/imported/cobble.jpg-12b57b7209e8984db618c21489c0d773.ctex"]
+dest_files=["res://.godot/imported/cobble.jpg-12b57b7209e8984db618c21489c0d773.s3tc.ctex", "res://.godot/imported/cobble.jpg-12b57b7209e8984db618c21489c0d773.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
