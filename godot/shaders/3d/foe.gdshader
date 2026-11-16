@@ -20,14 +20,7 @@ varying vec4 v_custom;
 varying vec3 v_mpos;
 #include "res://shaders/3d/terrain_h.gdshaderinc"
 
-float h31(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-float vn3(vec3 p) {
-	vec3 i = floor(p); vec3 f = fract(p);
-	vec3 u = f * f * (3.0 - 2.0 * f);
-	float a = mix(mix(h31(i), h31(i + vec3(1, 0, 0)), u.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), u.x), u.y);
-	float b = mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), u.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), u.x), u.y);
-	return mix(a, b, u.z);
-}
+global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
 
 vec3 status_col(float s) {
 	if (s < 0.5) return vec3(0.0);
@@ -109,8 +102,11 @@ void fragment() {
 	bool corpse = v_custom.z > 6.5;
 	// organic detail: mottled skin, darker crevices toward the feet, faint veins, per-foe variation
 	vec3 mp = v_mpos * 2.2 + seed * 1.37;
-	float n = vn3(mp) * 0.78 + vn3(mp * 2.3) * 0.22;     // polish: the fine octave shimmered as speckle from the game camera
-	float vein = smoothstep(0.03, 0.0, abs(vn3(mp * 1.3 + 9.0) - 0.5));
+	// one lookup in the shared noise texture (a sheared projection of the model position, so no axis
+	// shows stretching) replaces three 3D value noises = 24 hash evaluations per pixel of every foe
+	vec4 nz = texture(g_noise, (mp.xy + mp.z * vec2(0.71, 0.37)) * 0.2);
+	float n = clamp(0.5 + (nz.r - 0.5) * 1.25, 0.0, 1.0);
+	float vein = smoothstep(0.035, 0.0, abs(nz.b - 0.5));
 	// grim and dark (loop 1: foes read as clean pink plastic)
 	base = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))), 0.35) * 0.55;
 	base *= 0.68 + 0.5 * n;

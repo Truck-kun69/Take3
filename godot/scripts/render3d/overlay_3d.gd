@@ -94,6 +94,7 @@ func _draw() -> void:
 		var p3 := w.sw.pos[i]
 		if p3.distance_to(w.pp) > 420.0: continue
 		var sp4 := view.to_screen(p3, w.sw.rad[i] * 2.6 + 8.0)
+		if not on.has_point(sp4): continue            # off screen: no strings built, nothing drawn
 		if (f & Swarm.F_EXILE) != 0:
 			_text(sp4 + Vector2(0, -12), w.bosses.exile_name, Color("ff8a2b"), 16, 5, f_name)
 			_bar(sp4, 70.0, w.sw.hp[i] / w.sw.mhp[i], Color("ff8a2b"))
@@ -108,6 +109,8 @@ func _draw() -> void:
 	for e in w.texts:
 		var life := 1.0 if e.tier == 3 else 0.65
 		var k: float = e.t / life
+		var sp5 := view.to_screen(e.pos, 30.0) + Vector2(0, -46.0 * k - (16.0 if e.tier == 3 else 0.0))
+		if not on.has_point(sp5): continue            # off screen: skip the formatting and the outlined draw
 		var col: Color = e.col
 		var size := 17
 		var txt := ""
@@ -119,7 +122,6 @@ func _draw() -> void:
 			4: txt = str(int(round(e.v))); size = 14
 		if txt == "0" or txt == "": continue
 		col.a = 1.0 - maxf(0.0, k - 0.55) * 2.2
-		var sp5 := view.to_screen(e.pos, 30.0) + Vector2(0, -46.0 * k - (16.0 if e.tier == 3 else 0.0))
 		var pop := 1.0 + (0.45 * (1.0 - minf(1.0, k * 7.0)) if e.tier == 1 else 0.15 * (1.0 - minf(1.0, k * 8.0)))
 		_text(sp5, txt, col, int(size * pop), 6 if e.tier == 1 else 5, f_name if e.tier == 3 else font)
 

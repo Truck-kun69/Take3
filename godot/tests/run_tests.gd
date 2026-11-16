@@ -32,6 +32,7 @@ func _ready() -> void:
 		_daily_tests()
 		_anim_tests()
 		_alpha_weapon_tests()
+		_v7_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -642,6 +643,53 @@ func _alpha_weapon_tests() -> void:
 	ok(offered.has("lance") and not offered.has("meteor"), "level-ups offer unlocked weapons only")
 	ok(Content.fusion_def(Content.fusion_key("lance", "meteor")).name != "", "any two weapons have a fusion")
 	Save.data = keep
+
+func _v7_tests() -> void:
+	print("== roll curve, action buffers")
+	var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 21})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	for f in 30: w.step(1.0 / 120.0)
+	w.in_move = Vector2.RIGHT
+	var spd := w.stats.value("move_speed", float(Content.HEROES[0].spd))
+	var p0 := w.pp
+	w.in_roll = true
+	var half := 0.0
+	var steps := 0
+	w.step(1.0 / 240.0)
+	while w.roll_t > 0.0 and steps < 400:
+		w.step(1.0 / 240.0)
+		steps += 1
+		if half == 0.0 and w.roll_t <= World.ROLL_TIME * 0.5: half = w.pp.distance_to(p0)
+	var dist := w.pp.distance_to(p0)
+	var flat := spd * 2.6 * World.ROLL_TIME
+	ok(absf(dist - flat) / flat < 0.08, "a roll still covers the old distance (%.0f vs %.0f)" % [dist, flat])
+	ok(half / dist > 0.56, "most of it in the first half (%.0f%%)" % (100.0 * half / dist))
+	var u := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 22})
+	u.stats.set_source("t", [["max_hp", "add", 1e6]]); u.hp = 1e6
+	for f in 10: u.step(1.0 / 60.0)
+	u.ult = 99.0
+	u.in_ult = true
+	u.step(1.0 / 60.0)
+	ok(u.ult_buffer > 0.0 and u.ult >= 99.0, "an early ultimate press is held, not dropped")
+	u.ult = 100.0
+	u.step(1.0 / 60.0)
+	ok(u.ult < 50.0 and u.ult_buffer == 0.0, "and fires as soon as the charge is full")
+	u.ult = 20.0
+	u.in_ult = true
+	for f in 12: u.step(1.0 / 60.0)
+	ok(u.ult_buffer <= 0.0, "the buffer expires after 0.12 s")
+	u.ult = 100.0
+	u.step(1.0 / 60.0)
+	ok(u.ult >= 100.0, "an expired press does not fire later")
+	var h := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 23})
+	for f in 10: h.step(1.0 / 60.0)
+	h.hitstop = 0.1
+	h.in_roll = true
+	for f in 3: h.step(1.0 / 60.0)
+	ok(h.in_roll, "a press during a hit-stop stays latched")
+	for f in 8: h.step(1.0 / 60.0)
+	ok(h.roll_t > 0.0 or h.roll_cd > 0.0, "and rolls when the hit-stop ends")
+	ok(Sfx.CRITICAL.has("boss") and Sfx.CRITICAL.has("level") and not Sfx.CRITICAL.has("impact"), "boss and level-up cues are exempt from the per-frame sound cap")
 
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")

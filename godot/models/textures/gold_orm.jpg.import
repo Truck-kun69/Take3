@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bobmf4aiav3a"
-path="res://.godot/imported/gold_orm.jpg-4ce8f7300739178df93517ed1aeae0bb.ctex"
+path.s3tc="res://.godot/imported/gold_orm.jpg-4ce8f7300739178df93517ed1aeae0bb.s3tc.ctex"
+path.etc2="res://.godot/imported/gold_orm.jpg-4ce8f7300739178df93517ed1aeae0bb.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://models/textures/gold_orm.jpg"
-dest_files=["res://.godot/imported/gold_orm.jpg-4ce8f7300739178df93517ed1aeae0bb.ctex"]
+dest_files=["res://.godot/imported/gold_orm.jpg-4ce8f7300739178df93517ed1aeae0bb.s3tc.ctex", "res://.godot/imported/gold_orm.jpg-4ce8f7300739178df93517ed1aeae0bb.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.82
 compress/uastc_level=0

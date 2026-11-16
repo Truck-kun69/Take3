@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bnvlvcr6p6eo5"
-path="res://.godot/imported/steel_orm.jpg-2b792fe80d142a1893ebc60460d69f4c.ctex"
+path.s3tc="res://.godot/imported/steel_orm.jpg-2b792fe80d142a1893ebc60460d69f4c.s3tc.ctex"
+path.etc2="res://.godot/imported/steel_orm.jpg-2b792fe80d142a1893ebc60460d69f4c.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://models/textures/steel_orm.jpg"
-dest_files=["res://.godot/imported/steel_orm.jpg-2b792fe80d142a1893ebc60460d69f4c.ctex"]
+dest_files=["res://.godot/imported/steel_orm.jpg-2b792fe80d142a1893ebc60460d69f4c.s3tc.ctex", "res://.godot/imported/steel_orm.jpg-2b792fe80d142a1893ebc60460d69f4c.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.82
 compress/uastc_level=0

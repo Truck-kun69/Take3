@@ -9,9 +9,9 @@ uniform vec3 c1 : source_color = vec3(0.1, 0.29, 0.17);
 uniform vec3 c2 : source_color = vec3(0.17, 0.48, 0.26);
 uniform vec3 acc : source_color = vec3(0.6, 0.8, 0.4);
 uniform float time = 0.0;
-// four independent low-frequency noise fields in one small tiling texture (WorldView3D.noise_tex):
+// four independent low-frequency noise fields in one small tiling texture (the global g_noise, built by WorldView3D.noise_tex):
 // one filtered lookup replaces a dozen per-pixel hash evaluations (the S22 spent most of its frame here)
-uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
+global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
 uniform bool detail2 = false;        // High tier: sample each set at a second scale to hide the repeat
 uniform bool has_tex = false;
 uniform sampler2D tex_a : source_color, filter_linear_mipmap, repeat_enable;
@@ -49,7 +49,7 @@ void vertex() {
 }
 void fragment() {
 	vec2 p = wp.xz;
-	vec4 nz = texture(noise_tex, p / 1700.0);        // r: palette, g: stone patches, b: accents, a: dirt
+	vec4 nz = texture(g_noise, p / 1700.0);        // r: palette, g: stone patches, b: accents, a: dirt
 	float n = nz.r;
 	vec3 pal = mix(c0, c1, smoothstep(0.3, 0.62, n));
 	pal = mix(pal, c2, smoothstep(0.55, 0.8, nz.b) * 0.55);
@@ -115,7 +115,7 @@ void fragment() {
 	nw = normalize(tt * nw.x * -1.0 + tn * nw.y + tb * nw.z);
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
 	// shard veins
-	vec4 nv = texture(noise_tex, p / 1150.0 + 0.37);
+	vec4 nv = texture(g_noise, p / 1150.0 + 0.37);
 	float vf = nv.a - 0.5;
 	float vw = max(fwidth(vf) * 1.5, 0.004);                          // never thinner than ~1.5 pixels: no crawling
 	float vein = smoothstep(vw, 0.0, abs(vf)) * smoothstep(0.5, 0.58, nv.r);
@@ -124,7 +124,7 @@ void fragment() {
 	// surfaces: oil, poison, blood pools; burning oil; crystallised poison (noisy edges, organic blobs)
 	vec4 sf = tsurf(p);
 	if (sf.r + sf.g + sf.b + sf.a > 0.02) {
-		vec4 ns = texture(noise_tex, p / 95.0);                 // fine noise, only inside surfaces
+		vec4 ns = texture(g_noise, p / 95.0);                 // fine noise, only inside surfaces
 		float edge = (ns.r - 0.5) * 0.6;
 		// spikes are encoded as oil + poison together (the two never share a cell)
 		float spk = smoothstep(0.32, 0.55, min(sf.r, sf.g) + edge);
@@ -139,14 +139,14 @@ void fragment() {
 		col = mix(col, vec3(0.16, 0.42, 0.06), poi * 0.85);
 		col = mix(col, vec3(0.2, 0.01, 0.012), bld * 0.88);
 		rough = mix(rough, 0.12, max(max(oil, bld), poi * 0.6));
-		float bub = smoothstep(0.62, 0.78, texture(noise_tex, p / 50.0 + vec2(time * 0.09, -time * 0.05)).b);
+		float bub = smoothstep(0.62, 0.78, texture(g_noise, p / 50.0 + vec2(time * 0.09, -time * 0.05)).b);
 		emit += vec3(0.25, 0.9, 0.1) * poi * (0.12 + 0.35 * bub);
-		float fl = texture(noise_tex, p / 75.0 + vec2(0.0, -time * 0.3)).g * 0.6 + texture(noise_tex, p / 33.0 + vec2(time * 0.16, -time * 0.4)).a * 0.4 + 0.12;
+		float fl = texture(g_noise, p / 75.0 + vec2(0.0, -time * 0.3)).g * 0.6 + texture(g_noise, p / 33.0 + vec2(time * 0.16, -time * 0.4)).a * 0.4 + 0.12;
 		col = mix(col, vec3(0.04, 0.025, 0.02), fire);                          // charred, with licks of flame
 		float lick = pow(clamp(fl, 0.0, 1.0), 2.2);
 		emit += mix(vec3(0.5, 0.08, 0.01), vec3(1.0, 0.5, 0.12), lick) * fire * (0.15 + 1.5 * lick);
-		vec2 sc = cell(p / 9.0);
-		float shard = smoothstep(0.12, 0.0, sc.x) * spk;
+		float shard = 0.0;
+		if (spk > 0.01) shard = smoothstep(0.12, 0.0, cell(p / 9.0).x) * spk;     // the 3x3 cell search only where spikes are
 		col = mix(col, vec3(0.75, 0.95, 0.7), spk * 0.6);
 		emit += vec3(0.6, 1.0, 0.55) * (spk * 0.18 + shard * 0.8);
 	}

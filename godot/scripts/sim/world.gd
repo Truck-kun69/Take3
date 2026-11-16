@@ -121,6 +121,10 @@ var roll_age := 9.0
 var roll_cd := 0.0
 var roll_dir := Vector2.RIGHT
 var roll_buffer := 0.0
+const ACTION_BUFFER := 0.12
+var ult_buffer := 0.0
+var flask_buffer := [0.0, 0.0]
+const ROLL_TIME := 0.26
 var roll_perfect_used := false
 var ult := 0.0
 var ult_cd := 0.0
@@ -432,7 +436,11 @@ func _step_player(dt: float) -> void:
 	var np := pp
 	if roll_t > 0.0:
 		roll_t -= dt
-		np += roll_dir * spd * 2.6 * dt               # a roll is not slowed by shallows
+		# a burst that eases out: 3.1x speed for the first 45% of the roll, tapering to 1.3x at the end.
+		# The average is the old flat 2.6x, so the distance (and every dodge tuned around it) is unchanged,
+		# but most of it is covered early. A roll is not slowed by shallows
+		var rp := clampf(1.0 - roll_t / ROLL_TIME, 0.0, 1.0)
+		np += roll_dir * spd * lerpf(3.1, 1.3, smoothstep(0.45, 1.0, rp)) * dt
 	else:
 		np += mvv * spd * tm * dt
 	pp = terrain.move(pp, np)
@@ -465,13 +473,20 @@ func _step_player(dt: float) -> void:
 		if roll_cd <= 0.0 and not stats.flag("no_roll"):
 			_roll(mvv)
 			roll_buffer = 0.0
+	# ultimate and flasks: a 0.12 s buffer, so a press a moment before the charge fills still fires
 	if in_ult:
 		in_ult = false
-		use_ult()
+		ult_buffer = ACTION_BUFFER
+	if ult_buffer > 0.0:
+		ult_buffer -= dt
+		if use_ult(): ult_buffer = 0.0
 	for f in 2:
 		if in_flask[f]:
 			in_flask[f] = false
-			use_flask(f)
+			flask_buffer[f] = ACTION_BUFFER
+		if flask_buffer[f] > 0.0:
+			flask_buffer[f] -= dt
+			if use_flask(f): flask_buffer[f] = 0.0
 	# regeneration
 	var rg := stats.value("regen", 0.0) + stats.value("regen_pct", 0.0) * max_hp
 	if heal_hot > 0.0:
@@ -498,7 +513,7 @@ func _step_tide() -> void:
 
 func _roll(mvv: Vector2) -> void:
 	roll_dir = mvv.normalized() if mvv.length() > 0.1 else face
-	roll_t = 0.26
+	roll_t = ROLL_TIME
 	roll_age = 0.0
 	roll_perfect_used = false
 	roll_cd = 1.4 * stats.value("dodge_cd", 1.0)
@@ -550,10 +565,10 @@ func hurt_player(d: float, src: String = "") -> bool:
 			end_run(false)
 	return true
 
-func use_flask(f: int) -> void:
+func use_flask(f: int) -> bool:
 	var fl: Dictionary = flasks[f]
 	if fl.c < fl.cost:
-		return
+		return false
 	if f == 0 and has_bargain("blood_price"):          # the Whisperer's price: the flask is poison now
 		fl.c -= fl.cost
 		Sfx.play("flask")
@@ -561,9 +576,9 @@ func use_flask(f: int) -> void:
 		var pz := add_tele(0, pp, 150.0, 0.0, 4.0, weapon_damage_base() * 0.9, false, true, Content.El.CHAOS, Color(0.45, 1.0, 0.4, 0.45), "ground")
 		pz.follow = true
 		pz.tick = 0.4
-		return
+		return false
 	if f == 0 and stats.value("flask_heal", 1.0) <= 0.0:
-		return
+		return false
 	fl.c -= fl.cost
 	Sfx.play("flask")
 	match fl.id:
@@ -573,20 +588,21 @@ func use_flask(f: int) -> void:
 			z.follow = true
 			z.tick = 0.4
 		_: buffs.add(fl.id)
+	return true
 
 func gain_flask(v: float) -> void:
 	var m := stats.value("flask_charge", 1.0)
 	for fl in flasks:
 		fl.c = minf(fl.max, fl.c + v * m)
 
-func use_ult() -> void:
+func use_ult() -> bool:
 	var blood := keystones.has("bloodmagic")
 	if blood:
-		if ult_cd > 0.0 or hp <= max_hp * 0.31: return
+		if ult_cd > 0.0 or hp <= max_hp * 0.31: return false
 		hp -= max_hp * 0.3
 		ult_cd = 10.0
 	elif ult < 100.0:
-		return
+		return false
 	else:
 		ult = 0.0
 	var h: String = Content.HEROES[hero].id
@@ -611,11 +627,13 @@ func use_ult() -> void:
 				var z := add_tele(0, pp + Vector2(cos(a), sin(a)) * 160.0, 70.0, 0.0, 6.0, weapon_damage_base() * 0.7, false, true, Content.El.FIRE, Color(1, 0.45, 0.15, 0.45), "ground")
 				z.tick = 0.4
 		"storm": buffs.add("thunderdome")
+	return true
 
 ## Cycle 3: a screen-wide ultimate used to refund itself (its own damage and kills charged it),
 ## looping forever at GR25. Charge is now blocked for 6 s after a cast and rate-capped per second.
 var _ult_gain_window := 0.0
 var _ult_gain := 0.0
+
 func charge_ult(v: float) -> void:
 	if t < _ult_lock:
 		return
@@ -748,12 +766,13 @@ func _roll_affix() -> int:
 # ================================================================= foes
 var _shots_req: Array = []
 var _sep_parity := 0
+const CROWD_GPU_MIN := 80
 func _step_foes(dt: float) -> void:
 	sw.tick_timers(dt)
-	if crowd != null and crowd.ready:
+	if crowd != null and crowd.ready and (sw.n >= CROWD_GPU_MIN or crowd.in_flight):
 		crowd.collect(sw)          # last frame's GPU separation result
-		crowd.dispatch(sw)         # kick off this frame's
-	else:
+		if sw.n >= CROWD_GPU_MIN: crowd.dispatch(sw)         # kick off this frame's
+	else:                           # small packs: the grid pass costs less than a buffer upload, submit and read-back
 		_sep_parity = 1 - _sep_parity
 		sw.cpu_separation(grid, _sep_parity, pp, view_r + 40.0)
 	_shots_req.clear()

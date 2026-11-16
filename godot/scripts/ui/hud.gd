@@ -129,6 +129,7 @@ func _rect(c: Color) -> ColorRect:
 func bind(world: World) -> void:
 	w = world
 	_cache.clear()
+	_last_vs = Vector2(-1, -1); _last_hp = -1; _last_ult = -1; _last_clock = -1; _last_info = -1; _last_combo = -1; _last_up = "?"; _ev_t = 0.0
 	boss_box.visible = false
 	banner_time = 0.0
 	upgrade_lbl.text = ""
@@ -141,10 +142,27 @@ func bind(world: World) -> void:
 		if up: upgrade_lbl.text = "Upgrade found: " + Items.name_of(it) + "   (Pause, then Gear)"
 		elif int(it.rarity) >= Content.Rarity.RARE: show_toast(Items.name_of(it), Content.col(Content.RARITY_COL[it.rarity])))
 
-func _put(k: String, node: Label, txt: String) -> void:
+## Sets a label's text only when it differs; returns true when it did (the caller may need to re-centre).
+func _put(k: String, node: Label, txt: String) -> bool:
 	if _cache.get(k) != txt:
 		_cache[k] = txt
 		node.text = txt
+		return true
+	return false
+
+var _last_vs := Vector2(-1, -1)
+var _last_touch := false
+var _last_hp := -1
+var _last_ult := -1
+var _last_clock := -1
+var _last_info := -1
+var _last_combo := -1
+var _last_up := "?"
+var _ev_t := 0.0
+var _banner_scaled := false
+## The lantern's flame, built once: a half ellipse plus a tip whose height follows the light.
+var _flame_o := PackedVector2Array()
+var _flame_i := PackedVector2Array()
 
 func show_banner(t: String, s: String, c: Color) -> void:
 	banner_t.text = t.to_upper()
@@ -182,84 +200,125 @@ func _process(dt: float) -> void:
 	if w == null: return
 	var vs := get_viewport_rect().size
 	var touch := _touch()
-	var gs := clampf(minf(vs.x, vs.y) / 720.0, 0.75, 1.25) * (0.85 if touch else 1.0)
-	var gsize := 150.0 * gs
-	# globes and bottom bar
-	life.size = Vector2(gsize, gsize)
-	life.position = Vector2(14, vs.y - gsize - 12)
+	# Layout is recomputed only when the screen size or the touch mode changes (it used to move and resize
+	# every control every frame, and reset the top plate's size, which re-ran its container layout).
+	# Content-driven positions (the plate's centring, the boss bar under it, the combo under the event
+	# list) follow their text through `_put`, which reports a change.
+	var relayout := vs != _last_vs or touch != _last_touch
+	if relayout:
+		_last_vs = vs
+		_last_touch = touch
+		var gs := clampf(minf(vs.x, vs.y) / 720.0, 0.75, 1.25) * (0.85 if touch else 1.0)
+		var gsize := 150.0 * gs
+		life.size = Vector2(gsize, gsize)
+		life.position = Vector2(14, vs.y - gsize - 12)
+		ultg.visible = not touch
+		ultg.size = Vector2(gsize, gsize)
+		ultg.position = Vector2(vs.x - gsize - 14, vs.y - gsize - 12)
+		bar.visible = not touch
+		var bw := minf(vs.x - 2 * gsize - 60, 4 * 76.0 * gs + 3 * 10)
+		bar.slot = 76.0 * gs
+		bar.size = Vector2(bw, 76.0 * gs + 20)
+		bar.position = Vector2((vs.x - bw) * 0.5, vs.y - bar.size.y - 22)
+		var xl := life.position.x + gsize + 10
+		var xr := (ultg.position.x - 10) if not touch else (vs.x * 0.55)
+		xp_bar.position = Vector2(xl, vs.y - 26)
+		xp_bar.size = Vector2(maxf(60.0, xr - xl), 16)
+		pause_btn.position = Vector2(vs.x - 70, 10)
+		buffs.position = Vector2(14, 12)
+		buffs.size = Vector2(vs.x * 0.35, 60)
+		events_lbl.size = Vector2(minf(360, vs.x * 0.4), 0)
+		events_lbl.position = Vector2(vs.x - events_lbl.size.x - 16, 70)
+		combo_lbl.size = Vector2(200, 0)
+		banner_box.pivot_offset = Vector2(vs.x * 0.5, 40.0)
+		banner_box.size = Vector2(vs.x, 0)
+		banner_box.position = Vector2(0, vs.y * 0.2)
+		toasts.position = Vector2(18, vs.y * 0.4)
+		fps_lbl.position = Vector2(vs.x - 330, vs.y - 70)
+	# globes and bottom bar: values
 	life.fill = w.hp / w.max_hp
-	life.value_text = "%d" % ceili(w.hp)
+	var hp_i := ceili(w.hp)
+	if hp_i != _last_hp:
+		_last_hp = hp_i
+		life.value_text = "%d" % hp_i
 	life.hurt = 1.0 if w.hit_t > 0.0 else 0.0
-	ultg.visible = not touch
-	ultg.size = Vector2(gsize, gsize)
-	ultg.position = Vector2(vs.x - gsize - 14, vs.y - gsize - 12)
-	ultg.fill = w.ult / 100.0
-	ultg.value_text = "READY" if w.ult >= 100.0 else "%d%%" % int(w.ult)
-	bar.visible = not touch
-	var bw := minf(vs.x - 2 * gsize - 60, 4 * 76.0 * gs + 3 * 10)
-	bar.slot = 76.0 * gs
-	bar.size = Vector2(bw, 76.0 * gs + 20)
-	bar.position = Vector2((vs.x - bw) * 0.5, vs.y - bar.size.y - 22)
-	var xl := life.position.x + gsize + 10
-	var xr := (ultg.position.x - 10) if not touch else (vs.x * 0.55)
-	xp_bar.position = Vector2(xl, vs.y - 26)
-	xp_bar.size = Vector2(maxf(60.0, xr - xl), 16)
+	if not touch:
+		ultg.fill = w.ult / 100.0
+		var ult_i := int(w.ult)
+		if ult_i != _last_ult:
+			_last_ult = ult_i
+			ultg.value_text = "READY" if w.ult >= 100.0 else "%d%%" % ult_i
 	xp_bar.value = w.xp / w.need
-	# top centre
-	match w.mode:
-		"rift": _put("clock", clock, "%s   %d%%" % [_fmt(Content.GR_TIME - w.t), int(w.progress)])
-		"pinnacle": _put("clock", clock, _fmt(maxf(0.0, w.bosses.herald_at - w.t)) if w.bosses.herald_uid < 0 else "THE HERALD")
-		_: _put("clock", clock, "BOSS" if w.boss_spawned else _fmt(Content.STAGE_TIME - w.t))
-	_put("info", info, "Level %d   ·   %d slain   ·   %d gold" % [w.lvl, w.kills, int(w.gold)])
-	top_plate.size = Vector2(0, 0)
-	top_plate.position = Vector2((vs.x - top_plate.get_combined_minimum_size().x) * 0.5, 8)
-	pause_btn.position = Vector2(vs.x - 70, 10)
+	# top centre: the strings are rebuilt only when a number in them changes
+	var plate_dirty := relayout
+	var clock_key := int(ceilf(w.t)) * 4 + (1 if w.boss_spawned else 0) + (2 if w.bosses.herald_uid >= 0 else 0) + int(w.progress) * 100000
+	if clock_key != _last_clock:
+		_last_clock = clock_key
+		match w.mode:
+			"rift": plate_dirty = _put("clock", clock, "%s   %d%%" % [_fmt(Content.GR_TIME - w.t), int(w.progress)]) or plate_dirty
+			"pinnacle": plate_dirty = _put("clock", clock, _fmt(maxf(0.0, w.bosses.herald_at - w.t)) if w.bosses.herald_uid < 0 else "THE HERALD") or plate_dirty
+			_: plate_dirty = _put("clock", clock, "BOSS" if w.boss_spawned else _fmt(Content.STAGE_TIME - w.t)) or plate_dirty
+	var info_key := w.lvl * 1000003 + w.kills * 1009 + int(w.gold)
+	if info_key != _last_info:
+		_last_info = info_key
+		plate_dirty = _put("info", info, "Level %d   ·   %d slain   ·   %d gold" % [w.lvl, w.kills, int(w.gold)]) or plate_dirty
+	if plate_dirty:
+		top_plate.size = Vector2(0, 0)
+		top_plate.position = Vector2((vs.x - top_plate.get_combined_minimum_size().x) * 0.5, 8)
 	var bf := w.bosses.boss_hp_frac()
-	boss_box.visible = bf >= 0.0
-	if bf >= 0.0:
+	var boss_on := bf >= 0.0
+	if boss_on != boss_box.visible:
+		boss_box.visible = boss_on
+		plate_dirty = true
+	if boss_on:
 		boss_bar.value = bf
 		var nm := "Rift Guardian" if w.mode == "rift" else ("The Shard Herald" + ("   ·   Enraged" if w.bosses.H.get("enraged", false) else "   ·   Phase %d" % w.bosses.herald_phase()) if w.mode == "pinnacle" else String(Content.STAGES[w.stage].boss))
 		_put("bn", boss_name, nm.to_upper())
-		var bwid := minf(vs.x * 0.5, 640.0)
-		boss_box.size = Vector2(bwid, 0)
-		boss_box.position = Vector2((vs.x - bwid) * 0.5, top_plate.position.y + top_plate.get_combined_minimum_size().y + 6)
-	buffs.position = Vector2(14, 12)
-	buffs.size = Vector2(vs.x * 0.35, 60)
-	var et := ""
-	for ev in w.director.active:
-		var line: String = Content.EVENTS[ev.id].name
-		match ev.id:
-			"breach": line += "  %ds  (%d)" % [ceili(ev.life), ev.kills]
-			"cursed": line += ("  %d/%d  %ds" % [ev.kills, ev.quota, ceili(ev.life)]) if ev.state == 1 else "  (touch the chest)"
-			"delirium": line += "  reward %d" % ev.reward
-			"eclipse", "meteor": line += "  %ds" % ceili(ev.life)
-		et += line + "\n"
-	_put("ev", events_lbl, et.strip_edges())
-	events_lbl.size = Vector2(minf(360, vs.x * 0.4), 0)
-	events_lbl.position = Vector2(vs.x - events_lbl.size.x - 16, 70)
-	_put("combo", combo_lbl, ("x%d" % w.combo) if w.combo >= 10 else "")
-	combo_lbl.size = Vector2(200, 0)
-	combo_lbl.position = Vector2(vs.x - 216, 70 + events_lbl.get_combined_minimum_size().y + 6)
+		if plate_dirty:
+			var bwid := minf(vs.x * 0.5, 640.0)
+			boss_box.size = Vector2(bwid, 0)
+			boss_box.position = Vector2((vs.x - bwid) * 0.5, top_plate.position.y + top_plate.get_combined_minimum_size().y + 6)
+	# running events: rebuilt four times a second (they show whole seconds and counts)
+	_ev_t -= dt
+	var ev_dirty := relayout
+	if _ev_t <= 0.0 or relayout:
+		_ev_t = 0.25
+		var et := ""
+		for ev in w.director.active:
+			var line: String = Content.EVENTS[ev.id].name
+			match ev.id:
+				"breach": line += "  %ds  (%d)" % [ceili(ev.life), ev.kills]
+				"cursed": line += ("  %d/%d  %ds" % [ev.kills, ev.quota, ceili(ev.life)]) if ev.state == 1 else "  (touch the chest)"
+				"delirium": line += "  reward %d" % ev.reward
+				"eclipse", "meteor": line += "  %ds" % ceili(ev.life)
+			et += line + "\n"
+		ev_dirty = _put("ev", events_lbl, et.strip_edges()) or ev_dirty
+	var combo_i := w.combo if w.combo >= 10 else 0
+	if combo_i != _last_combo:
+		_last_combo = combo_i
+		_put("combo", combo_lbl, ("x%d" % combo_i) if combo_i > 0 else "")
+	if ev_dirty:
+		combo_lbl.position = Vector2(vs.x - 216, 70 + events_lbl.get_combined_minimum_size().y + 6)
 	# banner and toasts
 	var a := 0.0
 	if banner_time > 0.0:
 		banner_time -= dt
 		a = clampf(banner_time / 0.5, 0, 1) * clampf((2.8 - banner_time) / 0.2, 0, 1)
-	banner_box.modulate.a = a
-	var punch := clampf(1.0 - (2.8 - banner_time) / 0.22, 0.0, 1.0) if banner_time > 0.0 else 0.0
-	banner_box.pivot_offset = Vector2(vs.x * 0.5, 40.0)
-	banner_box.scale = Vector2.ONE * (1.0 + 0.12 * punch * punch)        # lands with a small punch
-	banner_box.size = Vector2(vs.x, 0)
-	banner_box.position = Vector2(0, vs.y * 0.2)
-	toasts.position = Vector2(18, vs.y * 0.4)
-	upgrade_lbl.position = Vector2((vs.x - upgrade_lbl.get_combined_minimum_size().x) * 0.5, bar.position.y - 30 if not touch else vs.y - 230)
+	if banner_box.modulate.a != a: banner_box.modulate.a = a
+	if a > 0.0 or _banner_scaled:
+		var punch := clampf(1.0 - (2.8 - banner_time) / 0.22, 0.0, 1.0) if banner_time > 0.0 else 0.0
+		banner_box.scale = Vector2.ONE * (1.0 + 0.12 * punch * punch)        # lands with a small punch
+		_banner_scaled = punch > 0.0
+	var up_txt := upgrade_lbl.text
+	if up_txt != _last_up or relayout:
+		_last_up = up_txt
+		upgrade_lbl.position = Vector2((vs.x - upgrade_lbl.get_combined_minimum_size().x) * 0.5, bar.position.y - 30 if not touch else vs.y - 230)
 	fps_lbl.visible = bool(Save.opt("show_fps"))
 	if fps_lbl.visible:
 		_frame_ms = lerpf(_frame_ms, dt * 1000.0, 0.1)
 		fps_lbl.text = "%d fps  %.1f ms  %d foes  sim %.1f  view %.1f\n%d draws  %dk tris  %s  3D %d%%" % [Engine.get_frames_per_second(), _frame_ms, w.sw.n, w.step_us / 1000.0, Diag.view_us / 1000.0,
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000.0),
 			"GPU crowd" if w.crowd != null and w.crowd.ready else "CPU crowd", int(get_viewport().scaling_3d_scale * 100.0)]
-		fps_lbl.position = Vector2(vs.x - 330, vs.y - 70)
 	var fl := w.flash * (0.3 if Save.opt("reduce_flash") else 1.0)
 	flash_rect.color = Color(1, 1, 1, clampf(fl * 1.6, 0, 0.6))
 	var low := clampf((0.35 - w.hp / w.max_hp) / 0.35, 0, 1) * (0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008))
@@ -335,15 +394,19 @@ func _lantern() -> void:
 	# the flame: a teardrop that shrinks and dims with the light
 	var fc := Vector2(at.x - 17.0, at.y + 4.0)
 	var fh := lerpf(7.0, 21.0, clampf(l / 0.6, 0.0, 1.0)) * (1.0 + 0.08 * sin(Time.get_ticks_msec() * 0.021))
-	var fl := PackedVector2Array()
-	for i in 13:
-		var a := PI * i / 12.0
-		fl.append(fc + Vector2(cos(a) * 7.5, sin(a) * 5.5))
-	fl.append(fc + Vector2(0, -fh))
-	draw_colored_polygon(fl, Color(0.02, 0.01, 0.02, 0.8))
-	var fi := PackedVector2Array()
-	for p in fl: fi.append(fc + (p - fc) * 0.72)
-	draw_colored_polygon(fi, col.lightened(0.25))
+	if _flame_o.is_empty():
+		for i in 13:
+			var fa := PI * i / 12.0
+			_flame_o.append(Vector2(cos(fa) * 7.5, sin(fa) * 5.5))
+			_flame_i.append(_flame_o[i] * 0.72)
+		_flame_o.append(Vector2.ZERO)
+		_flame_i.append(Vector2.ZERO)
+	_flame_o[13] = Vector2(0, -fh)
+	_flame_i[13] = Vector2(0, -fh * 0.72)
+	draw_set_transform(fc)
+	draw_colored_polygon(_flame_o, Color(0.02, 0.01, 0.02, 0.8))
+	draw_colored_polygon(_flame_i, col.lightened(0.25))
+	draw_set_transform(Vector2.ZERO)
 	if w.hoard > 0.0 or w.hoard_mult > 1.0:                  # bank-or-push: what a death would cost
 		var f3 := UIKit.font("label")
 		var hc := Color("7fd8ff").lerp(Color("ffb347"), clampf((w.hoard_mult - 1.0) / 2.0, 0.0, 1.0))

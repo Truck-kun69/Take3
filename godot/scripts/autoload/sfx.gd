@@ -20,6 +20,7 @@ extends Node
 var RATE := 22050               # set to the output mix rate in _ready
 const VOICES := 3
 const MAX_NEW_PER_FRAME := 6
+const CRITICAL := {"boss": true, "ult": true, "level": true, "lose": true, "win": true, "drop_legendary": true, "perfect": true, "event": true, "react": true, "hurt": true}
 var streams := {}
 var players := {}               # name -> AudioStreamPlayer (stream fixed)
 var ambience: AudioStreamPlayer
@@ -187,9 +188,12 @@ func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
 	if f != _frame:
 		_frame = f
 		_frame_n = 0
-	if _frame_n >= MAX_NEW_PER_FRAME:
-		return
-	_frame_n += 1
+	# the per-frame cap protects the mixer from a burst of impacts; cues the player must hear are exempt,
+	# or six footsteps and hits earlier in a frame would silence a boss arrival or a level-up
+	if not CRITICAL.has(name):
+		if _frame_n >= MAX_NEW_PER_FRAME:
+			return
+		_frame_n += 1
 	_last[name] = now
 	Diag.first("sound " + name)
 	var p: AudioStreamPlayer = players[name]

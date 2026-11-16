@@ -104,8 +104,23 @@ func _press(id: String) -> void:
 	if Save.opt("haptics"):
 		Input.vibrate_handheld(15)
 
+## Redraw only when something drawn has changed. The controls used to rebuild ~20 anti-aliased arcs and
+## two 33-point polygons every frame, including while nothing was touched and nothing was charging.
+var _sig := -1
 func _process(_dt: float) -> void:
-	queue_redraw()
+	var animating := false
+	var q := 0
+	if world != null:
+		# cooldown sweep and the "ultimate ready" pulse animate; charge levels are quantised to what a redraw can show
+		animating = world.roll_cd > 0.0 or world.ult >= 100.0
+		q = int(world.ult) + int(world.flasks[0].c / world.flasks[0].max * 64.0) * 128 + int(world.flasks[1].c / world.flasks[1].max * 64.0) * 16384
+	var sig := hash([stick_id, origin, knob, _btn_touch.values(), q, get_viewport_rect().size, UIKit.touch_mode, _seen_touch, world != null])
+	if animating or sig != _sig:
+		_sig = sig
+		queue_redraw()
+
+## Unit circle for the flask liquid polygon, built once.
+static var _unit: PackedVector2Array
 
 const BRONZE := Color("b98a4a")
 const BRONZE_D := Color("5a3c1e")
@@ -149,12 +164,14 @@ func _draw() -> void:
 		if b.id.begins_with("f") and k >= 0.0:        # flask liquid level
 			var lvl := clampf(k, 0.0, 1.0)
 			var top := bp.y + br - 2.0 * br * lvl
+			if _unit.is_empty():
+				for j in 33: _unit.append(Vector2(cos(TAU * float(j) / 32.0), sin(TAU * float(j) / 32.0)))
 			var pts := PackedVector2Array()
+			pts.resize(33)
 			for j in 33:
-				var a := TAU * float(j) / 32.0
-				var q := bp + Vector2(cos(a), sin(a)) * (br - 4.0)
+				var q := bp + _unit[j] * (br - 4.0)
 				q.y = maxf(q.y, top)
-				pts.append(q)
+				pts[j] = q
 			draw_colored_polygon(pts, Color(col.r, col.g, col.b, 0.42))
 		if held: draw_circle(bp, br - 3.0, Color(col.r, col.g, col.b, 0.16))
 		_ring(bp, br, 0.85 if held else 0.65, 3.0)

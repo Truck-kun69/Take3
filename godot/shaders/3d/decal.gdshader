@@ -36,7 +36,9 @@ void fragment() {
 		a = step(r, 1.0) * step(ang, inner) * (0.3 + 0.45 * step(r, prog));
 	} else if (kind < 4.5) {
 		float rr = prog;
-		a = smoothstep(0.12, 0.0, abs(r - rr)) * (1.0 - prog) * 2.5 + step(r, rr) * (1.0 - prog) * 0.25;
+		// a rim with a faint wash inside: the old 25% additive fill stacked into opaque discs when a
+		// reaction cascade fired a dozen shockwaves at once
+		a = smoothstep(0.09, 0.0, abs(r - rr)) * (1.0 - prog) * 2.2 + step(r, rr) * (1.0 - prog) * 0.06;
 	} else if (kind < 5.5) {
 		a = smoothstep(1.0, 0.0, r) * 0.8;
 	} else {

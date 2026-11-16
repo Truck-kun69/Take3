@@ -52,7 +52,8 @@ var ready := false
 var in_flight := false
 var flight_n := 0
 var flight_uids := PackedInt32Array()
-var _bodies := PackedFloat32Array()
+var _bytes := PackedByteArray()        # (x, y, radius, 0) per body, reused every dispatch
+var _pc := PackedByteArray()           # push constants, reused
 var last_error := ""
 var dispatches := 0
 
@@ -85,7 +86,9 @@ func init() -> bool:
 	u1.binding = 1
 	u1.add_id(buf_out)
 	uset = rd.uniform_set_create([u0, u1], shader, 0)
-	_bodies.resize(Swarm.CAP * 4)
+	_bytes.resize(Swarm.CAP * 16)
+	_bytes.fill(0)
+	_pc.resize(16)
 	flight_uids.resize(Swarm.CAP)
 	ready = true
 	return true
@@ -97,24 +100,23 @@ func dispatch(sw: Swarm) -> void:
 	var pos := sw.pos
 	var rad := sw.rad
 	var fl := sw.flags
+	# written straight into a persistent byte buffer: the float array used to be sliced and converted
+	# to bytes (two allocations of up to 11 KB) on every dispatch
 	for i in n:
 		var p := pos[i]
-		var o := i * 4
-		_bodies[o] = p.x
-		_bodies[o + 1] = p.y
+		var o := i * 16
+		_bytes.encode_float(o, p.x)
+		_bytes.encode_float(o + 4, p.y)
 		# bosses push others but are not pushed (they skip `sep` in step_move); allies do not collide
-		_bodies[o + 2] = 0.0 if (fl[i] & Swarm.F_ALLY) != 0 else rad[i]
-		_bodies[o + 3] = 0.0
+		_bytes.encode_float(o + 8, 0.0 if (fl[i] & Swarm.F_ALLY) != 0 else rad[i])
 		flight_uids[i] = sw.uid[i]
-	rd.buffer_update(buf_in, 0, n * 16, _bodies.slice(0, n * 4).to_byte_array())
-	var pc := PackedByteArray()
-	pc.resize(16)
-	pc.encode_u32(0, n)
-	pc.encode_float(4, 6.0)
+	rd.buffer_update(buf_in, 0, n * 16, _bytes)
+	_pc.encode_u32(0, n)
+	_pc.encode_float(4, 6.0)
 	var cl := rd.compute_list_begin()
 	rd.compute_list_bind_compute_pipeline(cl, pipeline)
 	rd.compute_list_bind_uniform_set(cl, uset, 0)
-	rd.compute_list_set_push_constant(cl, pc, 16)
+	rd.compute_list_set_push_constant(cl, _pc, 16)
 	rd.compute_list_dispatch(cl, int(ceil(n / 64.0)), 1, 1)
 	rd.compute_list_end()
 	rd.submit()

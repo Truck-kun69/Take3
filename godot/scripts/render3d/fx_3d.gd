@@ -198,7 +198,7 @@ func step(dt: float) -> void:
 		gn += 1
 	ext_glow.clear()
 	var mm := glow_mm.multimesh
-	mm.buffer = _gb
+	if gn > 0: mm.buffer = _gb          # nothing to draw: skip the upload
 	mm.visible_instance_count = gn
 	_debris_upload()
 	_lightning()
@@ -369,7 +369,7 @@ func _projectiles(gn: int) -> int:
 		_g(gn * 20, qp, q.r * 1.6, Color(1.0, 0.4, 0.3, 0.9), 2.0); gn += 1
 		_g(gn * 20, qp - Vector3(q.vel.x, 0, q.vel.y) * 0.03, q.r * 2.2, Color(qc.r, qc.g, qc.b, 0.3), 0.0); gn += 1
 	var mm := proj_mm.multimesh
-	mm.buffer = _pb
+	if pn > 0: mm.buffer = _pb          # nothing to draw: skip the upload
 	mm.visible_instance_count = pn
 	return gn
 
@@ -411,7 +411,7 @@ func _gems(dt: float) -> void:
 		_gemb[o + 16] = 2.2; _gemb[o + 17] = 0.0; _gemb[o + 18] = 0.0; _gemb[o + 19] = 0.0
 		n += 1
 	var mm := gem_mm.multimesh
-	mm.buffer = _gemb
+	if n > 0: mm.buffer = _gemb          # nothing to draw: skip the upload
 	mm.visible_instance_count = n
 
 func _blades() -> void:
@@ -443,7 +443,7 @@ func _debris_upload() -> void:
 		_db[o + 12] = c.r; _db[o + 13] = c.g; _db[o + 14] = c.b; _db[o + 15] = 1.0
 		_db[o + 16] = 0.0; _db[o + 17] = 0.6; _db[o + 18] = 0.0; _db[o + 19] = 0.0      # x emission 0 (chips glowed pale), y rough
 	var mm := debris_mm.multimesh
-	mm.buffer = _db
+	if d_n > 0: mm.buffer = _db          # nothing to draw: skip the upload
 	mm.visible_instance_count = d_n
 
 func _pickups(gn: int) -> int:
@@ -588,10 +588,16 @@ func _decals() -> void:
 			3:
 				var d2 := Vector3(z.dir.x, 0, z.dir.y)
 				_decal(z.pos, Basis(d2 * z.r, Vector3.UP, d2.cross(Vector3.UP) * z.r), 3, c, prog, z.ang)
+	var rings := 0
+	for f in w.fx:
+		if f.k == "ring": rings += 1
+	var ring_dim := 1.0 if rings <= 4 else maxf(0.35, sqrt(4.0 / rings))
 	for f in w.fx:
 		if f.k == "ring":
 			var k: float = clampf(f.t / f.life, 0, 1)
-			_circle(f.pos, maxf(20.0, float(f.max)), 4, f.col, k)
+			var rc: Color = f.col
+			rc.a *= ring_dim                              # many at once: each one dimmer, the total stays readable
+			_circle(f.pos, maxf(20.0, float(f.max)), 4, rc, k)
 	for ev in w.director.active:
 		var col := Content.col(Content.EVENTS[ev.id].col)
 		match ev.id:

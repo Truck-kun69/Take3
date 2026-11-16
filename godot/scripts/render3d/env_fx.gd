@@ -56,12 +56,13 @@ func _ready() -> void:
 	smoke_mm.multimesh = mm
 	var sm := ShaderMaterial.new()
 	var sh := Shader.new()
+	# unshaded: smoke puffs overlap heavily, and lit they ran the full light loop on every layer. They are
+	# tinted by `shade` (the act's ambient, set in bind) instead; the noise is one shared-texture lookup
 	sh.code = """shader_type spatial;
-render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled, diffuse_lambert_wrap;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
+uniform vec3 shade = vec3(0.5);
 varying vec4 v_c;
-float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(h21(i), h21(i + vec2(1, 0)), u.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), u.x), u.y); }
 void vertex() {
 	v_c = INSTANCE_CUSTOM;
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
@@ -69,11 +70,9 @@ void vertex() {
 }
 void fragment() {
 	vec2 p = (UV - 0.5) * 2.0;
-	float n = vn(UV * 4.0 + v_c.x * 7.0) * 0.6 + vn(UV * 9.0 - v_c.x * 3.0) * 0.4;
-	float a = smoothstep(1.0, 0.1, length(p) + n * 0.45) * COLOR.a;
-	ALBEDO = COLOR.rgb;
-	ROUGHNESS = 1.0;
-	EMISSION = COLOR.rgb * v_c.y;
+	float n = texture(g_noise, UV * 0.55 + v_c.x * vec2(1.7, 0.9)).r;
+	float a = smoothstep(1.0, 0.1, length(p) + n * 0.5) * COLOR.a;
+	ALBEDO = COLOR.rgb * (shade + v_c.y);
 	ALPHA = a;
 }"""
 	sm.shader = sh
@@ -136,6 +135,7 @@ func bind(world: World) -> void:
 	var look: Dictionary = WorldView3D.STAGE_LOOK[w.stage]
 	fog_mat.set_shader_parameter("fog_col", (look.fog as Color).lightened(0.25))
 	fog_mat.set_shader_parameter("density", [0.3, 0.26, 0.42, 0.3, 0.5][w.stage])
+	(smoke_mm.material_override as ShaderMaterial).set_shader_parameter("shade", Color(0.42, 0.42, 0.42).lerp(look.amb, 0.5))
 	_last_cast = w.cast_t
 
 # ================================================================= per frame
@@ -300,5 +300,5 @@ func _upload() -> void:
 		_sb[o + 12] = c.r; _sb[o + 13] = c.g; _sb[o + 14] = c.b; _sb[o + 15] = c.a * minf(1.0, k * 2.0)
 		_sb[o + 16] = float(i) * 0.31
 	var mm := smoke_mm.multimesh
-	mm.buffer = _sb
+	if m_n > 0: mm.buffer = _sb
 	mm.visible_instance_count = m_n

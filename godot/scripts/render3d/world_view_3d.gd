@@ -49,6 +49,7 @@ var _cam_pos := Vector3.ZERO
 var _cam_target := Vector3.ZERO
 var _foe_mm: Array[MultiMeshInstance3D] = []
 var _foe_n := PackedInt32Array()
+var _foe_cap := PackedInt32Array()       # instances allocated per kind's MultiMesh (a power of two, grows only)
 const GROUND_SIZE := 3000.0
 var GROUND_Q := 20.0            # ground grid spacing, set per graphics tier (Quality.ground_q)
 var water: MeshInstance3D
@@ -155,7 +156,7 @@ func _ready() -> void:
 		mm.use_colors = true
 		mm.use_custom_data = true
 		mm.mesh = Models.foe_mesh(Models.FOE_KINDS[k])
-		mm.instance_count = Swarm.CAP
+		mm.instance_count = 0             # grown on demand in _foes (bosses, heralds and exiles never use theirs)
 		mm.visible_instance_count = 0
 		mm.custom_aabb = AABB(Vector3(-1e6, -100, -1e6), Vector3(2e6, 400, 2e6))
 		mmi.multimesh = mm
@@ -167,6 +168,7 @@ func _ready() -> void:
 		add_child(mmi)
 		_foe_mm.append(mmi)
 	_foe_n.resize(Models.FOE_KINDS.size())
+	_foe_cap.resize(Models.FOE_KINDS.size())
 	fx = FX3D.new()
 	add_child(fx)
 	fx.view = self
@@ -265,10 +267,11 @@ static func noise_tex() -> ImageTexture:
 	var img := Image.create_from_data(256, 256, false, Image.FORMAT_RGBA8, data)
 	img.generate_mipmaps()
 	_noise_tex = ImageTexture.create_from_image(img)
+	RenderingServer.global_shader_parameter_set("g_noise", _noise_tex)       # terrain, fog, smoke, foes and water all sample it
 	return _noise_tex
 
 static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
-	mat.set_shader_parameter("noise_tex", noise_tex())
+	noise_tex()
 	mat.set_shader_parameter("detail2", Quality.high())
 	var gs: Array = GROUND_SETS[clampi(stage, 0, GROUND_SETS.size() - 1)]
 	var ok := ResourceLoader.exists("res://textures/terrain/%s.jpg" % gs[0])
@@ -281,6 +284,7 @@ static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
 
 func bind(world: World) -> void:
 	w = world
+	_feat_sig = -1
 	if GROUND_Q != Quality.ground_q(): _ground_mesh()
 	var s: Dictionary = Content.STAGES[w.stage]
 	_look = STAGE_LOOK[w.stage]
@@ -376,12 +380,16 @@ func _process(dt: float) -> void:
 	if Quality.on("effects"): _surf_fx()
 	fx.step(dt)
 	_assign_lights()
-	_features()
+	var sig := Quality.tier() * 131 + Quality.off.hash()
+	if sig != _feat_sig:
+		_feat_sig = sig
+		_features()
 	cost_us = lerpf(cost_us, float(Time.get_ticks_usec() - t0), 0.05)
 	Diag.view_us = cost_us
 
 ## Quality feature switches (self-test / gfx_off), applied every frame so they can change mid-run.
 var _props_on := true
+var _feat_sig := -1                 # graphics tier + feature switches last applied by _features
 var _terr_on := true
 var _hi_on := true
 func _features() -> void:
@@ -494,6 +502,8 @@ var _th_tex: ImageTexture
 var _sf_img: Image
 var _sf_tex: ImageTexture
 var _sf_ver := -1
+var _sf_bytes := PackedByteArray()
+var _sf_time := -9.0
 var _sf_center := Vector2i(1 << 30, 0)
 var _ts_img: Image
 var _ts_tex: ImageTexture
@@ -550,22 +560,37 @@ func _terrain_tex(dt: float) -> void:
 ## Surfaces (oil / poison / blood / fire / spikes) as an RGBA8 texture over the same 7 x 7 chunks.
 func _surf_tex(T: Terrain, cc: Vector2i, n: int, half: int) -> void:
 	if T.surf_version == _sf_ver and cc == _sf_center and _sf_tex != null: return
+	# kills pour blood and pools expire almost every frame in a late fight, and each change used to redraw
+	# every cell with Image.set_pixel. Content changes now reach the GPU at 10 Hz (a move of the window
+	# is still immediate), written straight into a reusable byte array
+	if cc == _sf_center and _sf_tex != null and time - _sf_time < 0.1: return
+	_sf_time = time
 	_sf_ver = T.surf_version
 	_sf_center = cc
-	if _sf_img == null: _sf_img = Image.create(n, n, false, Image.FORMAT_RGBA8)
-	_sf_img.fill(Color(0, 0, 0, 0))
-	var base := (cc - Vector2i(half, half)) * Terrain.CN
-	for c in T.surf:
-		var q: Vector2i = c - base
-		if q.x < 0 or q.y < 0 or q.x >= n or q.y >= n: continue
-		var k := int(T.surf[c][0])
-		var fade := clampf(float(T.surf[c][1]) / 1.5, 0.0, 1.0)       # pools thin out in their last 1.5 s
-		match k:
-			Terrain.Surf.OIL: _sf_img.set_pixel(q.x, q.y, Color(fade, 0, 0, 0))
-			Terrain.Surf.POISON: _sf_img.set_pixel(q.x, q.y, Color(0, fade, 0, 0))
-			Terrain.Surf.BLOOD: _sf_img.set_pixel(q.x, q.y, Color(0, 0, fade, 0))
-			Terrain.Surf.FIRE: _sf_img.set_pixel(q.x, q.y, Color(0, 0, 0, 1.0 * fade))
-			Terrain.Surf.SPIKES: _sf_img.set_pixel(q.x, q.y, Color(fade, fade, 0, 0))     # oil + poison = spikes
+	var by := _sf_bytes                      # a local: element writes on a member array go through the object each time
+	if by.size() != n * n * 4: by.resize(n * n * 4)
+	by.fill(0)
+	var bx := (cc.x - half) * Terrain.CN
+	var bz := (cc.y - half) * Terrain.CN
+	var surf := T.surf
+	for c: Vector2i in surf:
+		var qx := c.x - bx
+		var qy := c.y - bz
+		if qx < 0 or qy < 0 or qx >= n or qy >= n: continue
+		var cell: Array = surf[c]
+		var fade := int(clampf(cell[1] / 1.5, 0.0, 1.0) * 255.0)       # pools thin out in their last 1.5 s
+		var o := (qy * n + qx) * 4
+		var kind: int = cell[0]
+		if kind == Terrain.Surf.BLOOD: by[o + 2] = fade
+		elif kind == Terrain.Surf.POISON: by[o + 1] = fade
+		elif kind == Terrain.Surf.OIL: by[o] = fade
+		elif kind == Terrain.Surf.FIRE: by[o + 3] = fade
+		elif kind == Terrain.Surf.SPIKES:                                  # oil + poison = spikes
+			by[o] = fade
+			by[o + 1] = fade
+	_sf_bytes = by
+	if _sf_img == null: _sf_img = Image.create_from_data(n, n, false, Image.FORMAT_RGBA8, _sf_bytes)
+	else: _sf_img.set_data(n, n, false, Image.FORMAT_RGBA8, _sf_bytes)
 	if _sf_tex == null:
 		_sf_tex = ImageTexture.create_from_image(_sf_img)
 		RenderingServer.global_shader_parameter_set("terrain_f", _sf_tex)
@@ -708,16 +733,26 @@ func _foes() -> void:
 				af >>= 1
 			_aura(p, sw.rad[i] * 2.2, Color("ffb02e") if naff >= 2 else Color("4f86ff"))
 	_corpses()
-	_blob_mm.multimesh.buffer = _bb
+	if nb > 0: _blob_mm.multimesh.buffer = _bb
 	_blob_mm.multimesh.visible_instance_count = nb
 	var amm := _aura_mm.multimesh
 	amm.visible_instance_count = _aura_n
 	_aura_n = 0
 	for k in _foe_mm.size():
 		var mm := _foe_mm[k].multimesh
-		if _foe_n[k] > 0 or mm.visible_instance_count != 0:
-			mm.buffer = _fb.slice(k * span, (k + 1) * span)
-			mm.visible_instance_count = _foe_n[k]
+		var fn := _foe_n[k]
+		if fn == 0:
+			if mm.visible_instance_count != 0: mm.visible_instance_count = 0
+			continue
+		# upload only as many instances as this kind needs, rounded up to a power of two: every kind used
+		# to send all Swarm.CAP slots each frame (11 x 720 x 20 floats) even with three foes of it alive
+		if fn > _foe_cap[k]:
+			var cap := maxi(32, _foe_cap[k])
+			while cap < fn: cap *= 2
+			_foe_cap[k] = mini(cap, Swarm.CAP)
+			mm.instance_count = _foe_cap[k]
+		mm.buffer = _fb.slice(k * span, k * span + _foe_cap[k] * FOE_STRIDE)
+		mm.visible_instance_count = fn
 
 func _status_code(i: int) -> float:
 	var sw := w.sw
