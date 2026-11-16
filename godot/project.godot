@@ -52,6 +52,10 @@ gdscript/warnings/unsafe_method_access=0
 
 [shader_globals]
 
+g_noise={
+"type": "sampler2D",
+"value": ""
+}
 terrain_h={
 "type": "sampler2D",
 "value": ""
