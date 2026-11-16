@@ -471,6 +471,27 @@ def place_weapon(path, kind, J, hero_h=50.0):
     return ob, "hand.R"
 
 
+
+def shrink_textures(tex_dir):
+    """The sources carry 2048 px body maps and 1024 px accessory maps; a hero is 60 to 400 px tall on
+    screen. Ship body albedo at 1024 and accessory albedo at 512, metal-roughness maps (Image_1*) at
+    half of that. Done on the files (not as a Godot import size limit: the editor reset that option
+    when it re-imported the scenes), so the game imports them GPU-compressed at these sizes."""
+    for fn in sorted(os.listdir(tex_dir)):
+        if not fn.lower().endswith(".jpg"): continue
+        fp = os.path.join(tex_dir, fn)
+        img = bpy.data.images.load(fp)
+        w = img.size[0]
+        big = w >= 2048
+        target = ((512 if big else 256) if fn.startswith("Image_1") else (1024 if big else 512))
+        if w > target:
+            img.scale(target, target)
+            img.filepath_raw = fp
+            img.file_format = "JPEG"
+            img.save()
+        bpy.data.images.remove(img)
+
+
 def build(hero, cfg, gen):
     global SC
     SC = float(cfg.get("scale", 1.0))
@@ -521,6 +542,7 @@ def build(hero, cfg, gen):
         export_yup=True, export_apply=False, export_animations=True, export_animation_mode="NLA_TRACKS",
         export_force_sampling=True, export_frame_step=1, export_def_bones=False, export_skins=True,
         export_image_format="JPEG", export_image_quality=88, export_materials="EXPORT")
+    shrink_textures(os.path.join(os.path.dirname(path), f"{hero}_tex"))
     tris = sum(sum(len(p.vertices) - 2 for p in c.data.polygons) for c in rig.ob.children if c.type == "MESH")
     print(f"HERO {hero}: {tris} tris, arm offsets L {rig.base['upperarm.L'][0]:.2f} R {rig.base['upperarm.R'][0]:.2f} -> {path}")
 
