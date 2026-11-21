@@ -21,12 +21,13 @@ func _ready() -> void:
 		var sh: Shader = load(p)
 		var mat := ShaderMaterial.new()
 		mat.shader = sh
-		var mi := MeshInstance3D.new()
-		mi.mesh = QuadMesh.new()
-		mi.material_override = mat
-		mi.position = Vector3(x, 0, 0)
-		x += 1.2
-		if sh.get_mode() == Shader.MODE_SPATIAL: add_child(mi)
+		if sh.get_mode() == Shader.MODE_SPATIAL:
+			var mi := MeshInstance3D.new()          # made only when it joins the tree: an orphan leaked at exit
+			mi.mesh = QuadMesh.new()
+			mi.material_override = mat
+			mi.position = Vector3(x, 0, 0)
+			x += 1.2
+			add_child(mi)
 		elif sh.get_mode() == Shader.MODE_CANVAS_ITEM:
 			var cr := ColorRect.new(); cr.size = Vector2(16, 16); cr.material = mat; add_child(cr)
 	for k in 3: await get_tree().process_frame
