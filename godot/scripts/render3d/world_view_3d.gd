@@ -59,6 +59,8 @@ var _cam_y := 0.0
 ## ticks. Moving things are drawn at prev.lerp(now, alpha) (World._snapshot); 1 draws the latest tick.
 var alpha := 1.0
 var hero_p := Vector2.ZERO            # the hero's drawn position this frame (between the last two ticks)
+var hero_y := 0.0                     # and height: the ground, or the jump arc (_hero_height)
+var _hero_jp := -1.0                  # drawn jump progress 0..1, -1 on the ground (jump_drawn)
 const SNAP_DIST2 := 120.0 * 120.0     # farther than this in one tick is a teleport: drawn where it landed
 var _ipos := PackedVector2Array()     # per swarm slot: the drawn position this frame (written by _foes)
 var _prop_cells := {}        # Vector2i chunk -> Node3D holding one MultiMesh per prop kind (culled and LOD'd per cell)
@@ -223,6 +225,14 @@ void fragment() {
 	_blob_mm.multimesh = bmm
 	var bsm := ShaderMaterial.new(); bsm.shader = load("res://shaders/3d/blob.gdshader")
 	_blob_mm.material_override = bsm
+	# the hero's own contact shadow: the same shader on one quad (its transform carries world x, z as x, y)
+	_hero_blob = MeshInstance3D.new()
+	_hero_blob.mesh = bq
+	_hero_blob_mat = ShaderMaterial.new(); _hero_blob_mat.shader = bsm.shader
+	_hero_blob.material_override = _hero_blob_mat
+	_hero_blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_hero_blob.custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))
+	add_child(_hero_blob)
 	_blob_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_blob_mm)
 	_bb.resize(_blob_cap * 8)
@@ -380,6 +390,8 @@ func _process(dt: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	time += dt
 	hero_p = lerp_pos(w.prev_pp, w.pp)
+	_hero_jp = jump_drawn()
+	hero_y = _hero_height(_hero_jp)
 	for m in [terrain_mat, prop_mat, _aura_mm.material_override]:
 		m.set_shader_parameter("time", time)
 	for fm in foe_mats: fm.set_shader_parameter("time", time)
@@ -471,7 +483,7 @@ const AMBIENT_FLOOR := 0.22
 func _lighting(dt: float) -> void:
 	var gl := w.gloom()            # 0 lit .. 1 dark (eclipse or the lantern running out)
 	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7) + 0.25 * gl * sin(time * 3.1) * sin(time * 17.0)
-	var gy := ground_y(hero_p)
+	var gy := hero_y                   # the lantern rides with the hero, up into a jump too
 	torch.position = Vector3(hero_p.x, 52.0 + gy, hero_p.y)
 	var to_cam := (cam.global_position - Vector3(hero_p.x, 0, hero_p.y))
 	to_cam.y = 0.0
@@ -984,9 +996,45 @@ func _foe_color(k: int) -> Color:
 # ================================================================= hero and bosses
 func _hero(dt: float) -> void:
 	hero.animate({"pos": hero_p, "face": w.face, "mv": w.mv, "ph": w.walk_ph, "cast_age": w.t - w.cast_t, "cast_dir": w.cast_dir,
-		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
-	hero.position.y += ground_y(hero_p)
+		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "jump": _hero_jp,
+		"hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
+	hero.position.y += hero_y
 	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
+	# contact shadow under the hero on every tier (Low has no shadow maps): it shrinks and fades as the
+	# hero rises, so a jump reads as height above the ground
+	var g := ground_y(hero_p)
+	var lift := clampf((hero_y - g) / JUMP_ARC, 0.0, 1.0)
+	var br := HERO_BLOB_R * (1.0 - 0.35 * lift)
+	_hero_blob.transform = Transform3D(Basis().scaled(Vector3(br, br, 1.0)), Vector3(hero_p.x, hero_p.y, 0.0))
+	_hero_blob_mat.set_shader_parameter("strength", 0.55 * (1.0 - 0.6 * lift))
+	# landing: a ring of dust where the hero comes down
+	if _hero_jp < 0.0 and _was_air:
+		for i in 12:
+			var a := TAU * i / 12.0
+			env_fx.puff(Vector3(hero_p.x, g + 4.0, hero_p.y), Vector3(cos(a) * 95.0, 12.0, sin(a) * 95.0), Color(0.6, 0.55, 0.5, 0.45), 0.7, 18.0)
+	_was_air = _hero_jp >= 0.0
+
+## Jumps: from the take-off ground height to the landing ground height, plus a parabola JUMP_ARC high at
+## the apex, never below the ground under the hero (a ridge on the way lifts the hero over it).
+const JUMP_ARC := 58.0
+const HERO_BLOB_R := 17.0
+var _hero_blob: MeshInstance3D
+var _hero_blob_mat: ShaderMaterial
+var _was_air := false
+
+## Jump progress (0 take-off, 1 landing) at the moment drawn, between the last two ticks; -1 on the ground.
+func jump_drawn() -> float:
+	var t1 := w.jump_t
+	var t0 := w.jump_t_prev
+	if t1 <= 0.0 and t0 <= 0.0: return -1.0
+	if t0 <= 0.0: t0 = World.JUMP_TIME            # the take-off tick: the jump begins at its first instant
+	return clampf(1.0 - lerpf(t0, t1, alpha) / World.JUMP_TIME, 0.0, 1.0)
+
+func _hero_height(jp: float) -> float:
+	var g := ground_y(hero_p)
+	if jp < 0.0: return g
+	var jh := 4.0 * jp * (1.0 - jp) * JUMP_ARC
+	return maxf(lerpf(ground_y(w.jump_from), ground_y(w.jump_to), jp) + jh, g + 2.0)
 
 var exile_rigs := {}
 func _exiles(dt: float) -> void:

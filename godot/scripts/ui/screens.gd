@@ -141,7 +141,7 @@ func show_menu() -> void:
 	v.add_child(_menu_bar(d))
 	# keyboard help only without a touchscreen (UIKit.is_touch: DisplayServer.is_touchscreen_available())
 	if not UIKit.is_touch():
-		var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
+		var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  F jump  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
 		help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(help)
 	if not portrait:

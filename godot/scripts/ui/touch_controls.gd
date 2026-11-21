@@ -9,6 +9,7 @@ extends Control
 ##    its own touch index, so you can move, roll and drink at the same time (multi-touch).
 
 signal roll
+signal jump
 signal ult
 signal flask(i: int)
 
@@ -45,16 +46,24 @@ func _relayout() -> void:
 	var m := UIKit.safe_margins(s)
 	var sc := clampf(minf(s.x, s.y) / 720.0, 0.75, 1.4)
 	R = R0 * sc
-	var side := -1.0 if _lay_lh else 1.0
-	var base_x := (s.x - 110.0 * sc - m.z) if side > 0.0 else (110.0 * sc + m.x)
-	var y := s.y - 120.0 * sc - m.w
-	_layout = [
-		{"id": "roll", "pos": Vector2(base_x, y), "r": 52.0 * sc, "label": "ROLL"},
-		{"id": "ult", "pos": Vector2(base_x - side * 128.0 * sc, y + 22.0 * sc), "r": 42.0 * sc, "label": "ULT"},
-		{"id": "f0", "pos": Vector2(base_x - side * 18.0 * sc, y - 118.0 * sc), "r": 32.0 * sc, "label": "1"},
-		{"id": "f1", "pos": Vector2(base_x - side * 100.0 * sc, y - 82.0 * sc), "r": 32.0 * sc, "label": "2"},
-	]
+	_layout = layout_for(s, m, _lay_lh)
 	_home = Vector2(s.x - 150.0 * sc - m.z, s.y - 150.0 * sc - m.w) if _lay_lh else Vector2(150.0 * sc + m.x, s.y - 150.0 * sc - m.w)
+
+## The thumb cluster: ROLL (the largest) at the corner anchor, and ULT, JUMP, 2 and 1 on an arc ARC_D
+## around its centre, from just below level on the inside (ULT) up to just past vertical (1). At scale 1
+## the closest pair (2 and 1) has 17.8 px of clear space between their circles, ULT-JUMP 19.5 and
+## JUMP-2 20.6; every satellite clears ROLL by at least 42 px. Mirrored for left-handed play.
+const ARC_D := 136.0
+const ARC := [["ult", "ULT", 42.0, 192.0], ["jump", "JUMP", 36.0, 150.0], ["f1", "2", 32.0, 112.0], ["f0", "1", 32.0, 77.0]]
+static func layout_for(s: Vector2, m: Vector4, left_handed: bool) -> Array[Dictionary]:
+	var sc := clampf(minf(s.x, s.y) / 720.0, 0.75, 1.4)
+	var side := -1.0 if left_handed else 1.0
+	var base := Vector2((s.x - 110.0 * sc - m.z) if side > 0.0 else (110.0 * sc + m.x), s.y - 120.0 * sc - m.w)
+	var out: Array[Dictionary] = [{"id": "roll", "pos": base, "r": 52.0 * sc, "label": "ROLL"}]
+	for b in ARC:
+		var a := deg_to_rad(float(b[3]))
+		out.append({"id": b[0], "pos": base + Vector2(cos(a) * side, -sin(a)) * ARC_D * sc, "r": float(b[2]) * sc, "label": b[1]})
+	return out
 
 func _buttons() -> Array[Dictionary]:
 	if _layout.is_empty(): _relayout()
@@ -73,12 +82,20 @@ func _gui_input(ev: InputEvent) -> void:
 		if not _seen_touch and ev.device != InputEvent.DEVICE_ID_EMULATION:   # a real finger, not mouse emulation
 			_seen_touch = true
 		if t.pressed:
+			# the button whose centre is nearest (relative to its size), within 1.25x its radius: the hit
+			# circles of neighbours on the arc may touch, and the nearer one wins
+			var best: Dictionary = {}
+			var best_k := 1.25
 			for b in _buttons():
-				if t.position.distance_to(b.pos) < b.r * 1.25:
-					_btn_touch[t.index] = b.id
-					_press(b.id)
-					accept_event()
-					return
+				var k: float = t.position.distance_to(b.pos) / float(b.r)
+				if k < best_k:
+					best_k = k
+					best = b
+			if not best.is_empty():
+				_btn_touch[t.index] = best.id
+				_press(best.id)
+				accept_event()
+				return
 			if stick_id < 0 and _in_move_half(t.position):
 				stick_id = t.index
 				origin = _stick_home() if _fixed() else t.position
@@ -115,6 +132,7 @@ func _update(p: Vector2) -> void:
 func _press(id: String) -> void:
 	match id:
 		"roll": roll.emit()
+		"jump": jump.emit()
 		"ult": ult.emit()
 		"f0": flask.emit(0)
 		"f1": flask.emit(1)
@@ -147,7 +165,7 @@ func _process(dt: float) -> void:
 		if u != _q_ult or f0 != _q_f0 or f1 != _q_f1:
 			_q_ult = u; _q_f0 = f0; _q_f1 = f1
 			redraw = true
-		var cd := world.roll_cd > 0.0
+		var cd := world.roll_cd > 0.0 or world.jump_cd > 0.0
 		if cd != _was_cd:
 			_was_cd = cd
 			redraw = true
@@ -200,6 +218,7 @@ func _draw() -> void:
 				"f0": k = world.flasks[0].c / world.flasks[0].max; col = Color("e0434f")
 				"f1": k = world.flasks[1].c / world.flasks[1].max; col = Color("5ab4ff")
 				"roll": k = clampf(1.0 - world.roll_cd / 1.4, 0, 1); col = Color("c9f3ff")
+				"jump": k = clampf(1.0 - world.jump_cd / World.JUMP_CD, 0, 1); col = Color("ffd9a0")
 		draw_circle(bp, br, Color(0.04, 0.035, 0.045, 0.62 if held else 0.48))
 		if b.id.begins_with("f") and k >= 0.0:        # flask liquid level
 			var lvl := clampf(k, 0.0, 1.0)

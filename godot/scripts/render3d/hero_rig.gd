@@ -375,7 +375,7 @@ func _storm(cloth: Material, cloth_d: Material, leather: Material, brass: Materi
 	_part(weapon, _box, brass, Vector3(0, 28, 3.2), Vector3(0.7, 9, 0.7), Vector3(0.5, 0, 0))
 	_part(weapon, _box, brass, Vector3(0, 28, -3.2), Vector3(0.7, 9, 0.7), Vector3(-0.5, 0, 0))
 
-## st: {pos, face, mv, ph, cast_age, cast_dir, roll (0..1 or -1), hit (0..1), dead, t}
+## st: {pos, face, mv, ph, cast_age, cast_dir, roll (0..1 or -1), jump (0..1 or -1), hit (0..1), dead, t}
 func animate(st: Dictionary, dt: float) -> void:
 	var p: Vector2 = st.pos
 	position = Vector3(p.x, 0.0, p.y)
@@ -435,6 +435,15 @@ func animate(st: Dictionary, dt: float) -> void:
 		shin_r.rotation.z = -1.6
 	else:
 		hips.rotation.z = 0.0
+	var jp := float(st.get("jump", -1.0))
+	if jp >= 0.0 and roll < 0.0:                       # airborne: knees up at the apex, arms out for balance
+		var tk := sin(jp * PI)
+		leg_l.rotation.z = lerpf(leg_l.rotation.z, 1.0, tk)
+		leg_r.rotation.z = lerpf(leg_r.rotation.z, 1.0, tk)
+		shin_l.rotation.z = lerpf(shin_l.rotation.z, -1.5, tk)
+		shin_r.rotation.z = lerpf(shin_r.rotation.z, -1.5, tk)
+		arm_l.rotation.z = lerpf(arm_l.rotation.z, -0.7, tk)
+	hips.scale = _jump_scale(jp, dt)
 	if _dead > 0.0:
 		rotation.z = -_dead * PI * 0.5
 		position.y = -_dead * 4.0
@@ -450,6 +459,43 @@ var _v_run := 85.0
 var _last_cast_age := 9.0
 var _cast_flip := 0
 var _roll_k := 0.0
+var _jump_k := 0.0
+var _tuck: JumpTuck                  # procedural airborne pose, for models without a "jump" clip
+
+# ---------------------------------------------------------------- jump pose
+## A model with a "jump" clip has it scrubbed by jump progress (take-off, tuck, landing crouch). One
+## without gets JumpTuck: hips and knees bent on top of whatever the tree posed, peaking at the apex.
+## Either way the body stretches up out of the take-off and squashes for a moment on landing.
+class JumpTuck extends SkeletonModifier3D:
+	var amount := 0.0                 # 0 straight .. 1 fully tucked
+	var _bones := PackedInt32Array()
+	func _process_modification_with_delta(_delta: float) -> void:
+		if amount <= 0.001: return
+		var sk := get_skeleton()
+		if sk == null: return
+		if _bones.is_empty():
+			for nm in ["thigh.L", "thigh.R", "shin.L", "shin.R"]: _bones.append(sk.find_bone(nm))
+		for k in 4:
+			var b := _bones[k]
+			if b < 0: continue
+			var ang := (TUCK_THIGH if k < 2 else TUCK_SHIN) * amount
+			sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b) * Quaternion(Vector3.RIGHT, ang))
+const TUCK_THIGH := -1.15             # thighs swing forward (radians about the bone's x axis)
+const TUCK_SHIN := 1.7                # knees fold back
+const LAND_SQUASH_T := 0.16
+var _land_t := 0.0
+var _jp_last := -1.0
+
+## Scale for the body: stretched up (y + 13%) leaving the ground, easing out by 30% of the jump;
+## squashed (y - 16%, wider) on landing, springing back over LAND_SQUASH_T. Volume roughly kept.
+func _jump_scale(jp: float, dt: float) -> Vector3:
+	if jp < 0.0 and _jp_last >= 0.0: _land_t = LAND_SQUASH_T
+	_jp_last = jp
+	_land_t = maxf(0.0, _land_t - dt)
+	var k := 0.0
+	if jp >= 0.0: k = 0.13 * clampf(1.0 - jp / 0.3, 0.0, 1.0)
+	if _land_t > 0.0: k = -0.16 * sin(_land_t / LAND_SQUASH_T * PI * 0.5)
+	return Vector3(1.0 - k * 0.5, 1.0 + k, 1.0 - k * 0.5)
 var _spd := 0.0
 var _was_hit := false
 
@@ -495,10 +541,23 @@ func _build_tree() -> void:
 	bt.add_node("roll_seek", AnimationNodeTimeSeek.new()); bt.connect_node("roll_seek", 0, "roll_clip")
 	bt.add_node("roll", AnimationNodeBlend2.new())
 	bt.connect_node("roll", 0, prev); bt.connect_node("roll", 1, "roll_seek")
+	# jump: the authored clip scrubbed by the simulation's jump progress; without one, JumpTuck (never the roll)
+	var below_hit := "roll"
+	if anim.has_animation("jump"):
+		bt.add_node("jump_clip", _clip("jump"))
+		bt.add_node("jump_seek", AnimationNodeTimeSeek.new()); bt.connect_node("jump_seek", 0, "jump_clip")
+		bt.add_node("jump", AnimationNodeBlend2.new())
+		bt.connect_node("jump", 0, "roll"); bt.connect_node("jump", 1, "jump_seek")
+		below_hit = "jump"
+	else:
+		var sks := anim.get_parent().find_children("*", "Skeleton3D", true, false)
+		if not sks.is_empty():
+			_tuck = JumpTuck.new()
+			sks[0].add_child(_tuck)
 	var hit := AnimationNodeOneShot.new()
 	hit.fadein_time = 0.05; hit.fadeout_time = 0.2
 	bt.add_node("hit_clip", _clip("hit")); bt.add_node("hit", hit)
-	bt.connect_node("hit", 0, "roll"); bt.connect_node("hit", 1, "hit_clip")
+	bt.connect_node("hit", 0, below_hit); bt.connect_node("hit", 1, "hit_clip")
 	var life := AnimationNodeTransition.new()
 	life.xfade_time = 0.12
 	life.add_input("alive"); life.add_input("dead")
@@ -547,6 +606,15 @@ func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 		tree.set("parameters/roll/blend_amount", _roll_k)
 		if roll >= 0.0:
 			tree.set("parameters/roll_seek/seek_request", clampf(roll, 0.0, 0.98) * anim.get_animation("roll").length)
+		var jp := float(st.get("jump", -1.0))
+		if _tuck == null:
+			_jump_k = move_toward(_jump_k, 1.0 if jp >= 0.0 else 0.0, dt * 14.0)
+			tree.set("parameters/jump/blend_amount", _jump_k)
+			if jp >= 0.0:
+				tree.set("parameters/jump_seek/seek_request", clampf(jp, 0.0, 0.98) * anim.get_animation("jump").length)
+		else:
+			_tuck.amount = sin(jp * PI) if jp >= 0.0 else 0.0
+		override.scale = _jump_scale(jp, dt)
 		var hit_now := _hit > 0.5
 		if hit_now and not _was_hit and roll < 0.0: tree.set("parameters/hit/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		_was_hit = hit_now

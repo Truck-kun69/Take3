@@ -39,6 +39,8 @@ func _ready() -> void:
 		_height_tests()
 		_interp_tests()
 		_vat_tests()
+		_jump_tests()
+		_jump_polish_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -822,6 +824,170 @@ func _audio_tests() -> void:
 		var p2 := Sfx._pitch("gem", 1.0, 100400)
 		var p3 := Sfx._pitch("gem", 1.0, 101000)
 		ok(is_equal_approx(p0, 1.0) and is_equal_approx(p1, pow(2.0, 1.0 / 12.0)) and is_equal_approx(p2, pow(2.0, 2.0 / 12.0)) and is_equal_approx(p3, 1.0), "gem pickups climb a semitone each and reset after a 0.45 s gap")
+
+## A spot facing a cliff band: walkable here, walkable 150-200 units ahead, a cliff cell in between.
+func _find_cliff_crossing(w: World) -> Array:
+	var T := w.terrain
+	for ring in range(8, 60):
+		for k in 48:
+			var a := TAU * k / 48.0
+			var p := Vector2(cos(a), sin(a)) * float(ring) * 32.0
+			if not T.passable(p): continue
+			for dk in 16:
+				var d := Vector2.from_angle(TAU * dk / 16.0)
+				var hit := false
+				for step in range(1, 6):
+					if T.type_at(p + d * step * 16.0) == Terrain.CLIFF: hit = true
+				if not (hit and T.passable(p + d * 180.0) and T.passable(p + d * World.JUMP_DIST)): continue
+				# a real wall: walking straight at it for 2 s gets nowhere near the far side
+				var q := p
+				for f in 120: q = T.move(q, q + d * 160.0 / 60.0)
+				if (q - p).dot(d) < 60.0:
+					return [p, d]
+	return []
+
+func _jump_tests() -> void:
+	print("== jump")
+	var found := []
+	var w: World
+	for st in [1, 3, 2, 0, 4]:
+		w = _world({"mode": "campaign", "hero": 0, "stage": st, "seed": 51})
+		found = _find_cliff_crossing(w)
+		if not found.is_empty(): break
+	ok(not found.is_empty(), "found a cliff to test against")
+	if found.is_empty(): return
+	w.stats.set_source("t", [["max_hp", "add", 1e7]]); w.hp = 1e7
+	w.weapons.clear()
+	var start: Vector2 = found[0]
+	var dir: Vector2 = found[1]
+	w.pp = start
+	w.in_move = dir
+	for k in 120: w.step(1.0 / 60.0)
+	var walked := (w.pp - start).dot(dir)
+	ok(walked < 90.0, "walking stops at the cliff (%.0f units in 2 s)" % walked)
+	w.pp = start
+	w.vel = Vector2.ZERO
+	w.jump_cd = 0.0
+	w.in_jump = true
+	w.step(1.0 / 60.0)
+	ok(w.airborne(), "the jump takes off")
+	var peak_ok := true
+	for k in 60:
+		w.step(1.0 / 60.0)
+		if w.airborne() and w.jump_progress() < 0.0: peak_ok = false
+	var crossed := (w.pp - start).dot(dir)
+	ok(not w.airborne() and crossed > 150.0 and w.terrain.passable(w.pp), "and lands past the cliff on solid ground (%.0f units)" % crossed)
+	ok(w.jump_cd > 0.0, "then it is on cooldown")
+	var before := w.pp
+	w.in_jump = true
+	w.in_move = Vector2.ZERO
+	w.step(1.0 / 60.0)
+	ok(not w.airborne(), "a second jump inside the cooldown does nothing")
+	# landings are always on solid ground, from anywhere, in any direction
+	var bad := 0
+	var rng := RandomNumberGenerator.new(); rng.seed = 7
+	for k in 400:
+		var p := Vector2(rng.randf_range(-2500, 2500), rng.randf_range(-2500, 2500))
+		if not w.terrain.passable(p): continue
+		var to := w.jump_landing(p, Vector2.from_angle(rng.randf() * TAU))
+		if not w.terrain.passable(to): bad += 1
+	ok(bad == 0, "every landing is on walkable ground (%d bad of 400 tries)" % bad)
+	# in the air: no melee contact, ground telegraphs miss; projectiles still hit
+	var a := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 52})
+	a.weapons.clear()
+	for k in 5: a.step(1.0 / 60.0)
+	a.in_jump = true
+	a.in_move = Vector2.RIGHT
+	a.step(1.0 / 60.0)
+	for k in 6: a.spawn_foe(Content.E.BRUTE, a.pp + Vector2(randf_range(-10, 10), randf_range(-10, 10)), 0, 0, 50.0)
+	a.add_tele(0, a.pp, 300.0, 0.05, 0.0, 30.0, true, false, -1, Color.RED, "test slam")
+	var hp0 := a.hp
+	for k in 15: a.step(1.0 / 60.0)
+	ok(a.airborne() and a.hp == hp0, "airborne: neither the swarm nor a slam lands a hit")
+	a.spawn_eshot(a.pp + Vector2(-20, 0), Vector2(600, 0), 7.0)
+	a.inv_t = 0.0
+	for k in 3: a.step(1.0 / 60.0)
+	ok(a.hp < hp0, "but projectiles still do")
+
+## The jump's touch button, airborne hazards, and how the 3D view draws it (arc, shadow on every tier).
+func _jump_polish_tests() -> void:
+	print("== jump: controls, hazards, drawing")
+	# the thumb cluster: five buttons, all on screen, at least 12 px of clear space between any two circles,
+	# at 16:9, 20:9 and portrait, with and without a camera cutout, for either hand
+	var worst := INF
+	var off := 0
+	var count_ok := true
+	for sz in [Vector2(1280, 720), Vector2(1600, 720), Vector2(720, 1280), Vector2(960, 720)]:
+		for m in [Vector4.ZERO, Vector4(60, 0, 40, 24)]:
+			for lh in [false, true]:
+				var lay := TouchControls.layout_for(sz, m, lh)
+				count_ok = count_ok and lay.size() == 5 and lay.map(func(b): return b.id).has("jump")
+				for i in lay.size():
+					var a: Dictionary = lay[i]
+					var ap: Vector2 = a.pos
+					var ar: float = a.r
+					if ap.x - ar < 0.0 or ap.y - ar < 0.0 or ap.x + ar > sz.x or ap.y + ar > sz.y: off += 1
+					for j in range(i + 1, lay.size()):
+						var b: Dictionary = lay[j]
+						worst = minf(worst, ap.distance_to(b.pos) - ar - float(b.r))
+	ok(count_ok and off == 0 and worst >= 12.0, "ROLL, ULT, JUMP, 1 and 2 fit on screen with at least 12 px between them at 16:9, 20:9 and portrait (closest pair %.1f px, %d off screen)" % [worst, off])
+	# airborne, the hero is untouched by burning oil and poison underfoot; on the ground both hurt
+	var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 61})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	for k in 5: w.step(1.0 / 60.0)
+	w.terrain.pour(w.pp + Vector2(60, 0), 70.0, Terrain.Surf.FIRE, 30.0)
+	w.terrain.pour(w.pp + Vector2(160, 0), 70.0, Terrain.Surf.POISON, 30.0)
+	var hp0 := w.hp
+	w.in_jump = true
+	w.in_move = Vector2.RIGHT
+	for k in 30: w.step(1.0 / 60.0)           # airborne over the fire and the poison
+	var air_hp := w.hp
+	ok(w.airborne() and air_hp == hp0, "a jump over burning oil and poison takes no damage")
+	var g := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 61})
+	g.stats.set_source("t", [["max_hp", "add", 1e6]]); g.hp = 1e6
+	g.weapons.clear()
+	for k in 5: g.step(1.0 / 60.0)
+	g.terrain.pour(g.pp, 70.0, Terrain.Surf.FIRE, 30.0)
+	var g0 := g.hp
+	for k in 30: g.step(1.0 / 60.0)
+	ok(g.hp < g0, "standing in burning oil does hurt")
+	# the 3D view: arc height, the drawn progress between ticks, and the hero's own contact shadow, on Low
+	Save.data.options.gfx = 1                      # the Low tier: no shadow maps
+	var j := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 62})
+	j.stats.set_source("t", [["max_hp", "add", 1e6]]); j.hp = 1e6
+	j.weapons.clear()
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(j)
+	for k in 3: j.step(1.0 / 60.0)
+	v._process(1.0 / 60.0)
+	var blob_ground: float = v._hero_blob.transform.basis.x.x
+	ok(Quality.tier() == 0 and v._hero_blob.visible and v._hero_blob.transform.origin.x == v.hero_p.x and v._hero_blob.transform.origin.y == v.hero_p.y,
+		"on Low the hero has a contact shadow under it")
+	j.in_jump = true
+	j.in_move = Vector2.RIGHT
+	j.step(1.0 / 60.0)                             # take-off tick
+	var ticks := 0
+	while j.jump_t > World.JUMP_TIME * 0.5 and ticks < 120:
+		j.step(1.0 / 60.0)
+		ticks += 1
+	v.alpha = 0.5
+	v._process(1.0 / 60.0)
+	var jp := v._hero_jp
+	var expect := maxf(lerpf(v.ground_y(j.jump_from), v.ground_y(j.jump_to), jp) + 4.0 * jp * (1.0 - jp) * WorldView3D.JUMP_ARC, v.ground_y(v.hero_p) + 2.0)
+	ok(jp > 0.4 and jp < 0.6 and absf(v.hero_y - expect) < 0.01, "mid-jump the hero is drawn on the arc (progress %.2f, %.1f above the ground)" % [jp, v.hero_y - v.ground_y(v.hero_p)])
+	ok(v.hero_y - v.ground_y(v.hero_p) > 50.0, "about 58 units up at the apex")
+	ok(v._hero_blob.transform.basis.x.x < blob_ground * 0.8, "and its shadow shrinks while it is up (radius %.1f -> %.1f)" % [blob_ground, v._hero_blob.transform.basis.x.x])
+	var t0 := j.jump_t
+	v.alpha = 0.0
+	v._process(1.0 / 60.0)
+	var jp0 := v._hero_jp
+	v.alpha = 1.0
+	v._process(1.0 / 60.0)
+	ok(v._hero_jp > jp0 and absf((v._hero_jp - jp0) - FixedStep.STEP / World.JUMP_TIME) < 0.001, "between ticks the arc moves smoothly (one tick = %.3f of the jump)" % (FixedStep.STEP / World.JUMP_TIME))
+	Save.data.options.gfx = 0
+	v.queue_free()
 
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")

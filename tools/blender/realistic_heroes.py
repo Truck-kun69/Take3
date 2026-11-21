@@ -37,7 +37,10 @@ import retarget as RT  # noqa: E402
 KK_SRC = "KayKit-Character-Pack-Skeletons-1.0/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Warrior.glb"
 CLIPS_MELEE = {"idle": ("Idle", True, None, None), "walk": ("Walking_A", True, None, None), "run": ("Running_A", True, None, None),
                "cast": ("1H_Melee_Attack_Slice_Horizontal", False, None, None), "cast2": ("1H_Melee_Attack_Chop", False, None, None),
-               "roll": ("Dodge_Forward", False, None, None), "hit": ("Hit_A", False, None, None), "die": ("Death_A", False, None, None)}
+               "roll": ("Dodge_Forward", False, None, None), "hit": ("Hit_A", False, None, None), "die": ("Death_A", False, None, None),
+               # the airborne part of a short jump: push-off (frame 7) to the landing crouch (frame 19); the
+               # game scrubs it by jump progress and adds the height arc itself
+               "jump": ("Jump_Full_Short", False, 7, 19)}
 CLIPS_CASTER = dict(CLIPS_MELEE, idle=("2H_Melee_Idle", True, None, None), cast=("Spellcast_Shoot", False, None, None), cast2=("Spellcast_Raise", False, 0, 30))
 CLIPS_BOSS = {"idle": ("2H_Melee_Idle", True, None, None), "walk": ("Walking_C", True, None, None), "attack": ("2H_Melee_Attack_Chop", False, None, None),
               "hit": ("Hit_B", False, None, None), "die": ("Death_B", False, None, None)}
@@ -51,7 +54,7 @@ def cape_fns():
     def burst(t):
         k = math.sin(math.pi * min(1.0, t * 1.4))
         return {"cape1": fwd(-0.15 - 0.3 * k), "cape2": fwd(-0.12 * k), "cape3": fwd(-0.1 * k)}
-    return {"idle": still, "walk": moving(0.3), "run": moving(0.55), "cast": burst, "cast2": burst, "attack": burst, "roll": moving(0.8), "hit": burst, "die": still}
+    return {"idle": still, "walk": moving(0.3), "run": moving(0.55), "cast": burst, "cast2": burst, "attack": burst, "roll": moving(0.8), "jump": moving(0.95), "hit": burst, "die": still}
 
 MODELS = B.MODELS
 # Triangle budgets for the body (weapons come on top): a hero is 100 to 250 px tall from the game camera
@@ -477,16 +480,18 @@ def place_weapon(path, kind, J, hero_h=50.0):
 
 def shrink_textures(tex_dir):
     """The sources carry 2048 px body maps and 1024 px accessory maps; a hero is 100 to 250 px tall on
-    screen. Ship body albedo at 512 and accessory albedo at 256, metal-roughness maps (Image_1*) at half
-    of that. Done on the files (not as a Godot import size limit: the editor reset that option when it
-    re-imported the scenes), so the game imports them GPU-compressed (ETC2 on phones) at these sizes."""
+    screen. Ship body albedo (Image_0) at 512, weapon albedo (Image_0-n) at 256 and every metal-roughness
+    map (Image_1*) at 512 (at 128 the weapons' highlights broke up). A boss's body is 512 too. Done on the files (not as a Godot import size limit:
+    the editor reset that option when it re-imported the scenes), so the game imports them
+    GPU-compressed (ETC2 on phones) at these sizes."""
     for fn in sorted(os.listdir(tex_dir)):
         if not fn.lower().endswith(".jpg"): continue
         fp = os.path.join(tex_dir, fn)
         img = bpy.data.images.load(fp)
         w = img.size[0]
         big = w >= 2048
-        target = ((256 if big else 128) if fn.startswith("Image_1") else (512 if big else 256))
+        body = "-" not in fn                    # Image_0 / Image_1: the body; Image_0-1, Image_1-2 ...: weapons
+        target = 512 if (fn.startswith("Image_1") or body or big) else 256
         if w > target:
             img.scale(target, target)
             img.filepath_raw = fp

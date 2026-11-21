@@ -41,6 +41,7 @@ func _ready() -> void:
 	screens.act.connect(_on_act)
 	hud.pause_pressed.connect(_pause)
 	touch.roll.connect(func(): if world: world.in_roll = true)
+	touch.jump.connect(func(): if world: world.in_jump = true)
 	touch.ult.connect(func(): if world: world.in_ult = true)
 	touch.flask.connect(func(i: int): if world: world.in_flask[i] = true)
 	_crowd_setup()
@@ -144,9 +145,9 @@ func _on_resize() -> void:
 func _input_map() -> void:
 	var keys := {
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT], "move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
-		"roll": [KEY_SPACE, KEY_SHIFT], "ult": [KEY_R, KEY_Q], "flask1": [KEY_1], "flask2": [KEY_2], "pause": [KEY_ESCAPE, KEY_P], "gear": [KEY_TAB, KEY_I],
+		"roll": [KEY_SPACE, KEY_SHIFT], "jump": [KEY_F], "ult": [KEY_R, KEY_Q], "flask1": [KEY_1], "flask2": [KEY_2], "pause": [KEY_ESCAPE, KEY_P], "gear": [KEY_TAB, KEY_I],
 	}
-	var pads := {"roll": JOY_BUTTON_A, "ult": JOY_BUTTON_Y, "flask1": JOY_BUTTON_LEFT_SHOULDER, "flask2": JOY_BUTTON_RIGHT_SHOULDER, "pause": JOY_BUTTON_START, "gear": JOY_BUTTON_BACK}
+	var pads := {"roll": JOY_BUTTON_A, "jump": JOY_BUTTON_X, "ult": JOY_BUTTON_Y, "flask1": JOY_BUTTON_LEFT_SHOULDER, "flask2": JOY_BUTTON_RIGHT_SHOULDER, "pause": JOY_BUTTON_START, "gear": JOY_BUTTON_BACK}
 	var axes := {"move_left": [JOY_AXIS_LEFT_X, -1.0], "move_right": [JOY_AXIS_LEFT_X, 1.0], "move_up": [JOY_AXIS_LEFT_Y, -1.0], "move_down": [JOY_AXIS_LEFT_Y, 1.0]}
 	for a in keys:
 		if not InputMap.has_action(a):
@@ -482,6 +483,7 @@ func _process(dt: float) -> void:
 		if not bot_drive:
 			world.in_move = touch.value if touch.stick_id >= 0 else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		if Input.is_action_just_pressed("roll"): world.in_roll = true
+		if Input.is_action_just_pressed("jump"): world.in_jump = true
 		if Input.is_action_just_pressed("ult"): world.in_ult = true
 		if Input.is_action_just_pressed("flask1"): world.in_flask[0] = true
 		if Input.is_action_just_pressed("flask2"): world.in_flask[1] = true
