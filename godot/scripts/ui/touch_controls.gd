@@ -9,6 +9,7 @@ extends Control
 ##    its own touch index, so you can move, roll and drink at the same time (multi-touch).
 
 signal roll
+signal jump
 signal ult
 signal flask(i: int)
 
@@ -53,6 +54,7 @@ func _relayout() -> void:
 		{"id": "ult", "pos": Vector2(base_x - side * 128.0 * sc, y + 22.0 * sc), "r": 42.0 * sc, "label": "ULT"},
 		{"id": "f0", "pos": Vector2(base_x - side * 18.0 * sc, y - 118.0 * sc), "r": 32.0 * sc, "label": "1"},
 		{"id": "f1", "pos": Vector2(base_x - side * 100.0 * sc, y - 82.0 * sc), "r": 32.0 * sc, "label": "2"},
+		{"id": "jump", "pos": Vector2(base_x - side * 196.0 * sc, y - 46.0 * sc), "r": 36.0 * sc, "label": "JUMP"},
 	]
 	_home = Vector2(s.x - 150.0 * sc - m.z, s.y - 150.0 * sc - m.w) if _lay_lh else Vector2(150.0 * sc + m.x, s.y - 150.0 * sc - m.w)
 
@@ -115,6 +117,7 @@ func _update(p: Vector2) -> void:
 func _press(id: String) -> void:
 	match id:
 		"roll": roll.emit()
+		"jump": jump.emit()
 		"ult": ult.emit()
 		"f0": flask.emit(0)
 		"f1": flask.emit(1)
@@ -147,7 +150,7 @@ func _process(dt: float) -> void:
 		if u != _q_ult or f0 != _q_f0 or f1 != _q_f1:
 			_q_ult = u; _q_f0 = f0; _q_f1 = f1
 			redraw = true
-		var cd := world.roll_cd > 0.0
+		var cd := world.roll_cd > 0.0 or world.jump_cd > 0.0
 		if cd != _was_cd:
 			_was_cd = cd
 			redraw = true
@@ -200,6 +203,7 @@ func _draw() -> void:
 				"f0": k = world.flasks[0].c / world.flasks[0].max; col = Color("e0434f")
 				"f1": k = world.flasks[1].c / world.flasks[1].max; col = Color("5ab4ff")
 				"roll": k = clampf(1.0 - world.roll_cd / 1.4, 0, 1); col = Color("c9f3ff")
+				"jump": k = clampf(1.0 - world.jump_cd / World.JUMP_CD, 0, 1); col = Color("ffd9a0")
 		draw_circle(bp, br, Color(0.04, 0.035, 0.045, 0.62 if held else 0.48))
 		if b.id.begins_with("f") and k >= 0.0:        # flask liquid level
 			var lvl := clampf(k, 0.0, 1.0)

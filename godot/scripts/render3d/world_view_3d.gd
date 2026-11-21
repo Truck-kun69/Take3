@@ -454,7 +454,7 @@ func _camera(dt: float) -> void:
 func _lighting(dt: float) -> void:
 	var gl := w.gloom()            # 0 lit .. 1 dark (eclipse or the lantern running out)
 	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7) + 0.25 * gl * sin(time * 3.1) * sin(time * 17.0)
-	var gy := ground_y(w.pp)
+	var gy := hero_y()                 # the torch and key light go up with a jump
 	torch.position = Vector3(w.pp.x, 52.0 + gy, w.pp.y)
 	var to_cam := (cam.global_position - Vector3(w.pp.x, 0, w.pp.y))
 	to_cam.y = 0.0
@@ -614,6 +614,41 @@ func _surf_fx() -> void:
 ## Ground height under a point (flat until the terrain heightfield exists).
 func ground_y(p: Vector2) -> float:
 	return w.terrain.height(p) if w != null and w.terrain != null else 0.0
+
+## Jumps: from the take-off height to the landing height plus a parabolic arc. Jumping up a ledge, the
+## height is gained early (1 - (1 - p)^3); jumping down, it is kept until late (p^3), so the hero clears
+## the edge before dropping. The arc is JUMP_ARC high, raised once per jump (at take-off) until it clears
+## every ridge on the way by JUMP_CLEAR, up to JUMP_ARC_MAX; a wall right at the take-off point that even
+## that cannot clear is vaulted (the hero never goes below the ground under it).
+const JUMP_ARC := 56.0
+const JUMP_ARC_MAX := 130.0
+const JUMP_CLEAR := 14.0
+var _arc_key := Vector4.INF
+var _arc := JUMP_ARC
+var _arc_h0 := 0.0
+var _arc_h1 := 0.0
+
+func _jump_base(p: float) -> float:
+	var e := (1.0 - pow(1.0 - p, 3.0)) if _arc_h1 > _arc_h0 else pow(p, 3.0)
+	return lerpf(_arc_h0, _arc_h1, e)
+
+## The hero's height: the ground, or the jump arc.
+func hero_y() -> float:
+	var g := ground_y(w.pp)
+	var p := w.jump_progress()
+	if p < 0.0: return g
+	var key := Vector4(w.jump_from.x, w.jump_from.y, w.jump_to.x, w.jump_to.y)
+	if key != _arc_key:
+		_arc_key = key
+		_arc_h0 = ground_y(w.jump_from)
+		_arc_h1 = ground_y(w.jump_to)
+		_arc = JUMP_ARC
+		for k in range(2, 18):                   # samples between 11% and 89% of the way
+			var sp := float(k) / 19.0
+			var need := ground_y(w.jump_from.lerp(w.jump_to, sp)) + JUMP_CLEAR - _jump_base(sp)
+			_arc = maxf(_arc, need / (4.0 * sp * (1.0 - sp)))
+		_arc = minf(_arc, JUMP_ARC_MAX)
+	return maxf(_jump_base(p) + 4.0 * _arc * p * (1.0 - p), g + 2.0)
 
 ## Whether a prop of this kind may stand here (terrain rules: no trees in water, no props on cliffs).
 func _prop_ok(kind: String, p: Vector2) -> bool:
@@ -914,8 +949,9 @@ func _foe_color(k: int) -> Color:
 # ================================================================= hero and bosses
 func _hero(dt: float) -> void:
 	hero.animate({"pos": w.pp, "face": w.face, "mv": w.mv, "ph": w.walk_ph, "cast_age": w.t - w.cast_t, "cast_dir": w.cast_dir,
-		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
-	hero.position.y += ground_y(w.pp)
+		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "jump": w.jump_progress(),
+		"hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
+	hero.position.y += hero_y()
 	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
 
 var exile_rigs := {}

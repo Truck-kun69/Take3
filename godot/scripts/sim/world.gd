@@ -121,6 +121,21 @@ var roll_age := 9.0
 var roll_cd := 0.0
 var roll_dir := Vector2.RIGHT
 var roll_buffer := 0.0
+## Jump: a leap of up to JUMP_DIST over cliffs, ledges and deep water, which block walking and the roll.
+## The arc is drawn by the renderer; in the simulation the hero moves in a straight line, does not
+## collide with the terrain on the way, and is out of reach of melee contact, ground telegraphs and
+## burning ground while airborne (projectiles still hit). The landing is chosen at take-off: the
+## spot JUMP_DIST ahead, or just past it when that is a cliff face or deep water, or else the
+## farthest solid ground short of it.
+const JUMP_TIME := 0.55
+const JUMP_DIST := 200.0
+const JUMP_CD := 2.0
+var jump_t := 0.0               # seconds left in the air (0: on the ground)
+var jump_cd := 0.0
+var jump_buffer := 0.0
+var jump_from := Vector2.ZERO
+var jump_to := Vector2.ZERO
+var in_jump := false
 var vel := Vector2.ZERO            # walking velocity (the roll moves the hero directly)
 const ACCEL_T := 0.06
 const DECEL_T := 0.05
@@ -440,8 +455,11 @@ func _step_player(dt: float) -> void:
 	var mvv := in_move.limit_length(1.0)
 	var tm := terrain.speed_mul(pp)
 	var np := pp
+	var flying := jump_t > 0.0
 	var rolling := roll_t > 0.0
-	if rolling:
+	if flying:
+		_step_jump(dt, spd)                           # replaces walking and rolling this tick
+	elif rolling:
 		roll_t -= dt
 		# a burst that eases out: 3.1x speed for the first 45% of the roll, tapering to 1.3x at the end.
 		# The average is the old flat 2.6x, so the distance (and every dodge tuned around it) is unchanged,
@@ -456,11 +474,11 @@ func _step_player(dt: float) -> void:
 		vel = vel.move_toward(want, spd / (DECEL_T if stopping else ACCEL_T) * dt)
 		np += vel * dt
 	var before := pp
-	pp = terrain.move(pp, np)
-	if not rolling and dt > 0.0:
+	if not flying: pp = terrain.move(pp, np)
+	if not rolling and not flying and dt > 0.0:
 		var moved := (pp - before) / dt                   # a wall or cliff stopped us: keep no stored speed
 		if moved.length_squared() < vel.length_squared(): vel = moved
-	if terrain.burns(pp):
+	if terrain.burns(pp) and jump_t <= 0.0:
 		_lava_t -= dt
 		if _lava_t <= 0.0:
 			_lava_t = 0.5
@@ -470,25 +488,31 @@ func _step_player(dt: float) -> void:
 	roll_age += dt
 	if arena_r > 0.0 and pp.length() > arena_r - 14.0:
 		pp = pp.normalized() * (arena_r - 14.0)
-	if mvv.length() > 0.05 and roll_t <= 0.0:
+	if mvv.length() > 0.05 and roll_t <= 0.0 and not flying:
 		face = mvv.normalized()
 	mv = lerpf(mv, mvv.length(), minf(1.0, 12.0 * dt))
 	walk_ph += dt * (7.0 + 9.0 * mv)
 	if keystones.has("momentum"):
 		momentum = minf(10.0, momentum + dt) if mvv.length() > 0.3 else 0.0
-	if inv_t > 0.0: inv_t -= dt
-	if hit_t > 0.0: hit_t -= dt
-	if roll_cd > 0.0: roll_cd -= dt
-	if ult_cd > 0.0: ult_cd -= dt
+	_step_player_timers(dt)
 	# dodge roll with a 0.15s input buffer
 	if in_roll:
 		roll_buffer = 0.15
 		in_roll = false
 	if roll_buffer > 0.0:
 		roll_buffer -= dt
-		if roll_cd <= 0.0 and not stats.flag("no_roll"):
+		if roll_cd <= 0.0 and jump_t <= 0.0 and not stats.flag("no_roll"):
 			_roll(mvv)
 			roll_buffer = 0.0
+	# jump, with the same 0.15 s buffer (not out of a roll: the roll finishes first)
+	if in_jump:
+		jump_buffer = 0.15
+		in_jump = false
+	if jump_buffer > 0.0:
+		jump_buffer -= dt
+		if jump_cd <= 0.0 and roll_t <= 0.0 and jump_t <= 0.0:
+			_jump(mvv)
+			jump_buffer = 0.0
 	# ultimate and flasks: a 0.12 s buffer, so a press a moment before the charge fills still fires
 	if in_ult:
 		in_ult = false
@@ -528,6 +552,64 @@ func _step_tide() -> void:
 	if step > _tide_step and step <= 3:
 		_tide_step = step
 		banner.emit("The tide rises", "Deep water spreads; cold makes a road across it.", Color("7fe0c0"))
+
+## Cooldowns and grace timers that run on the ground and in the air alike.
+func _step_player_timers(dt: float) -> void:
+	if inv_t > 0.0: inv_t -= dt
+	if hit_t > 0.0: hit_t -= dt
+	if roll_cd > 0.0: roll_cd -= dt
+	if ult_cd > 0.0: ult_cd -= dt
+	if jump_cd > 0.0: jump_cd -= dt
+
+func airborne() -> bool:
+	return jump_t > 0.0
+
+## Jump progress 0..1 while airborne, -1 on the ground (the renderer draws the arc from it).
+func jump_progress() -> float:
+	return clampf(1.0 - jump_t / JUMP_TIME, 0.0, 1.0) if jump_t > 0.0 else -1.0
+
+func _jump(mvv: Vector2) -> void:
+	var dir := mvv.normalized() if mvv.length() > 0.1 else face
+	jump_from = pp
+	jump_to = jump_landing(pp, dir)
+	jump_t = JUMP_TIME
+	jump_cd = JUMP_CD
+	face = dir
+	_burst(pp, Color(0.75, 0.7, 0.62), 6, 110.0)
+	Sfx.play("roll", 1.25, 0.8)
+
+## Where a jump from `from` toward `dir` comes down. Exactly JUMP_DIST ahead when that is solid ground;
+## past a cliff face or deep water, up to 5 cells further; otherwise the farthest solid ground short of
+## it (a jump at a wall it cannot clear lands at its foot). Inside the pinnacle arena, never outside it.
+func jump_landing(from: Vector2, dir: Vector2) -> Vector2:
+	var ok := func(q: Vector2) -> bool:
+		if arena_r > 0.0 and q.length() > arena_r - 14.0: return false
+		return terrain.passable(q)
+	var to := from + dir * JUMP_DIST
+	if ok.call(to): return to
+	for k in range(1, 6):
+		var q := to + dir * (Terrain.CELL * k)
+		if ok.call(q): return q
+	var d := JUMP_DIST - Terrain.CELL
+	while d >= Terrain.CELL:
+		var q2 := from + dir * d
+		if ok.call(q2): return q2
+		d -= Terrain.CELL
+	return from
+
+func _step_jump(dt: float, spd: float) -> void:
+	jump_t -= dt
+	var p := clampf(1.0 - jump_t / JUMP_TIME, 0.0, 1.0)
+	pp = jump_from.lerp(jump_to, p)                      # straight over the terrain: nothing blocks a jump
+	if jump_t <= 0.0:
+		jump_t = 0.0
+		pp = jump_to
+		var d := jump_to - jump_from
+		vel = d.normalized() * spd * terrain.speed_mul(pp) if d.length() > 1.0 else Vector2.ZERO
+		_burst(pp, Color(0.75, 0.7, 0.62), 12, 160.0)
+		fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 70.0, "col": Color(0.85, 0.8, 0.7, 0.6), "life": 0.3, "t": 0.0})
+		shake = minf(1.0, shake + 0.08)
+		Sfx.play("impact", 0.8, 0.7)
 
 func _roll(mvv: Vector2) -> void:
 	roll_dir = mvv.normalized() if mvv.length() > 0.1 else face
@@ -814,6 +896,8 @@ func _step_foes(dt: float) -> void:
 
 func _contact() -> void:
 	if invulnerable() and roll_t <= 0.0:
+		return
+	if jump_t > 0.0:                      # over their heads
 		return
 	var c := grid.query(pp, 30.0, sw)
 	var res := grid.results
@@ -1501,9 +1585,10 @@ func _step_surfaces(dt: float) -> void:
 				sw.apply_status(i, Content.El.CHAOS, 1.0, 2.0)
 			Terrain.Surf.OIL:
 				sw.apply_status(i, Content.El.COLD, 0.5, 0.6)       # sticky: a light chill
-	match terrain.surf_at(pp):
-		Terrain.Surf.FIRE: hurt_player(5.0, "burning oil")
-		Terrain.Surf.POISON: hurt_player(1.5, "poison")
+	if jump_t <= 0.0:
+		match terrain.surf_at(pp):
+			Terrain.Surf.FIRE: hurt_player(5.0, "burning oil")
+			Terrain.Surf.POISON: hurt_player(1.5, "poison")
 
 func _water_chain(i: int) -> void:
 	var fp := sw.pos[i]
@@ -1817,7 +1902,7 @@ func _step_teles(dt: float) -> void:
 			k += 1
 
 func _tele_bite(z: Tele) -> void:
-	if z.hostile and tele_contains(z, pp, 8.0):
+	if z.hostile and jump_t <= 0.0 and tele_contains(z, pp, 8.0):     # ground hazards miss a hero in the air
 		hurt_player(z.dmg, z.tag)
 	if z.friendly:
 		var reach := z.r if z.shape != 2 else z.length
