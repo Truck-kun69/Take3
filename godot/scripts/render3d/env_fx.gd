@@ -84,11 +84,17 @@ void fragment() {
 	_sb.resize(SMOKE_CAP * 20)
 	m_pos.resize(SMOKE_CAP); m_vel.resize(SMOKE_CAP); m_life.resize(SMOKE_CAP); m_max.resize(SMOKE_CAP); m_col.resize(SMOKE_CAP); m_size.resize(SMOKE_CAP)
 	fog = MeshInstance3D.new()
+	# the ground's size, 25 x 25 quads (88 units): fog.gdshader lifts every vertex to the terrain + 7, so the
+	# fog lies in the valleys and over the hills instead of being a flat sheet the hills poke through
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(3200, 3200)
+	pm.size = Vector2(WorldView3D.GROUND_SIZE, WorldView3D.GROUND_SIZE)
+	pm.subdivide_width = 24
+	pm.subdivide_depth = 24
 	fog.mesh = pm
+	fog.custom_aabb = AABB(Vector3(-WorldView3D.GROUND_SIZE * 0.5, -300, -WorldView3D.GROUND_SIZE * 0.5), Vector3(WorldView3D.GROUND_SIZE, 600, WorldView3D.GROUND_SIZE))
 	fog_mat = ShaderMaterial.new()
 	fog_mat.shader = load("res://shaders/3d/fog.gdshader")
+	fog_mat.set_shader_parameter("drape", true)
 	fog.material_override = fog_mat
 	fog.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(fog)
@@ -145,7 +151,7 @@ func bind(world: World) -> void:
 func step(dt: float) -> void:
 	time += dt
 	_frame += 1
-	fog.position = Vector3(snappedf(w.pp.x, 32.0), 7.0, snappedf(w.pp.y, 32.0))
+	fog.position = Vector3(snappedf(w.pp.x, 32.0), 0.0, snappedf(w.pp.y, 32.0))     # height: fog.gdshader
 	fog_mat.set_shader_parameter("time", time)
 	_pushers()
 	_footsteps()

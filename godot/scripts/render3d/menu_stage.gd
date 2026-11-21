@@ -6,6 +6,11 @@ extends Node3D
 
 const ORIGIN := Vector3(200000, 0, 0)
 const HERO_AT := Vector2(-45, 30)     # sim-space spot the hero stands on, between the braziers
+## Light energies, 40% under what they were (10, 9 and 7) now that the glow threshold is 1.25 and the
+## ambient comes from the sky: the hero's armour and the ground by the braziers no longer burn out.
+const BRAZIER_E := 6.0
+const RIFT_E := 5.4
+const KEY_E := 4.2
 var frame_x := 0.62                   # where on screen (0..1) the hero should stand; set by the menu layout
 var frame_y := 0.5                    # and how far down (0 top, 1 bottom): portrait menus raise the hero
 var cam: Camera3D
@@ -30,19 +35,25 @@ func _ready() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
 	e.background_color = Color(0.02, 0.018, 0.03)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.32, 0.3, 0.42)
+	# ambient from the sky as in the run (WorldView3D): a cool sky over a dark warm ground
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	e.ambient_light_energy = 0.25
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
+	# the run's glow: only what is brighter than 1.25 (flames, the crystal, the rift), screen-blended, no bloom
 	e.glow_enabled = true
-	e.glow_intensity = 0.9
-	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	e.glow_intensity = 0.45
+	e.glow_strength = 0.85
+	e.glow_bloom = 0.0
+	e.glow_hdr_threshold = 1.25
+	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	e.fog_enabled = true
 	e.fog_light_color = Color(0.08, 0.07, 0.12)
 	e.fog_density = 0.0016
 	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.2, 0.18, 0.3); sm.sky_horizon_color = Color(0.12, 0.1, 0.16)
+	sm.sky_top_color = Color(0.3, 0.3, 0.44); sm.sky_horizon_color = Color(0.17, 0.16, 0.24)
+	sm.ground_bottom_color = Color(0.07, 0.05, 0.035); sm.ground_horizon_color = Color(0.12, 0.09, 0.08)
 	var sky := Sky.new(); sky.sky_material = sm
+	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	e.sky = sky
 	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	cam.environment = e
@@ -51,6 +62,7 @@ func _ready() -> void:
 	moon.rotation = Vector3(deg_to_rad(-38), deg_to_rad(28), 0)
 	moon.light_color = Color(0.55, 0.62, 0.9)
 	moon.light_energy = 0.35
+	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	moon.shadow_enabled = true
 	add_child(moon)
 	# ground
@@ -95,7 +107,7 @@ func _ready() -> void:
 	crystal.scale = Vector3(20, 58, 20)
 	crystal.position = Vector3(-25, 112, -150)
 	add_child(crystal)
-	rift_light = _omni(Vector3(-25, 108, -110), Color("9a7aff"), 260.0, 9.0)
+	rift_light = _omni(Vector3(-25, 108, -110), Color("9a7aff"), 260.0, RIFT_E)
 	# braziers: stone bowl, embers, flickering firelight
 	for x in [-118.0, 28.0]:                              # either side of the hero, slightly behind
 		var bz := MeshInstance3D.new()
@@ -111,16 +123,22 @@ func _ready() -> void:
 		bz.material_override = bm
 		bz.position = Vector3(x, 0, -15)
 		add_child(bz)
-		braziers.append(_omni(Vector3(x, 50, -11), Color(1.0, 0.6, 0.3), 240.0, 10.0))
+		braziers.append(_omni(Vector3(x, 50, -11), Color(1.0, 0.6, 0.3), 240.0, BRAZIER_E))
 		add_child(_flames(Vector3(x, 34, -15)))
 	add_child(_embers())
 	# warm key light from the camera side and a cool rim from behind, so textured heroes read on the dark stage
-	key_light = _omni(Vector3(HERO_AT.x + 70, 90, HERO_AT.y + 110), Color(1.0, 0.82, 0.62), 260.0, 7.0)
+	key_light = _omni(Vector3(HERO_AT.x + 70, 90, HERO_AT.y + 110), Color(1.0, 0.82, 0.62), 260.0, KEY_E)
 	_omni(Vector3(HERO_AT.x - 40, 70, HERO_AT.y - 80), Color(0.55, 0.65, 1.0), 200.0, 5.0)
 	fog_mat = ShaderMaterial.new()
 	fog_mat.shader = load("res://shaders/3d/fog.gdshader")
 	fog_mat.set_shader_parameter("fog_col", Color(0.35, 0.33, 0.45))
 	fog_mat.set_shader_parameter("density", 0.4)
+	# the fog parts around the hero and glows at it, like the run's (pushers[0] is the hero there too);
+	# the shader works in world space and this stage sits at ORIGIN
+	var push := PackedVector4Array()
+	push.resize(6)
+	push[0] = Vector4(ORIGIN.x + HERO_AT.x, ORIGIN.z + HERO_AT.y, 48.0, 14.0)
+	fog_mat.set_shader_parameter("pushers", push)
 	var fog := MeshInstance3D.new()
 	var fp := PlaneMesh.new(); fp.size = Vector2(1400, 1400)
 	fog.mesh = fp
@@ -238,8 +256,8 @@ func _process(dt: float) -> void:
 	crystal.position.y = 112.0 + sin(t * 0.8) * 6.0
 	crystal.rotation.y = t * 0.3
 	crystal_mat.emission_energy_multiplier = 1.4 + 0.6 * sin(t * 1.7)
-	rift_light.light_energy = 8.0 + 2.0 * sin(t * 1.7)
+	rift_light.light_energy = RIFT_E * (0.89 + 0.22 * sin(t * 1.7))
 	for i in braziers.size():
-		braziers[i].light_energy = 10.0 * (1.0 + 0.12 * sin(t * 9.0 + i * 2.0) + 0.07 * sin(t * 23.0 + i))
+		braziers[i].light_energy = BRAZIER_E * (1.0 + 0.12 * sin(t * 9.0 + i * 2.0) + 0.07 * sin(t * 23.0 + i))
 	terrain_mat.set_shader_parameter("time", t)
 	fog_mat.set_shader_parameter("time", t)

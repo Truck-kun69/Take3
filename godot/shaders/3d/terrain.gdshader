@@ -12,13 +12,13 @@ uniform float time = 0.0;
 // four independent low-frequency noise fields in one small tiling texture (the global g_noise, built by WorldView3D.noise_tex):
 // one filtered lookup replaces a dozen per-pixel hash evaluations (the S22 spent most of its frame here)
 global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
-uniform bool detail2 = false;        // High tier: sample each set at a second scale to hide the repeat
+uniform bool detail2 = false;        // Medium and High: sample each set at a second scale to hide the repeat
 uniform bool has_tex = false;
 uniform sampler2D tex_a : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D tex_b : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D nrm_a : filter_linear_mipmap, repeat_enable;
 uniform sampler2D nrm_b : filter_linear_mipmap, repeat_enable;
-uniform float tex_scale = 0.0045;       // one tile every ~220 world units
+uniform float tex_scale = 0.0085;       // one tile every ~118 world units (1024 px: ~8.7 texels per unit)
 uniform float tint = 0.45;               // how far the act palette recolours the photographs
 uniform bool displace = false;     // the run's ground follows the terrain; the title stage stays flat
 varying vec3 wp;

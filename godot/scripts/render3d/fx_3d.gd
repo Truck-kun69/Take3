@@ -18,6 +18,7 @@ const GLOW_CAP := 2400
 const DEBRIS_CAP := 600
 const SPARK_CAP := 700
 const MARK_CAP := 96
+const MARK_LIFT := 0.4             # marks lie this far above the ground (clear of its depth, under decals at 0.5)
 const ESHOT_RING := Color(1.0, 0.08, 0.46)      # enemy shots' ring: magenta-crimson
 const DECAL_POOL := 110
 
@@ -132,8 +133,12 @@ void fragment() {
 	bolt_mat = _shader("res://shaders/3d/bolt.gdshader")
 	add_child(bolts)
 	decal_mat = _shader("res://shaders/3d/decal.gdshader")
+	# 9 x 9 quads: the shaders drape every vertex onto the terrain (16-unit height cells), so a telegraph or
+	# a crater bends over a hill instead of cutting through it between its four corners
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(2, 2)
+	plane.subdivide_width = 8
+	plane.subdivide_depth = 8
 	for i in DECAL_POOL:
 		var d := MeshInstance3D.new()
 		d.mesh = plane
@@ -151,7 +156,8 @@ varying vec4 v_c;
 void vertex() {
 	v_c = INSTANCE_CUSTOM;
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX += lift(mat3(MODEL_MATRIX), th(w.xz));      // each corner drapes onto the ground
+	// the instance sits at ground_y(centre) + MARK_LIFT (CPU); each vertex follows the ground relative to it
+	VERTEX += lift(mat3(MODEL_MATRIX), th(w.xz) - th(MODEL_MATRIX[3].xz));
 }
 void fragment() {
 	vec2 p = (UV - 0.5) * 2.0;
@@ -302,6 +308,12 @@ func _debris(p: Vector3, v: Vector3, c: Color, size: float, life: float = -1.0) 
 	d_spin[d_n] = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12)); d_life[d_n] = life if life > 0.0 else randf_range(1.0, 1.6)
 	d_size[d_n] = size; d_col[d_n] = c
 	d_n += 1
+
+## One persistent mark ([pos, angle, size, kind, time]) as a marks_mm instance: its centre gy + MARK_LIFT
+## (gy = view.ground_y under it); the marks shader drapes the rest of it relative to that centre.
+static func mark_xform(m: Array, gy: float) -> Transform3D:
+	var s: float = m[2]
+	return Transform3D(Basis(Vector3.UP, m[1]).scaled(Vector3(s, 1, s)), Vector3(m[0].x, gy + MARK_LIFT, m[0].y))
 
 func _mark(p: Vector2, size: float, kind: int) -> void:
 	var e := [p, randf() * TAU, size, kind, time]
@@ -640,7 +652,7 @@ func _decals() -> void:
 		var a := clampf(1.0 - age / 20.0, 0.0, 1.0)
 		if a <= 0.0: continue
 		var s: float = m[2]
-		mm.set_instance_transform(n, Transform3D(Basis(Vector3.UP, m[1]).scaled(Vector3(s, 1, s)), Vector3(m[0].x, 0.3, m[0].y)))
+		marks_mm.multimesh.set_instance_transform(n, mark_xform(m, view.ground_y(m[0])))
 		var mc := Color(0.32, 0.02, 0.03) if m[3] == 0 else (Color(0.05, 0.04, 0.04) if m[3] == 1 else Color(0.12, 0.1, 0.09))
 		mm.set_instance_color(n, mc)
 		mm.set_instance_custom_data(n, Color(a * 0.75, float(m[1]), 0, 0))
@@ -648,15 +660,18 @@ func _decals() -> void:
 	mm.visible_instance_count = n
 
 # ================================================================= event props
-func _obj_mat(c: Color, e: float = 0.0) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.roughness = 0.6
-	if e > 0.0:
-		m.emission_enabled = true
-		m.emission = c
-		m.emission_energy_multiplier = e
-	return m
+## Event props (chests, strongboxes, shrines, pylons, gates, the merchant, rituals) are lit by prop.gdshader
+## like the act's own props: vertex colours with its noise breakup, base occlusion, roughness and rim, and
+## the glow parts in the event's colour. One material per colour, shared, its time kept running.
+var _obj_mats := {}
+func _obj_mat(col: Color) -> ShaderMaterial:
+	if not _obj_mats.has(col):
+		var sm := ShaderMaterial.new()
+		sm.shader = load("res://shaders/3d/prop.gdshader")
+		sm.set_shader_parameter("glow_col", col)
+		sm.set_shader_parameter("push_n", 0)
+		_obj_mats[col] = sm
+	return _obj_mats[col]
 
 func _make_obj(kind: String, col: Color) -> Node3D:
 	var n := Node3D.new()
@@ -709,15 +724,13 @@ func _make_obj(kind: String, col: Color) -> Node3D:
 			k.add("sphere", Vector3(0, 10, 0), Vector3(20, 20, 20), col, MeshKit.PART_GLOW)
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit()
-	var sm := ShaderMaterial.new()
-	sm.shader = load("res://shaders/3d/prop.gdshader")
-	sm.set_shader_parameter("glow_col", col)
-	mi.material_override = sm
+	mi.material_override = _obj_mat(col)
 	n.add_child(mi)
 	add_child(n)
 	return n
 
 func _event_props(dt: float) -> void:
+	for c in _obj_mats: _obj_mats[c].set_shader_parameter("time", time)
 	var want := {}
 	for ev in w.director.active:
 		var kind := ""

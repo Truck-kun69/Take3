@@ -10,12 +10,14 @@ extends Node3D
 ## Draw-call budget: terrain 1, each prop kind 1, each foe kind 1 (MultiMesh), glow sprites 1,
 ## gems 1, debris 1, projectiles 1, blades 1, pickups 4, beams 1, lightning 1, decal pool <= 96.
 
+## "sky" / "gnd": the hemisphere the ambient light comes from (ProceduralSkyMaterial, AMBIENT_SOURCE_SKY):
+## a cool sky above, a dark warm ground below, so tops of things read cool and undersides warm and dim.
 const STAGE_LOOK := [
-	{"sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 34, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
-	{"sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 8, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
-	{"sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 14, "crystal": 1, "pillar": 2.5, "bones": 4}},
-	{"sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 8, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
-	{"sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85), "props": {"tree": 0.9, "rock": 2.5, "grass": 6, "crystal": 0.8, "pillar": 2.2, "bones": 1.5}}
+	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 34, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
+	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 8, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
+	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 14, "crystal": 1, "pillar": 2.5, "bones": 4}},
+	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 8, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
+	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85), "props": {"tree": 0.9, "rock": 2.5, "grass": 6, "crystal": 0.8, "pillar": 2.2, "bones": 1.5}}
 ]
 const CHUNK := 640.0
 ## Godot's omni falloff is distance^-attenuation in world units. This world is ~60 units per hero,
@@ -50,7 +52,7 @@ var _cam_target := Vector3.ZERO
 var _foe_mm: Array[MultiMeshInstance3D] = []
 var _foe_n := PackedInt32Array()
 var _foe_cap := PackedInt32Array()       # instances allocated per kind's MultiMesh (a power of two, grows only)
-const GROUND_SIZE := 3000.0
+const GROUND_SIZE := 2200.0
 var GROUND_Q := 20.0            # ground grid spacing, set per graphics tier (Quality.ground_q)
 var water: MeshInstance3D
 var water_mat: ShaderMaterial
@@ -78,22 +80,27 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	env = Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	# a dim sky used only for reflections, so metal armour has something to reflect instead of black
+	# the sky is never drawn (the camera looks down); it is the ambient light and what metal reflects:
+	# per act a cool sky over a dark warm ground (STAGE_LOOK sky / gnd), lighting tops cool and undersides warm
 	sky_mat = ProceduralSkyMaterial.new()
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_64          # only diffuse ambient and dim reflections read it
 	env.sky = sky
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_energy = 0.3
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_sky_contribution = 1.0
+	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
+	# glow only from what is brighter than 1.25 after exposure (spells, embers, loot), screen-blended so it
+	# lightens without the soft-light mode's contrast boost; no bloom, so lit ground and armour never haze
 	env.glow_enabled = true
-	env.glow_intensity = 0.85
-	env.glow_strength = 1.1
-	env.glow_bloom = 0.08
-	env.glow_hdr_threshold = 1.0
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	env.glow_intensity = 0.45
+	env.glow_strength = 0.85
+	env.glow_bloom = 0.0
+	env.glow_hdr_threshold = 1.25
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	env.set_glow_level(1, 1.0); env.set_glow_level(3, 1.0); env.set_glow_level(5, 0.6)
 	env.fog_enabled = true
 	env.fog_density = 0.0007
@@ -108,17 +115,19 @@ func _ready() -> void:
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-52.0), deg_to_rad(-35.0), 0.0)
-	sun.light_energy = 0.7
+	sun.light_energy = SUN_ENERGY
+	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY  # no sun disc in the ambient sky: it would light everything twice
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 1150.0          # the camera sits 600-700 away; 1800 shadowed far off screen
+	sun.directional_shadow_max_distance = SHADOW_DIST      # scaled with the camera distance in _camera
+	sun.directional_shadow_fade_start = 0.9                # the fade starts past the hero (camera distance 600)
 	sun.shadow_blur = 1.5
 	add_child(sun)
 	torch = OmniLight3D.new()
 	torch.light_color = Color(1.0, 0.78, 0.5)
-	torch.omni_range = 300.0
+	torch.omni_range = TORCH_RANGE
 	torch.omni_attenuation = LIGHT_ATT
-	torch.light_energy = 3.2 * LIGHT_GAIN
+	torch.light_energy = TORCH_ENERGY * LIGHT_GAIN
 	torch.shadow_enabled = false
 	torch.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
 	add_child(torch)
@@ -126,7 +135,7 @@ func _ready() -> void:
 	key_light.light_color = Color(1.0, 0.95, 0.88)
 	key_light.omni_range = 110.0
 	key_light.omni_attenuation = LIGHT_ATT
-	key_light.light_energy = 1.6 * LIGHT_GAIN
+	key_light.light_energy = KEY_ENERGY * LIGHT_GAIN
 	key_light.light_specular = 0.6
 	add_child(key_light)
 	for i in 14:
@@ -257,7 +266,9 @@ func _ground_mesh() -> void:
 			mi.material_override = terrain_mat
 			mi.position = Vector3((ix - GROUND_TILES * 0.5 + 0.5) * ts, 0, (iz - GROUND_TILES * 0.5 + 0.5) * ts)
 			mi.custom_aabb = AABB(Vector3(-ts * 0.5, -300, -ts * 0.5), Vector3(ts, 600, ts))
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON      # hills shade the valleys
+			# the ground receives shadows but casts none: its 8 x 8 tiles were the biggest mesh in the shadow pass,
+			# and from 52 degrees the hills' own shading (normals) carries the relief
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			ground.add_child(mi)
 
 ## Two tiling CC0 texture sets per act: [base, patches]. The shader blends and tints them.
@@ -288,7 +299,7 @@ static func noise_tex() -> ImageTexture:
 
 static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
 	noise_tex()
-	mat.set_shader_parameter("detail2", Quality.high())
+	mat.set_shader_parameter("detail2", Quality.tier() >= 1)
 	var gs: Array = GROUND_SETS[clampi(stage, 0, GROUND_SETS.size() - 1)]
 	var ok := ResourceLoader.exists("res://textures/terrain/%s.jpg" % gs[0])
 	mat.set_shader_parameter("has_tex", ok)
@@ -335,10 +346,10 @@ func bind(world: World) -> void:
 	for u in exile_rigs: exile_rigs[u].queue_free()
 	exile_rigs.clear()
 	corpses.clear()
-	sky_mat.sky_top_color = _look.amb.lightened(0.2)
-	sky_mat.sky_horizon_color = _look.fog.lightened(0.3)
-	sky_mat.ground_bottom_color = _look.bg
-	sky_mat.ground_horizon_color = _look.fog
+	sky_mat.sky_top_color = _look.sky
+	sky_mat.sky_horizon_color = _look.sky.lerp(_look.fog, 0.4)
+	sky_mat.ground_bottom_color = _look.gnd
+	sky_mat.ground_horizon_color = _look.gnd.lerp(_look.fog, 0.4)
 	_clear_props()
 	# terrain: liquid kind and colours per stage; textures recomposed on the first frame
 	var lk := {"water": 0, "lava": 1, "void": 2, "none": 3}.get(w.terrain.liquid, 3) as int
@@ -428,7 +439,7 @@ func _features() -> void:
 	torch.shadow_enabled = not mobile and Quality.tier() >= 2 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"
 	env.glow_enabled = Quality.on("post")
 	env.fog_enabled = Quality.on("post")
-	water.visible = Quality.on("water")
+	water.visible = Quality.on("water") and _liquid_kind != 3      # 3: this act has no liquid at all
 	fx.visible = Quality.on("effects")
 	env_fx.visible = Quality.on("effects")
 	var fs := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if (Quality.tier() >= 1 and Quality.on("foe_shadow")) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -452,6 +463,7 @@ func _camera(dt: float) -> void:
 	view_scale = 1.0 if aspect >= 1.2 else 1.0 + (1.2 - aspect) * 0.9   # portrait phones see as much ground
 	var boss_on := w.bosses.boss_hp_frac() >= 0.0
 	var dist := 600.0 * view_scale * (1.18 if boss_on else 1.0)
+	sun.directional_shadow_max_distance = SHADOW_DIST * dist / 600.0
 	var lead := Vector3(w.face.x, 0, w.face.y) * 40.0 * w.mv
 	_cam_y = lerpf(_cam_y, ground_y(hero_p), minf(1.0, dt * 4.0))        # the camera rides the hills, smoothly
 	var tgt := Vector3(hero_p.x, _cam_y, hero_p.y) + lead                  # the drawn hero, not the latest tick
@@ -478,8 +490,17 @@ func _camera(dt: float) -> void:
 			r = maxf(r, Vector2(hit.x, hit.z).distance_to(w.pp))
 	w.view_r = clampf(r, 400.0, 1400.0)
 
+const SUN_ENERGY := 1.2
 const SUN_FLOOR := 0.32
+const AMBIENT_ENERGY := 0.3
 const AMBIENT_FLOOR := 0.22
+const TORCH_ENERGY := 1.6           # x LIGHT_GAIN; full gloom raises it by 40%
+const TORCH_RANGE := 360.0
+const KEY_ENERGY := 0.9             # x LIGHT_GAIN
+## The sun's shadow reaches SHADOW_DIST of view depth at the landscape camera distance (600): the hero
+## stands at 600, the top of the screen at about 840. The shadow map covers only that slice, so its texels
+## are dense; portrait and the boss zoom pull the camera back, and the distance grows with it.
+const SHADOW_DIST := 720.0
 func _lighting(dt: float) -> void:
 	var gl := w.gloom()            # 0 lit .. 1 dark (eclipse or the lantern running out)
 	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7) + 0.25 * gl * sin(time * 3.1) * sin(time * 17.0)
@@ -490,10 +511,10 @@ func _lighting(dt: float) -> void:
 	key_light.position = Vector3(hero_p.x, 46.0 + gy, hero_p.y) + to_cam.normalized() * 55.0
 	# full gloom dims the sun and ambient to floors (SUN_FLOOR, AMBIENT_FLOOR), never to black: the ground and
 	# the swarm stay readable outside the torch's pool
-	sun.light_energy = lerpf(sun.light_energy, lerpf(0.7, SUN_FLOOR, gl), minf(1.0, dt * 2.0))
-	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(0.3, AMBIENT_FLOOR, gl), minf(1.0, dt * 2.0))
-	torch.light_energy = lerpf(3.2, 4.5, gl) * flick * LIGHT_GAIN
-	torch.omni_range = lerpf(300.0, 260.0, gl)
+	sun.light_energy = lerpf(sun.light_energy, lerpf(SUN_ENERGY, SUN_FLOOR, gl), minf(1.0, dt * 2.0))
+	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(AMBIENT_ENERGY, AMBIENT_FLOOR, gl), minf(1.0, dt * 2.0))
+	torch.light_energy = TORCH_ENERGY * lerpf(1.0, 1.4, gl) * flick * LIGHT_GAIN
+	torch.omni_range = TORCH_RANGE * lerpf(1.0, 0.87, gl)
 	env.fog_density = lerpf(env.fog_density, lerpf(0.0007, 0.0014, gl), minf(1.0, dt))
 
 # ================================================================= props

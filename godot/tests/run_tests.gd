@@ -41,6 +41,7 @@ func _ready() -> void:
 		_vat_tests()
 		_jump_tests()
 		_jump_polish_tests()
+		_look_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -988,6 +989,117 @@ func _jump_polish_tests() -> void:
 	ok(v._hero_jp > jp0 and absf((v._hero_jp - jp0) - FixedStep.STEP / World.JUMP_TIME) < 0.001, "between ticks the arc moves smoothly (one tick = %.3f of the jump)" % (FixedStep.STEP / World.JUMP_TIME))
 	Save.data.options.gfx = 0
 	v.queue_free()
+
+func _look_tests() -> void:
+	print("== look: resolution, ground, light, draping")
+	# 3D resolution: phones by tier, FXAA only at 0.9 and up, the dynamic factor's floor
+	var M: Script = load("res://scripts/main.gd")
+	ok(M.auto_render_scale(0, true, false) == 0.75 and M.auto_render_scale(1, true, false) == 0.9 and M.auto_render_scale(2, true, false) == 1.0,
+		"phones render 3D at 0.75 / 0.90 / 1.0 on Low / Medium / High")
+	ok(M.auto_render_scale(2, false, false) == 1.0 and M.auto_render_scale(1, false, true) == 0.75, "desktops native, the web 0.75")
+	ok(M.fxaa_allowed(1.0) and M.fxaa_allowed(0.9) and not M.fxaa_allowed(0.9 * 0.92) and not M.fxaa_allowed(0.75),
+		"FXAA runs at a 3D scale of 0.9 or more only (a Medium phone loses it when the dynamic factor drops)")
+	var d := 1.0
+	for k in 20: d = M.dyn_down(d, 1.0, 1.0 / 60.0)
+	ok(is_equal_approx(d, 0.75) and is_equal_approx(M.dyn_down(1.0, 0.025, 1.0 / 60.0), 0.92),
+		"the dynamic factor steps down 0.08 (0.15 when twice over budget) and stops at 0.75 (%.2f)" % d)
+	# the ground grid and texture detail per tier
+	var qs := []
+	var d2 := []
+	for g in [1, 2, 3]:
+		Save.data.options.gfx = g
+		qs.append(Quality.ground_q())
+		var gm := ShaderMaterial.new()
+		WorldView3D.apply_ground(gm, 0)
+		d2.append(gm.get_shader_parameter("detail2"))
+	Save.data.options.gfx = 0
+	ok(qs == [16.0, 12.0, 10.0], "ground grid spacing Low / Medium / High: %s" % str(qs))
+	ok(d2 == [false, true, true], "the second texture scale (detail2) on Medium and High: %s" % str(d2))
+	# the run's view: sky ambient, glow, lights, shadows, ground tiles, decals, marks, fog, water
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 64})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	for k in 3: w.step(1.0 / 60.0)
+	v._process(1.0 / 60.0)
+	ok(v.env.ambient_light_source == Environment.AMBIENT_SOURCE_SKY and v.sky_mat.sky_top_color == WorldView3D.STAGE_LOOK[0].sky
+		and v.sky_mat.ground_bottom_color == WorldView3D.STAGE_LOOK[0].gnd, "ambient light comes from the act's sky")
+	var cool := true
+	for lk in WorldView3D.STAGE_LOOK:
+		var sk: Color = lk.sky
+		var gn: Color = lk.gnd
+		cool = cool and sk.b > sk.r and gn.r > gn.b and gn.get_luminance() < sk.get_luminance() * 0.5
+	ok(cool, "every act: a cool sky over a dark, warm ground")
+	ok(v.env.glow_blend_mode == Environment.GLOW_BLEND_MODE_SCREEN and v.env.glow_bloom == 0.0 and is_equal_approx(v.env.glow_hdr_threshold, 1.25)
+		and is_equal_approx(v.env.glow_intensity, 0.45) and is_equal_approx(v.env.glow_strength, 0.85), "glow: screen blend, no bloom, threshold 1.25, intensity 0.45, strength 0.85")
+	for k in 400: v._lighting(1.0 / 60.0)
+	var fl: float = v.torch.light_energy / (1.6 * WorldView3D.LIGHT_GAIN)
+	ok(w.gloom() == 0.0 and absf(v.sun.light_energy - 1.2) < 0.01 and fl > 0.8 and fl < 1.2 and v.torch.omni_range == 360.0
+		and is_equal_approx(v.key_light.light_energy, 0.9 * WorldView3D.LIGHT_GAIN),
+		"lights: sun 1.2, torch 1.6 x gain (flicker %.2f) over 360 units, key 0.9 x gain" % fl)
+	v._camera(1.0 / 60.0)
+	ok(is_equal_approx(v.sun.directional_shadow_max_distance, 720.0 * v.view_scale), "sun shadows reach 720 at the landscape camera (%.0f)" % v.sun.directional_shadow_max_distance)
+	var casts := 0
+	var span := 0.0
+	for c in v.ground.get_children():
+		if c.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF: casts += 1
+		span = maxf(span, absf(c.position.x) * 2.0 + (c.mesh as PlaneMesh).size.x)
+	ok(casts == 0 and v.ground.get_child_count() == WorldView3D.GROUND_TILES * WorldView3D.GROUND_TILES, "ground tiles receive shadows but cast none")
+	ok(absf(span - WorldView3D.GROUND_SIZE) <= WorldView3D.GROUND_TILES * v.GROUND_Q, "the ground spans %.0f (GROUND_SIZE 2200)" % span)
+	var dp := v.fx.decals[0].mesh as PlaneMesh
+	ok(dp.subdivide_width == 8 and dp.subdivide_depth == 8 and v.fx.marks_mm.multimesh.mesh == dp, "decals and marks: 9 x 9 quads to drape over the terrain")
+	# a mark on a slope sits at the ground under its centre + 0.4
+	var best := w.pp
+	var bh := -1e9
+	for k in 64:
+		var q: Vector2 = w.pp + Vector2.from_angle(TAU * k / 64.0) * (80.0 + 4.0 * k)
+		if v.ground_y(q) > bh: bh = v.ground_y(q); best = q
+	v.fx._marks.clear()
+	v.fx._mark(best, 40.0, 1)
+	v._process(1.0 / 60.0)
+	var mx := FX3D.mark_xform(v.fx._marks[0], v.ground_y(best))
+	ok(v.fx.marks_mm.multimesh.visible_instance_count == 1 and absf(mx.origin.y - (v.ground_y(best) + 0.4)) < 0.001 and is_equal_approx(mx.basis.x.length(), 40.0),
+		"a scorch mark on a slope lies at the ground under its centre + 0.4 (%.1f on ground %.1f)" % [mx.origin.y, v.ground_y(best)])
+	var o1 := v.fx._make_obj("chest", Color(0.9, 0.7, 0.2))
+	var o2 := v.fx._make_obj("shrine", Color(0.9, 0.7, 0.2))
+	var m1 = (o1.get_child(0) as MeshInstance3D).material_override
+	var m2 = (o2.get_child(0) as MeshInstance3D).material_override
+	ok(m1 is ShaderMaterial and m1.shader.resource_path == "res://shaders/3d/prop.gdshader" and m1 == m2, "event props are lit by prop.gdshader, one material per colour")
+	o1.queue_free(); o2.queue_free()
+	var fp := v.env_fx.fog.mesh as PlaneMesh
+	ok(fp.subdivide_width == 24 and fp.subdivide_depth == 24 and v.env_fx.fog_mat.get_shader_parameter("drape") == true and v.env_fx.fog.position.y == 0.0,
+		"the ground fog is a 25 x 25 grid draped onto the terrain in its shader")
+	v._features()
+	var wet: bool = v.water.visible
+	w.terrain.liquid = "none"
+	v.bind(w)
+	v._process(1.0 / 60.0)
+	ok(wet and not v.water.visible, "water drawn on a wet act, hidden on an act without liquid")
+	v.queue_free()
+	# the title stage: the run's sky ambient and glow, dimmer lights, the fog parting at the hero
+	var ms := MenuStage3D.new()
+	add_child(ms)
+	var me: Environment = ms.cam.environment
+	var push: PackedVector4Array = ms.fog_mat.get_shader_parameter("pushers")
+	ok(me.ambient_light_source == Environment.AMBIENT_SOURCE_SKY and me.glow_blend_mode == Environment.GLOW_BLEND_MODE_SCREEN and me.glow_bloom == 0.0
+		and is_equal_approx(me.glow_hdr_threshold, 1.25) and is_equal_approx(me.glow_intensity, 0.45), "title stage: sky ambient and the run's glow")
+	ok(push.size() == 6 and push[0] == Vector4(MenuStage3D.ORIGIN.x + MenuStage3D.HERO_AT.x, MenuStage3D.ORIGIN.z + MenuStage3D.HERO_AT.y, 48.0, 14.0),
+		"title stage: the fog parts around the hero")
+	ok(is_equal_approx(ms.braziers[0].light_energy, 6.0) and is_equal_approx(ms.rift_light.light_energy, 5.4) and is_equal_approx(ms.key_light.light_energy, 4.2),
+		"title stage: braziers 6, rift 5.4, key 4.2 (40% under 10, 9, 7)")
+	ms.queue_free()
+	# bosses: one compiled flash shader for all, a dimmer light
+	var b1 := BossRig.new()
+	var b2 := BossRig.new()
+	add_child(b1); add_child(b2)
+	b1.build("tyrant", Color.RED, "tyrant_4")
+	b2.build("tyrant", Color.GREEN, "tyrant_4")
+	ok(b1._over_flash != null and b1._over_flash != b2._over_flash and b1._over_flash.shader == b2._over_flash.shader and b1._over_flash.shader == BossRig._flash_sh,
+		"bosses share one hit-flash shader, each with its own material")
+	ok(is_equal_approx(b1.light.light_energy, 0.85 * WorldView3D.LIGHT_GAIN), "a boss's light starts at 0.85 x gain")
+	b1.queue_free(); b2.queue_free()
 
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")

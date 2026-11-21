@@ -11,8 +11,8 @@ still there under **Options > Renderer** as a fallback.
 | Layer | Implementation | Draw calls |
 |---|---|---|
 | Camera | 40° FOV perspective at a 52° pitch, leads the hero in the movement direction, pulls back 18% during boss fights, trauma shake with a little roll, portrait phones get a higher camera | - |
-| Post | ACES tonemap, soft-light bloom on everything emissive, exponential fog in the stage colour, contrast/saturation grade, screen vignette; SSAO when running Forward+ | - |
-| Lights | low sun with 2-split shadows; flickering torch on the hero (the PoE "light pool"); a key light on the camera side of the hero; **8 pooled omni lights** reassigned every frame to the brightest effects (novas, reactions, lightning, slams, meteors, elite deaths, rare loot, shrines, events), weighted by distance to the hero | - |
+| Post | ACES tonemap; glow from what is brighter than 1.25 (spells, embers, loot), screen-blended, intensity 0.45, no bloom; exponential fog in the stage colour, contrast/saturation grade, screen vignette; SSAO when running Forward+ | - |
+| Lights | ambient from a per-act sky hemisphere (`STAGE_LOOK` sky / gnd: a cool sky over a dark warm ground); sun 1.2 with shadows to 720 units of view depth at the landscape camera (scaled with the camera distance in portrait and boss fights), the ground receives but casts none; flickering torch on the hero (the PoE "light pool", 1.6 x gain over 360 units); a key light (0.9 x gain) on the camera side of the hero; **pooled omni lights** reassigned every frame to the brightest effects (novas, reactions, lightning, slams, meteors, elite deaths, rare loot, shrines, events), weighted by distance to the hero | - |
 | Ground | `shaders/3d/terrain.gdshader`: world-space fbm palette per stage, rare flagstone patches with cracks, dirt hollows, pebbles, normals derived from the height field so light rakes across it, faint pulsing shard veins; optional authored texture slot | 1 |
 | Props | 6 instanced kinds scattered per 640-unit chunk (trees, rocks, glowing crystals, ruined pillars, bones, grass that sways), density per stage, dithered see-through when between camera and hero | 1 per kind |
 | Hero | `HeroRig`: 4 articulated heroes (pivots for hips, torso, head, arms, weapon, cape) with procedural run, cast (turns to and thrusts at the target), roll (tuck and flip), red hit tint, breathing, death | ~40 meshes |
@@ -225,15 +225,17 @@ only visuals: the simulation, spawns and balance are the same on every tier.
 
 | | Low | Medium (web default) | High (Android / desktop default) |
 |---|---|---|---|
-| Sun shadows | off | 2 splits, 2048 atlas, hard | 2 splits, 4096 atlas, soft |
+| Sun shadows | off | soft (low), 1 split; atlas 1024 on phones, 2048 desktop | soft (low); 1 split and a 2048 atlas on phones, 2 splits and 4096 on desktop |
 | MSAA | off | off | 2x (cheap on tile-based phone GPUs) |
-| Terrain grid | 24 units | 20 units | 12 units (~2.8x the vertices) |
+| Terrain grid (2,200-unit ground) | 16 units | 12 units | 10 units |
+| Ground textures | 1024 albedo + normal, one scale | + a second scale (detail2) | + a second scale (detail2) |
 | Terrain noise octaves | 3 | 5 | 6 |
 | Prop density | 0.7x | 1x | 1.3x |
 | Dynamic lights | 4 | 8 | 14 |
 | Prop meshes | models/props | same | models/props_hi (2.5x the triangles) |
 | LOD threshold | 1.5 px | 1.5 px | 1 px |
-| Auto 3D resolution | 75% on phones/web | 75% on phones/web | 85% on phones (FSR), 100% desktop |
+| Auto 3D resolution | 75% on phones and the web | 90% on phones | 100% on phones; desktops always 100% |
+| FXAA (phones) | off | on while the 3D scale is 0.9 or more | on while the 3D scale is 0.9 or more |
 | Particles | 1/3 | full | full |
 
 Options > Graphics: Auto (High, except Medium on the web), Low, Medium, High. The web export

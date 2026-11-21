@@ -29,6 +29,15 @@ var _yaw := 0.0
 var _ph := 0.0
 var _atk := 0.0
 
+## The boss's own light, x LIGHT_GAIN: LIGHT_E steady plus up to LIGHT_PULSE with its heartbeat
+## (was 2.0 + 2.5: with the sun at 1.2 and the glow threshold at 1.25 it washed out the boss and the
+## ground around it).
+const LIGHT_E := 0.85
+const LIGHT_PULSE := 1.06
+## The hit-flash overlay's shader, compiled once and shared by every boss (each boss has its own
+## material for its own flash value).
+static var _flash_sh: Shader
+
 func build(k: String, c: Color, slot: String) -> void:
 	kind = k
 	col = c
@@ -37,7 +46,7 @@ func build(k: String, c: Color, slot: String) -> void:
 	light.light_color = c
 	light.omni_range = 220.0
 	light.omni_attenuation = WorldView3D.LIGHT_ATT
-	light.light_energy = 2.0 * WorldView3D.LIGHT_GAIN
+	light.light_energy = LIGHT_E * WorldView3D.LIGHT_GAIN
 	light.shadow_enabled = false
 	add_child(light)
 	if p != "" and load(p) is PackedScene:
@@ -59,10 +68,11 @@ func _prepare_override(n: Node) -> void:
 		for nm in ["idle", "walk"]:
 			if anim.has_animation(nm): anim.get_animation(nm).loop_mode = Animation.LOOP_LINEAR
 		if anim.has_animation("walk"): anim.play("walk")
-	var sh := Shader.new()
-	sh.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform vec3 tint = vec3(1.0); uniform float flash = 0.0; void fragment(){ ALBEDO = tint * flash; }"
+	if _flash_sh == null:
+		_flash_sh = Shader.new()
+		_flash_sh.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform vec3 tint = vec3(1.0); uniform float flash = 0.0; void fragment(){ ALBEDO = tint * flash; }"
 	_over_flash = ShaderMaterial.new()
-	_over_flash.shader = sh
+	_over_flash.shader = _flash_sh
 	_over_flash.set_shader_parameter("tint", Vector3(1.0, 0.85, 0.75))
 	_tag(n)
 
@@ -211,7 +221,7 @@ func animate(st: Dictionary) -> void:
 		var pulse0 := 0.5 + 0.5 * sin(t * (3.0 + 4.0 * (1.0 - float(st.hp_frac))))
 		for g in _glow_over:
 			(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * (0.7 + 0.6 * pulse0 + _atk * 1.2)
-		light.light_energy = (2.0 + pulse0 * 2.5) * WorldView3D.LIGHT_GAIN
+		light.light_energy = (LIGHT_E + pulse0 * LIGHT_PULSE) * WorldView3D.LIGHT_GAIN
 		if anim != null:
 			# an attack plays to the end (wind-up, slam, recover); a hit flinch never interrupts it
 			var busy := anim.current_animation == "attack" and anim.is_playing()
@@ -237,7 +247,7 @@ func animate(st: Dictionary) -> void:
 	var pulse := 0.5 + 0.5 * sin(t * (3.0 + 4.0 * (1.0 - float(st.hp_frac))))
 	if core_mat != null: core_mat.emission_energy_multiplier = (2.0 + pulse * 3.0) if kind == "herald" else (3.0 + pulse * 4.0)
 	if core_cmat != null: core_cmat.set_shader_parameter("pulse", pulse * 1.5)
-	light.light_energy = (2.0 + pulse * 2.5) * WorldView3D.LIGHT_GAIN
+	light.light_energy = (LIGHT_E + pulse * LIGHT_PULSE) * WorldView3D.LIGHT_GAIN
 	if kind == "herald":
 		root.position.y = 70.0 + sin(t * 1.3) * 8.0
 		root.rotation.y = t * 0.4

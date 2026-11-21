@@ -1,7 +1,8 @@
 # Ground textures
 
-`terrain/<name>.jpg` + `<name>_n.jpg`: tiling CC0 ground sets from ambientCG (albedo 1024, normal
-512, mean brightness normalised). Each act blends two of them (`WorldView3D.GROUND_SETS`); the
+`terrain/<name>.jpg` + `<name>_n.jpg`: tiling CC0 ground sets from ambientCG (albedo and normal map
+1024 x 1024 (the 1K-JPG downloads; the normal maps are the NormalGL files as shipped), albedo mean
+brightness normalised). Each act blends two of them (`WorldView3D.GROUND_SETS`); the
 terrain shader tints them with the act palette. They are imported with mipmaps, which is what
 keeps the ground stable under a moving camera.
 

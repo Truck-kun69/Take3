@@ -98,18 +98,13 @@ func _render_scale() -> void:
 	var opt := int(Save.opt("render_scale"))
 	var s := 1.0
 	match opt:
-		0:
-			s = 0.75 if (OS.has_feature("mobile") or OS.has_feature("web")) else 1.0
-			# flagship phones render at native resolution (with FXAA): a scaled image is upsampled with a plain
-			# bilinear filter on the Mobile renderer (no FSR), which is where much of the soft, grainy look came from
-			if Quality.high() and OS.has_feature("mobile"): s = 1.0
+		0: s = auto_render_scale(Quality.tier(), OS.has_feature("mobile"), OS.has_feature("web"))
 		2: s = 0.75
 		3: s = 0.5
 	var vp := get_viewport()
 	_base_scale = s
 	_dyn_auto = opt == 0 and not RenderingServer.get_video_adapter_name().to_lower().contains("llvmpipe")
 	if not _dyn_auto: _dyn = 1.0
-	vp.scaling_3d_scale = s * _dyn
 	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	# FSR 1 exists only in Forward+ (the Mobile renderer warned and ignored it on the S22)
 	var fsr := RenderingServer.get_current_rendering_method() == "forward_plus" and s < 1.0
@@ -128,15 +123,17 @@ func _render_scale() -> void:
 	var aa := Quality.on("msaa") and not compat
 	if mobile:
 		vp.msaa_3d = Viewport.MSAA_DISABLED
-		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (aa and Quality.tier() >= 1) else Viewport.SCREEN_SPACE_AA_DISABLED
+		_fxaa = aa and Quality.tier() >= 1
 	else:
 		vp.msaa_3d = Viewport.MSAA_2X if (aa and Quality.tier() >= 2) else Viewport.MSAA_DISABLED
-		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (aa and Quality.tier() == 1) else Viewport.SCREEN_SPACE_AA_DISABLED
+		_fxaa = aa and Quality.tier() == 1
+	_apply_scale()
 	if not compat:
 		# the sun's single cascade covers what the high camera sees: 1024 is enough on Low/Medium phones
 		var atlas := (2048 if hi else 1024) if mobile else (4096 if hi else 2048)
 		RenderingServer.directional_shadow_atlas_set_size(atlas, true)
-		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if hi else RenderingServer.SHADOW_QUALITY_HARD)
+		# Medium and up filter the sun's shadow edge (soft low: a few PCF taps); Low draws no sun shadow at all
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if Quality.tier() >= 1 else RenderingServer.SHADOW_QUALITY_HARD)
 
 func _on_resize() -> void:
 	_ui_scale()
@@ -439,7 +436,35 @@ func _st_finish() -> void:
 ## once there is headroom. The UI always stays at full resolution. Not used in the benchmark.
 var _base_scale := 1.0
 var _dyn := 1.0
+var _fxaa := false                  # the tier asks for FXAA (it runs only while the 3D scale is 0.9 or more)
+const FXAA_MIN_SCALE := 0.9
+
+## The 3D resolution option "Auto": phones by tier, Low 0.75, Medium 0.90, High native (the Mobile
+## renderer upsamples a scaled image with a plain bilinear filter, no FSR, so every step below native
+## softens the whole frame); the web 0.75; desktops native.
+static func auto_render_scale(tier: int, mobile: bool, web: bool) -> float:
+	if mobile: return [0.75, 0.9, 1.0][clampi(tier, 0, 2)]
+	return 0.75 if web else 1.0
+
+## FXAA only at a 3D scale of 0.9 or more: below that the bilinear upsample already blurs the frame, and
+## FXAA on top smears edges and texture detail further.
+static func fxaa_allowed(scale: float) -> bool:
+	return scale >= FXAA_MIN_SCALE - 0.001
+
+## The dynamic factor after a slow second: down 0.08 (0.15 when the frame took over twice its budget),
+## never under DYN_FLOOR.
+static func dyn_down(dyn: float, avg: float, target: float) -> float:
+	return maxf(DYN_FLOOR, dyn - (0.15 if avg > target * 2.0 else 0.08))
+
+## The 3D resolution (base scale x the dynamic factor) and FXAA with it.
+func _apply_scale() -> void:
+	var vp := get_viewport()
+	var sc := _base_scale * _dyn
+	vp.scaling_3d_scale = sc
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (_fxaa and fxaa_allowed(sc)) else Viewport.SCREEN_SPACE_AA_DISABLED
+
 var _dyn_auto := false
+const DYN_FLOOR := 0.75             # the dynamic factor never drops the frame below 3/4 of the tier's scale
 var _dyn_acc := 0.0
 var _dyn_n := 0
 var _dyn_good := 0
@@ -452,7 +477,7 @@ func _dyn_res(dt: float) -> void:
 	var target := 1.0 / float(Engine.max_fps if Engine.max_fps > 0 else 60)
 	var was := _dyn
 	if avg > target * 1.4:
-		_dyn = maxf(0.55, _dyn - (0.15 if avg > target * 2.0 else 0.08))
+		_dyn = dyn_down(_dyn, avg, target)
 		_dyn_good = 0
 	elif avg < target * 1.12:
 		_dyn_good += 1
@@ -462,7 +487,7 @@ func _dyn_res(dt: float) -> void:
 	else:
 		_dyn_good = 0
 	if _dyn != was:
-		get_viewport().scaling_3d_scale = _base_scale * _dyn
+		_apply_scale()
 		Diag.mark("dyn res %.2f (avg %.1f ms)" % [_base_scale * _dyn, avg * 1000.0])
 
 func _process(dt: float) -> void:

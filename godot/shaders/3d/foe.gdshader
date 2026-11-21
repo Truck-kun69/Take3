@@ -19,6 +19,8 @@ uniform sampler2D vat_nrm : filter_nearest, repeat_disable;
 varying flat float v_part;
 varying vec4 v_custom;
 varying vec3 v_mpos;
+// bump height of the skin noise, in world units (a foe is about 40-60 units tall)
+const float BUMP = 2.5;
 
 global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
 
@@ -115,6 +117,17 @@ void fragment() {
 	// shows stretching) replaces three 3D value noises = 24 hash evaluations per pixel of every foe
 	vec4 nz = texture(g_noise, (mp.xy + mp.z * vec2(0.71, 0.37)) * 0.2);
 	float n = clamp(0.5 + (nz.r - 0.5) * 1.25, 0.0, 1.0);
+	// the same noise as a bump: screen-space surface gradient (Mikkelsen 2010), no extra texture taps.
+	// dFdx / dFdy of the view-space position and of the noise height give the gradient of the height
+	// over the surface, which tilts the normal: mottled skin catches the light instead of reading flat
+	vec3 dpx = dFdx(VERTEX);
+	vec3 dpy = dFdy(VERTEX);
+	vec3 r1 = cross(dpy, NORMAL);
+	vec3 r2 = cross(NORMAL, dpx);
+	float det = dot(dpx, r1);
+	vec3 sgrad = (dFdx(nz.r) * r1 + dFdy(nz.r) * r2) * sign(det);
+	vec3 bn = normalize(abs(det) * NORMAL - BUMP * sgrad);
+	if (abs(det) > 1e-8) NORMAL = bn;
 	float vein = smoothstep(0.035, 0.0, abs(nz.b - 0.5));
 	// grim but readable: 15% desaturated at 85% brightness (35% at 55% sank the swarm into dark floors)
 	base = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))), 0.15) * 0.85;
@@ -127,7 +140,7 @@ void fragment() {
 	bool ally = mod(floor(flags / 64.0), 2.0) >= 1.0;
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	vec3 em = vec3(0.0);
-	float rough = 0.55 + 0.3 * n;                       // wet sheen where the noise dips
+	float rough = 0.35 + 0.5 * n;                       // 0.35 wet sheen where the noise dips .. 0.85 dry hide
 	if (v_part > 5.5 && v_part < 6.5) {
 		base = vec3(0.05);
 		em += eye_col * 4.0;
@@ -156,6 +169,6 @@ void fragment() {
 	ALBEDO = base;
 	ROUGHNESS = rough;
 	EMISSION = em;
-	RIM = 0.8;                                           // a crisp edge light: silhouettes against the ground
+	RIM = 0.75;                                          // a crisp edge light: silhouettes against the ground
 	RIM_TINT = 0.5;
 }

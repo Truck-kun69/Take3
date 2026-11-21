@@ -62,7 +62,7 @@ static func prop_density() -> float:
 
 ## Ground grid spacing in world units (vertex density of the displaced terrain).
 static func ground_q() -> float:
-	return 12.0 if high() else [24.0, 20.0, 20.0][tier()]
+	return [16.0, 12.0, 10.0][tier()]
 
 static func lights() -> int:
 	return [4, 8, 14][tier()] if on("lights") else 0

@@ -2,7 +2,8 @@ extends Node
 ## One frame on a hillside from the game camera: foes, crystals, shots of both sides, loot and debris on
 ## the slopes. For checking heights, enemy-shot contrast, foe readability and the hero's x-ray by eye.
 ##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/hill_shot.tscn -- <out.png> [stage]
-## Env: HILL_GLOOM=1 full darkness (the lantern out); HILL_XRAY=1 stands a pillar between camera and hero.
+## Env: HILL_GLOOM=1 full darkness (the lantern out); HILL_XRAY=1 stands a pillar between camera and hero;
+## HILL_FOG=1 thickens the ground fog (density 1.6) to show how it lies over the terrain.
 var main: Node
 var out := "user://hill.png"
 var stage := 1
@@ -77,6 +78,8 @@ func _process(dt: float) -> void:
 			var w: World = main.world
 			w.in_move = Vector2.ZERO
 			if OS.get_environment("HILL_GLOOM") != "": w.light = 0.0          # the lantern out: full gloom
+			if OS.get_environment("HILL_FOG") != "":                            # thick ground fog, to see it lie on the hills
+				main.view3d.env_fx.fog_mat.set_shader_parameter("density", 1.6)
 			if t > 2.5:
 				phase = 3
 				await RenderingServer.frame_post_draw
