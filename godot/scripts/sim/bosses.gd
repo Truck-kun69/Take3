@@ -88,7 +88,9 @@ func _tyrant(i: int, st: Dictionary, dt: float, guardian: bool) -> void:
 			w.terrain.tide += 10.0
 			w.banner.emit("The nave floods", "The Tide Bishop calls the sea in.", Color("7fe0c0"))
 			w.shake = 0.7
-	if guardian and fmod(w.t, 9.0) < dt:
+	st.beam = float(st.get("beam", 5.0)) - dt
+	if guardian and st.beam <= 0.0:
+		st.beam += 9.0
 		var z := w.add_tele(2, p, 0.0, 1.0, 3.5, 6.0, true, false, -1, Color(1, 0.3, 0.9, 0.45), "the guardian's beam")
 		z.length = 620.0; z.width = 36.0; z.dir = (w.pp - p).normalized(); z.spin = 0.9; z.tick = 0.25
 	if half:

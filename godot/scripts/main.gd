@@ -19,10 +19,7 @@ var bot_drive := false          # tests/screenshots: input comes from a Bot inst
 
 func _ready() -> void:
 	_input_map()
-	view = WorldView.new()
-	add_child(view)
-	view3d = WorldView3D.new()
-	add_child(view3d)
+	# the run renderers (3D, or classic 2D) are created on demand in _bind_view: only the one in use exists
 	menu_stage = MenuStage3D.new()
 	add_child(menu_stage)
 	var layer := CanvasLayer.new()
@@ -33,7 +30,6 @@ func _ready() -> void:
 	layer.add_child(ui)
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay = Overlay3D.new()
-	overlay.view = view3d
 	ui.add_child(overlay)
 	touch = TouchControls.new()
 	ui.add_child(touch)
@@ -103,7 +99,7 @@ func _render_scale() -> void:
 	match opt:
 		0:
 			s = 0.75 if (OS.has_feature("mobile") or OS.has_feature("web")) else 1.0
-			# flagship phones render at native resolution with MSAA: a scaled image is upsampled with a plain
+			# flagship phones render at native resolution (with FXAA): a scaled image is upsampled with a plain
 			# bilinear filter on the Mobile renderer (no FSR), which is where much of the soft, grainy look came from
 			if Quality.high() and OS.has_feature("mobile"): s = 1.0
 		2: s = 0.75
@@ -121,15 +117,24 @@ func _render_scale() -> void:
 	# for no visible gain in a top-down game. Option "frame_cap": 0 Auto (60 on phones), 1 30, 2 60, 3 none.
 	var cap := [60 if OS.has_feature("mobile") else 0, 30, 60, 0][clampi(int(Save.opt("frame_cap")), 0, 3)] as int
 	Engine.max_fps = cap
-	# the graphics tier (Quality): LOD bias, MSAA and the sun's shadow atlas
+	# the graphics tier (Quality): LOD bias, anti-aliasing and the sun's shadow atlas
 	var hi := Quality.high()
+	var mobile := OS.has_feature("mobile")
 	vp.mesh_lod_threshold = 1.0 if hi else 1.5
-	vp.msaa_3d = Viewport.MSAA_2X if (Quality.tier() >= 2 and Quality.on("msaa") and not compat) else Viewport.MSAA_DISABLED
-	# FXAA: a cheap screen-space pass that smooths the swarm's sub-pixel triangles (a ~40 px foe has
-	# ~1,000 triangles, which read as speckle from the game camera). Medium and up, not on WebGL.
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (Quality.tier() >= 1 and Quality.on("msaa") and not compat) else Viewport.SCREEN_SPACE_AA_DISABLED
+	# one anti-aliasing method at a time, never MSAA and FXAA together. Phones: FXAA only (Medium and up):
+	# MSAA multiplies the tile memory of every pass on a tile-based GPU. Desktop: MSAA 2x on High, FXAA on
+	# Medium. FXAA smooths the swarm's sub-pixel triangles (a ~40 px foe has ~700 triangles)
+	var aa := Quality.on("msaa") and not compat
+	if mobile:
+		vp.msaa_3d = Viewport.MSAA_DISABLED
+		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (aa and Quality.tier() >= 1) else Viewport.SCREEN_SPACE_AA_DISABLED
+	else:
+		vp.msaa_3d = Viewport.MSAA_2X if (aa and Quality.tier() >= 2) else Viewport.MSAA_DISABLED
+		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (aa and Quality.tier() == 1) else Viewport.SCREEN_SPACE_AA_DISABLED
 	if not compat:
-		RenderingServer.directional_shadow_atlas_set_size(4096 if hi else 2048, true)
+		# the sun's single cascade covers what the high camera sees: 1024 is enough on Low/Medium phones
+		var atlas := (2048 if hi else 1024) if mobile else (4096 if hi else 2048)
+		RenderingServer.directional_shadow_atlas_set_size(atlas, true)
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if hi else RenderingServer.SHADOW_QUALITY_HARD)
 
 func _on_resize() -> void:
@@ -174,8 +179,8 @@ func _free_world() -> void:
 	if world != null:
 		world.dispose()
 	world = null
-	view.w = null
-	view3d.w = null
+	if view != null: view.w = null
+	if view3d != null: view3d.w = null
 	hud.w = null
 	touch.world = null
 
@@ -209,17 +214,44 @@ func start(cfg: Dictionary) -> void:
 func use_3d() -> bool:
 	return int(Save.opt("renderer")) == 0
 
+## Creates the renderer the options ask for and frees the other one (it held a full swarm's
+## MultiMesh, materials and lights for nothing). Renderers sit first among main's children so they
+## process before the HUD and overlay, which project through their camera.
 func _bind_view() -> void:
 	if use_3d():
-		view.w = null
+		if view != null:
+			view.queue_free()
+			view = null
+		if view3d == null:
+			view3d = WorldView3D.new()
+			add_child(view3d)
+			move_child(view3d, 0)
+		overlay.view = view3d
 		view3d.bind(world)
 		view3d.cam.make_current()
 		hud.project = func(p: Vector2) -> Vector2: return view3d.to_screen(p)
 	else:
-		view3d.w = null
+		if view3d != null:
+			view3d.queue_free()
+			view3d = null
+		overlay.view = null
+		if view == null:
+			view = WorldView.new()
+			add_child(view)
+			move_child(view, 0)
 		view.bind(world)
 		view.cam.make_current()
 		hud.project = func(p: Vector2) -> Vector2: return get_viewport().get_canvas_transform() * p
+	_clock.reset()
+
+## The simulation clock: see FixedStep. Input is read in _process before stepping (Godot runs
+## _physics_process before _process, so stepping there would act on last frame's input).
+var _clock := FixedStep.new()
+func _sim(dt: float) -> void:
+	var n := _clock.advance(dt)
+	for k in n:
+		if world == null or world.over: break
+		world.step(FixedStep.STEP)
 
 func _on_level() -> void:
 	if state != "play": return
@@ -299,7 +331,7 @@ func _bench_step_world(dt: float) -> void:
 	world.pending = 0
 	world.whisper_offer = []
 	world.light = 0.6
-	world.step(minf(dt, 0.05))
+	_sim(dt)
 
 func _bench_step(dt: float) -> void:
 	_bench_step_world(dt)
@@ -452,7 +484,7 @@ func _process(dt: float) -> void:
 		if Input.is_action_just_pressed("flask2"): world.in_flask[1] = true
 		if Input.is_action_just_pressed("pause"): _pause(); return
 		if Input.is_action_just_pressed("gear"): state = "pause"; screens.show_stash(true); return
-		world.step(minf(dt, 0.05))
+		_sim(dt)
 	elif state == "pause" and Input.is_action_just_pressed("pause"):
 		_resume()
 

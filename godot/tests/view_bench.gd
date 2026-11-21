@@ -25,9 +25,9 @@ func _process(dt: float) -> void:
 		done = true
 		var v: WorldView3D = main.view3d
 		var probes := {}
-		for name in ["_foes", "_corpses"]:
+		for name in ["_foes", "_corpse_count"]:
 			var t0 := Time.get_ticks_usec()
 			for k in 100: v.call(name)
 			probes[name] = (Time.get_ticks_usec() - t0) / 100000.0
-		print("VIEW foes=%d  _foes(incl. corpses)=%.2fms  _corpses=%.2fms  whole view (Diag)=%.2fms  sim step=%.2fms" % [w.sw.n, probes["_foes"], probes["_corpses"], Diag.view_us / 1000.0, w.step_us / 1000.0])
+		print("VIEW foes=%d  _foes(incl. corpses)=%.2fms  corpse bookkeeping=%.2fms  whole view (Diag)=%.2fms  sim step=%.2fms" % [w.sw.n, probes["_foes"], probes["_corpse_count"], Diag.view_us / 1000.0, w.step_us / 1000.0])
 		get_tree().quit()

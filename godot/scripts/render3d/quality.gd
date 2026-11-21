@@ -1,12 +1,13 @@
 class_name Quality
 extends RefCounted
 ## Graphics tiers. Visual only: the simulation, spawns and balance are identical on every tier.
-##   0 Low     old phones: no sun shadows, 3 terrain octaves, a third of the particles
-##   1 Medium  the web build (WebGL2 / Compatibility) and the previous "High"
-##   2 High    Android (Vulkan Mobile renderer) and desktop: MSAA 2x, soft sun shadows on a 4096
-##             atlas, a 12-unit terrain grid, 1.3x prop density, 14 dynamic lights, the
-##             high-detail foe and prop meshes (models/*_hi) and earlier LOD switches
-## Option "gfx": 0 Auto (High everywhere except the web, which gets Medium), 1 Low, 2 Medium, 3 High.
+##   0 Low     budget phones: no sun shadows, fewer props and particles, no anti-aliasing
+##   1 Medium  mid-range phones and the web build: one-cascade sun shadow (1024 atlas on phones), FXAA
+##   2 High    flagship phones: native resolution, FXAA, 2048 shadow atlas, no torch shadow.
+##             Desktop High: MSAA 2x, two shadow cascades on a 4096 atlas, the torch shadow.
+##             Both: a 12-unit terrain grid, 1.3x prop density, 14 dynamic lights, the high-detail
+##             foe meshes and earlier LOD switches
+## Option "gfx": 0 Auto (by device class: GPU name and memory), 1 Low, 2 Medium, 3 High.
 
 const NAMES := ["Low", "Medium", "High"]
 
@@ -15,7 +16,7 @@ const NAMES := ["Low", "Medium", "High"]
 const FEATURES := ["props", "terrain", "water", "lights", "post", "effects", "foe_shadow", "sun_shadow", "torch_shadow", "msaa", "high_detail"]
 const FEATURE_NAMES := {"props": "Trees, rocks and ruins", "terrain": "Hills (terrain height in shaders)", "water": "Water and lava",
 	"lights": "Dynamic lights", "post": "Glow and fog", "effects": "Spell effects and ground marks", "foe_shadow": "Foe shadows",
-	"sun_shadow": "Sun shadows", "torch_shadow": "Hero torch shadow", "msaa": "Anti-aliasing (MSAA)", "high_detail": "High-detail props and ground"}
+	"sun_shadow": "Sun shadows", "torch_shadow": "Hero torch shadow", "msaa": "Anti-aliasing", "high_detail": "High-detail props and ground"}
 static var off := {}            # feature -> true while switched off (self-test pass or saved gfx_off)
 
 static func on(f: String) -> bool:

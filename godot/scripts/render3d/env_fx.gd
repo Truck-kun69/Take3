@@ -19,7 +19,8 @@ var m_pos := PackedVector3Array(); var m_vel := PackedVector3Array(); var m_life
 var m_col := PackedColorArray(); var m_size := PackedFloat32Array(); var m_n := 0
 var fog: MeshInstance3D
 var fog_mat: ShaderMaterial
-var pushers := PackedVector4Array()
+var pushers := PackedVector4Array()      # 6 slots (fog); the first 4 also go to foliage
+var _push4 := PackedVector4Array()
 var urn_mm: MultiMeshInstance3D
 var barrel_mm: MultiMeshInstance3D
 var motes: Array = []
@@ -41,7 +42,8 @@ const MOTES := [
 ]
 
 func _ready() -> void:
-	pushers.resize(16)
+	pushers.resize(6)
+	_push4.resize(4)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(1, 1)
 	smoke_mm = MultiMeshInstance3D.new()
@@ -135,6 +137,7 @@ func bind(world: World) -> void:
 	var look: Dictionary = WorldView3D.STAGE_LOOK[w.stage]
 	fog_mat.set_shader_parameter("fog_col", (look.fog as Color).lightened(0.25))
 	fog_mat.set_shader_parameter("density", [0.3, 0.26, 0.42, 0.3, 0.5][w.stage])
+	fog_mat.set_shader_parameter("shade", Color(0.3, 0.3, 0.32).lerp(look.amb, 0.45))
 	(smoke_mm.material_override as ShaderMaterial).set_shader_parameter("shade", Color(0.42, 0.42, 0.42).lerp(look.amb, 0.5))
 	_last_cast = w.cast_t
 
@@ -154,23 +157,29 @@ func step(dt: float) -> void:
 	_upload()
 
 func _pushers() -> void:
+	# the hero, then the newest shockwaves, then a rotating sample of nearby bodies: the fog reads 6 slots,
+	# foliage the first 4 (none on the Low tier)
 	var n := 0
 	pushers[n] = Vector4(w.pp.x, w.pp.y, 48.0, 14.0); n += 1
-	for f in w.fx:                                   # shockwaves flatten grass and blow fog away
-		if n >= 6: break
+	var fi := w.fx.size() - 1
+	while fi >= 0 and n < 6:
+		var f: Dictionary = w.fx[fi]
+		fi -= 1
 		if f.k == "ring":
 			var k: float = clampf(f.t / f.life, 0, 1)
 			pushers[n] = Vector4(f.pos.x, f.pos.y, maxf(30.0, float(f.max) * k * 1.1), 26.0 * (1.0 - k)); n += 1
 	var sw := w.sw
 	var step := maxi(1, sw.n / 40)
-	for i in range(_frame % step, sw.n, step):         # a rotating sample of nearby bodies
-		if n >= 16: break
+	for i in range(_frame % step, sw.n, step):
+		if n >= 6: break
 		var p := sw.pos[i]
 		if p.distance_squared_to(w.pp) < 360.0 * 360.0:
 			pushers[n] = Vector4(p.x, p.y, sw.rad[i] * 2.4, 9.0); n += 1
-	while n < 16:
+	while n < 6:
 		pushers[n] = Vector4(0, 0, 0, 0); n += 1
-	view.prop_mat.set_shader_parameter("pushers", pushers)
+	for k in 4: _push4[k] = pushers[k]
+	view.prop_mat.set_shader_parameter("pushers", _push4)
+	view.prop_mat.set_shader_parameter("push_n", 0 if Quality.tier() == 0 else 4)
 	fog_mat.set_shader_parameter("pushers", pushers)
 
 func puff(p: Vector3, v: Vector3, c: Color, life: float, size: float, glow: float = 0.0) -> void:

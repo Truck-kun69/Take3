@@ -33,6 +33,7 @@ func _ready() -> void:
 		_anim_tests()
 		_alpha_weapon_tests()
 		_v7_tests()
+		_gate_p01_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -690,6 +691,61 @@ func _v7_tests() -> void:
 	for f in 8: h.step(1.0 / 60.0)
 	ok(h.roll_t > 0.0 or h.roll_cd > 0.0, "and rolls when the hit-stop ends")
 	ok(Sfx.CRITICAL.has("boss") and Sfx.CRITICAL.has("level") and not Sfx.CRITICAL.has("impact"), "boss and level-up cues are exempt from the per-frame sound cap")
+
+func _gate_p01_tests() -> void:
+	print("== fixed clock, countdown timers, acceleration")
+	var fc := FixedStep.new()
+	var total := 0
+	for f in 600: total += fc.advance(1.0 / 60.0 + (0.0015 if f % 2 == 0 else -0.0015))      # a jittery 60 Hz display
+	ok(total >= 598 and total <= 601, "a jittery 60 Hz display gets one tick per frame (%d ticks in 600 frames)" % total)
+	var fc2 := FixedStep.new()
+	var per: Array[int] = []
+	for f in 60: per.append(fc2.advance(1.0 / 30.0))
+	ok(per.min() == 2 and per.max() == 2, "30 fps runs exactly two ticks per frame")
+	var fc3 := FixedStep.new()
+	ok(fc3.advance(0.5) == FixedStep.MAX_STEPS and fc3.acc == 0.0, "a 500 ms hitch runs two ticks and drops the backlog (no spiral)")
+	ok(fc3.advance(0.0) == 0, "and does not catch up afterwards")
+	# arcane orbs: same cadence at 60 Hz and when dt doubles
+	var counts: Array[int] = []
+	for dt in [1.0 / 60.0, 1.0 / 30.0]:
+		var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 31})
+		w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+		w.weapons.clear()
+		var i := w.spawn_foe(Content.E.BRUTE, w.pp + Vector2(300, 0), 1, 0, 50.0)
+		w.sw.affix[i] = Content.Aff.ARCANE
+		var shots := 0
+		var steps := int(35.0 / dt)
+		for k in steps:
+			var before := w.eshots.size()
+			w.step(dt)
+			shots += maxi(0, w.eshots.size() - before)
+		counts.append(shots)
+	ok(counts[0] == counts[1] and counts[0] >= 8, "an arcane elite fires on a fixed cadence at any dt (%s orbs in 35 s)" % str(counts))
+	# thunderdome works without a conduit pylon
+	var d := _world({"mode": "rift", "hero": 3, "gr": 1, "seed": 32})
+	d.stats.set_source("t", [["max_hp", "add", 1e6]]); d.hp = 1e6
+	d.weapons.clear()
+	for k in 30: d.spawn_foe(Content.E.GRUNT, d.pp + Vector2(cos(k), sin(k)) * 150.0, 0, 0, 50.0)
+	d.buffs.add("thunderdome")
+	var zaps := 0
+	for k in 60:
+		d.step(1.0 / 60.0)
+		for f in d.fx: if f.k == "zap" and f.t <= 1.0 / 60.0 + 0.0001: zaps += 1        # struck this tick
+	ok(zaps >= 8 and not d.buffs.has("conduit"), "the Stormwright's Thunderdome strikes without a Conduit pylon (%d strikes in 1 s)" % zaps)
+	# acceleration: crisp, not instant
+	var m := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 33})
+	m.stats.set_source("t", [["max_hp", "add", 1e6]]); m.hp = 1e6
+	for k in 5: m.step(1.0 / 60.0)
+	var spd := m.stats.value("move_speed", float(Content.HEROES[0].spd))
+	m.in_move = Vector2.RIGHT
+	m.step(1.0 / 60.0)
+	var v1 := m.vel.length()
+	for k in 3: m.step(1.0 / 60.0)
+	var v4 := m.vel.length()
+	ok(v1 > spd * 0.2 and v1 < spd * 0.4 and v4 >= spd * 0.99, "walking reaches full speed in 0.06 s (%.0f%% after one tick)" % (100.0 * v1 / spd))
+	m.in_move = Vector2.ZERO
+	for k in 3: m.step(1.0 / 60.0)
+	ok(m.vel.length() < 1.0, "and stops within 0.05 s")
 
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")

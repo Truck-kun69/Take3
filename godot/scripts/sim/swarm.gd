@@ -42,7 +42,8 @@ var tag := PackedInt32Array()         # owning event id (quota bookkeeping)
 var hit_t := PackedFloat32Array()     # last blade hit time
 var born := PackedFloat32Array()      # animation feed: sim time it spawned
 var atk_t := PackedFloat32Array()     # ... it last attacked (contact or shot)
-var hit_at := PackedFloat32Array()    # ... it last flinched (at most every 0.7 s)
+var hit_at := PackedFloat32Array()
+var arc_t := PackedFloat32Array()     # arcane elites: seconds to their next orb    # ... it last flinched (at most every 0.7 s)
 var clock := 0.0                      # World.t, set each step
 # statuses: one stack count and one timer per DoT element, timers for the rest
 var burn := PackedFloat32Array()
@@ -69,7 +70,7 @@ func _init() -> void:
 		v.resize(CAP)
 		set(a, v)
 	for a in ["hp", "mhp", "shield", "spd", "rad", "dmg", "xp", "flash", "ai_t", "hit_t", "burn", "burn_t", "pois", "pois_t", "bleed", "bleed_t",
-			"chill_t", "shock_t", "freeze_t", "cond_t", "react_cd", "ee_t", "dot_acc", "born", "atk_t", "hit_at"]:
+			"chill_t", "shock_t", "freeze_t", "cond_t", "react_cd", "ee_t", "dot_acc", "born", "atk_t", "hit_at", "arc_t"]:
 		var f: PackedFloat32Array = get(a)
 		f.resize(CAP)
 		set(a, f)
@@ -97,6 +98,7 @@ func add(k: int, p: Vector2, h: float, s: float, r: float, d: float, x: float, f
 	burn[i] = 0.0; burn_t[i] = 0.0; pois[i] = 0.0; pois_t[i] = 0.0; bleed[i] = 0.0; bleed_t[i] = 0.0
 	chill_t[i] = 0.0; shock_t[i] = 0.0; freeze_t[i] = 0.0; cond_t[i] = 0.0; react_cd[i] = 0.0; ee_t[i] = 0.0; ee_el[i] = -1; dot_acc[i] = 0.0
 	born[i] = clock; atk_t[i] = -9.0; hit_at[i] = -9.0
+	arc_t[i] = 0.5 + fmod(float(_uid_next) * 0.37, 3.5)          # staggered, so arcane packs do not volley in unison
 	uid[i] = _uid_next
 	uid_index[_uid_next] = i
 	_uid_next += 1
@@ -113,7 +115,7 @@ func remove(i: int) -> void:
 		burn[i] = burn[l]; burn_t[i] = burn_t[l]; pois[i] = pois[l]; pois_t[i] = pois_t[l]; bleed[i] = bleed[l]; bleed_t[i] = bleed_t[l]
 		chill_t[i] = chill_t[l]; shock_t[i] = shock_t[l]; freeze_t[i] = freeze_t[l]; cond_t[i] = cond_t[l]; react_cd[i] = react_cd[l]
 		ee_t[i] = ee_t[l]; ee_el[i] = ee_el[l]; dot_acc[i] = dot_acc[l]
-		born[i] = born[l]; atk_t[i] = atk_t[l]; hit_at[i] = hit_at[l]
+		born[i] = born[l]; atk_t[i] = atk_t[l]; hit_at[i] = hit_at[l]; arc_t[i] = arc_t[l]
 		uid_index[uid[i]] = i
 	n = l
 
@@ -128,6 +130,12 @@ func set_ai(i: int, s: int, t: float) -> void:
 	ai_s[i] = s
 	ai_t[i] = t
 func set_dir(i: int, d: Vector2) -> void: dir[i] = d
+## Arcane elites: true when this one's orb timer has come round (a countdown, staggered per foe).
+func arcane_due(i: int, dt: float) -> bool:
+	arc_t[i] -= dt
+	if arc_t[i] > 0.0: return false
+	arc_t[i] += 3.5
+	return true
 func set_tag(i: int, t: int) -> void: tag[i] = t
 func set_hit_t(i: int, t: float) -> void: hit_t[i] = t
 func set_freeze(i: int, t: float) -> void: freeze_t[i] = maxf(freeze_t[i], t)

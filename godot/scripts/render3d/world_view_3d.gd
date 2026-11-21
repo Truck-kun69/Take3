@@ -211,7 +211,7 @@ void fragment() {
 	bmm.transform_format = MultiMesh.TRANSFORM_2D
 	var bq := QuadMesh.new(); bq.size = Vector2(2, 2)
 	bmm.mesh = bq
-	bmm.instance_count = Swarm.CAP
+	bmm.instance_count = _blob_cap             # grows with the swarm (power of two) in _foes
 	bmm.visible_instance_count = 0
 	bmm.custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))
 	_blob_mm.multimesh = bmm
@@ -219,7 +219,7 @@ void fragment() {
 	_blob_mm.material_override = bsm
 	_blob_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_blob_mm)
-	_bb.resize(Swarm.CAP * 8)
+	_bb.resize(_blob_cap * 8)
 
 ## The ground is a grid of separate mesh tiles, not one mesh. The Mobile renderer lights per mesh: as a
 ## single 3000-unit plane, every ground pixel on screen evaluated every point light in the scene (the
@@ -354,7 +354,7 @@ func bind(world: World) -> void:
 	env_fx.bind(w)
 	# radial shadows from the hero's light: high quality only, and never on Compatibility/WebGL, where the
 	# omni shadow renders as a large black wedge
-	torch.shadow_enabled = hq and RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	torch.shadow_enabled = false          # set by _features (never on phones)
 	torch.shadow_bias = 0.08
 
 ## World -> screen, used by the overlay and the HUD compass.
@@ -393,13 +393,14 @@ var _feat_sig := -1                 # graphics tier + feature switches last appl
 var _terr_on := true
 var _hi_on := true
 func _features() -> void:
+	var mobile := OS.has_feature("mobile")
 	sun.shadow_enabled = Quality.tier() >= 1 and Quality.on("sun_shadow")
-	# one shadow cascade below High: the camera looks down at a small patch, and every extra split is another
-	# scene pass plus a blend per pixel
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if Quality.high() else DirectionalLight3D.SHADOW_ORTHOGONAL
+	# one shadow cascade on phones and below High: the camera looks down at a small patch, and every extra
+	# split is another scene pass plus a blend per pixel
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if (Quality.high() and not mobile) else DirectionalLight3D.SHADOW_ORTHOGONAL
 	# the torch's omni shadow re-renders the scene around the hero (+865k triangles at 400 foes in the
-	# self-test): High tier only, and as a dual paraboloid (2 views) rather than a cube (6)
-	torch.shadow_enabled = Quality.tier() >= 2 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	# self-test) as a dual paraboloid: never on phones, High tier only elsewhere
+	torch.shadow_enabled = not mobile and Quality.tier() >= 2 and Quality.on("torch_shadow") and RenderingServer.get_current_rendering_method() != "gl_compatibility"
 	env.glow_enabled = Quality.on("post")
 	env.fog_enabled = Quality.on("post")
 	water.visible = Quality.on("water")
@@ -469,7 +470,6 @@ func _lighting(dt: float) -> void:
 ## as a whole, and a distant cell draws the imported mesh's automatic lower LOD. One batch per kind for
 ## the whole 5x5 neighbourhood drew every prop every frame (props were ~70% of all triangles).
 func _props() -> void:
-	prop_mat.set_shader_parameter("hero_pos", Vector3(w.pp.x, ground_y(w.pp), w.pp.y))
 	var cx := floori(w.pp.x / CHUNK)
 	var cy := floori(w.pp.y / CHUNK)
 	var key := "%d:%d" % [cx, cy]
@@ -655,76 +655,46 @@ func _build_cell(c: Vector2i) -> Node3D:
 	return cell
 
 # ================================================================= foes
-## All kinds share one flat member buffer (kind k owns [k*CAP*STRIDE, (k+1)*CAP*STRIDE)), written in place.
-## Writing into an element of an Array of PackedFloat32Arrays would copy the whole array per write
-## (copy-on-write through a temporary), so per-kind buffers are only sliced out at upload time.
-var _fb := PackedFloat32Array()
+## Each kind has its own buffer, exactly as long as its MultiMesh (a grow-only power-of-two instance
+## count), written in place and passed to the MultiMesh whole: no per-frame slices or allocations.
+var _fbk: Array[PackedFloat32Array] = []     # per foe kind: _foe_cap[k] instances x FOE_STRIDE floats
+var _vis := PackedInt32Array()       # swarm indices drawn this frame (pass 1 order)
+var _order := PackedInt32Array()     # the same, grouped by kind: kind k occupies [_start[k], _start[k + 1])
+var _start := PackedInt32Array()
+var _cursor := PackedInt32Array()
+var _corpse_n := PackedInt32Array()
 var _blob_mm: MultiMeshInstance3D
-var _bb := PackedFloat32Array()      # blob shadows: 2D transform per foe
+var _bb := PackedFloat32Array()      # blob shadows: 2D transform per foe (only x scale, x, y scale, y change)
+var _blob_cap := 64
 
 func _foes() -> void:
 	var sw := w.sw
-	var span := Swarm.CAP * FOE_STRIDE
-	if _fb.size() != span * _foe_mm.size():
-		_fb.resize(span * _foe_mm.size())
+	var nk := _foe_mm.size()
+	if _fbk.size() != nk:
+		_fbk.resize(nk)
+		_start.resize(nk + 1)
+		_cursor.resize(nk)
+	if _vis.size() != Swarm.CAP: _vis.resize(Swarm.CAP)
 	_foe_n.fill(0)
 	var nb := 0
 	var cull := w.view_r + 60.0
 	var gl := w.gloom()
 	var dark_r := lerpf(2000.0, 280.0, gl) if gl > 0.05 else INF     # beyond the lantern's reach, foes are unseen
+	var pp := w.pp
+	# pass 1: which foes are drawn (counted per kind), their contact shadows and elite auras
+	var nv := 0
 	for i in sw.n:
 		var k := sw.kind[i]
 		if k == Content.E.BOSS or k == Content.E.HERALD or k == Content.E.EXILE:
 			continue
 		var p := sw.pos[i]
-		var dpl := p.distance_to(w.pp)
+		var dpl := p.distance_to(pp)
 		if dpl > cull: continue
 		var f := sw.flags[i]
 		if dpl > dark_r and (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) == 0: continue
-		var dir := (w.pp - p) / maxf(0.001, dpl)
-		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
-		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]
-		elif (f & Swarm.F_ALLY) != 0 and sw.dir[i] != Vector2.ZERO: dir = sw.dir[i]
-		var n := _foe_n[k]
-		var o := k * span + n * FOE_STRIDE
-		var s := sw.rad[i] * (1.15 if k == Content.E.EXILE else 1.0)
-		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
-		_fb[o] = dir.x * s; _fb[o + 1] = 0.0; _fb[o + 2] = -dir.y * s; _fb[o + 3] = p.x
-		_fb[o + 4] = 0.0; _fb[o + 5] = s; _fb[o + 6] = 0.0; _fb[o + 7] = 0.0
-		_fb[o + 8] = dir.y * s; _fb[o + 9] = 0.0; _fb[o + 10] = dir.x * s; _fb[o + 11] = p.y
-		var c := _kind_col[k]
-		# per-instance colour and custom data reach the GPU as 16-bit halves (exact integers only to
-		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
-		# wrapped to whole cycles (it used to grow with time, and flag+256*seed decoded as random elite
-		# and ally bits: the swarm sparkled with their rim glows)
-		_fb[o + 12] = c.r; _fb[o + 13] = c.g; _fb[o + 14] = c.b; _fb[o + 15] = float(sw.uid[i] % 64) / 63.0
-		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
-		var ph := fposmod(time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
-		var vc: PackedFloat32Array = _vc[k]
-		if vc.is_empty():
-			_fb[o + 16] = ph
-		else:
-			# authored clips (vertex animation texture): spawn, then attack, then a flinch, else the walk
-			# cycle; the value is the frame row, which the shader blends with the next one
-			var age := w.t - sw.born[i]
-			var ta := w.t - sw.atk_t[i]
-			var th := w.t - sw.hit_at[i]
-			if vc[13] > 0.0 and age * vc[14] < vc[13] - 1.0:
-				_fb[o + 16] = vc[12] + age * vc[14]
-			elif vc[4] > 0.0 and ta * vc[5] < vc[4] - 1.0:
-				_fb[o + 16] = vc[3] + ta * vc[5]
-			elif vc[7] > 0.0 and th * vc[8] * 1.6 < vc[7] - 1.0:
-				_fb[o + 16] = vc[6] + th * vc[8] * 1.6
-			else:
-				_fb[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
-		_fb[o + 17] = maxf(0.0, sw.flash[i])
-		_fb[o + 18] = _status_code(i)
-		_fb[o + 19] = float(f & 0xff)
-		_foe_n[k] = n + 1
-		var bo := nb * 8
-		var br := sw.rad[i] * 1.15
-		_bb[bo] = br; _bb[bo + 1] = 0.0; _bb[bo + 3] = p.x; _bb[bo + 4] = 0.0; _bb[bo + 5] = br; _bb[bo + 7] = p.y
-		nb += 1
+		_vis[nv] = i
+		nv += 1
+		_foe_n[k] += 1
 		if (f & Swarm.F_ELITE) != 0 and dpl < 520.0:
 			var naff := 0
 			var af := sw.affix[i]
@@ -732,27 +702,112 @@ func _foes() -> void:
 				naff += af & 1
 				af >>= 1
 			_aura(p, sw.rad[i] * 2.2, Color("ffb02e") if naff >= 2 else Color("4f86ff"))
-	_corpses()
-	if nb > 0: _blob_mm.multimesh.buffer = _bb
-	_blob_mm.multimesh.visible_instance_count = nb
-	var amm := _aura_mm.multimesh
-	amm.visible_instance_count = _aura_n
-	_aura_n = 0
-	for k in _foe_mm.size():
+	# bucket the drawn foes by kind (a counting sort into _vis's own order, through _order)
+	_start[0] = 0
+	for k in nk:
+		_start[k + 1] = _start[k] + _foe_n[k]
+		_cursor[k] = _start[k]
+	if _order.size() != Swarm.CAP: _order.resize(Swarm.CAP)
+	for v in nv:
+		var i := _vis[v]
+		var k := sw.kind[i]
+		_order[_cursor[k]] = i
+		_cursor[k] += 1
+	_corpse_count()
+	# pass 2, one kind at a time: write its instances straight into that kind's own buffer (taken out of
+	# the array while it is written, so the writes go through a local) and hand the buffer over whole.
+	# The buffer is sized to the MultiMesh's instance count, so nothing is sliced or allocated per frame
+	for k in nk:
 		var mm := _foe_mm[k].multimesh
-		var fn := _foe_n[k]
+		var fn := _foe_n[k] + _corpse_n[k]
 		if fn == 0:
 			if mm.visible_instance_count != 0: mm.visible_instance_count = 0
 			continue
-		# upload only as many instances as this kind needs, rounded up to a power of two: every kind used
-		# to send all Swarm.CAP slots each frame (11 x 720 x 20 floats) even with three foes of it alive
+		fn = mini(fn, Swarm.CAP)
 		if fn > _foe_cap[k]:
 			var cap := maxi(32, _foe_cap[k])
 			while cap < fn: cap *= 2
 			_foe_cap[k] = mini(cap, Swarm.CAP)
 			mm.instance_count = _foe_cap[k]
-		mm.buffer = _fb.slice(k * span, k * span + _foe_cap[k] * FOE_STRIDE)
-		mm.visible_instance_count = fn
+		var buf: PackedFloat32Array = _fbk[k]
+		_fbk[k] = PackedFloat32Array()
+		if buf.size() != _foe_cap[k] * FOE_STRIDE: buf.resize(_foe_cap[k] * FOE_STRIDE)
+		var n := _write_foes(buf, k, sw, pp)
+		n = _write_corpses(buf, k, n)
+		mm.buffer = buf
+		mm.visible_instance_count = n
+		_fbk[k] = buf
+	# contact shadows: the same grow-only power-of-two capacity, uploaded only when there are any
+	var bmm := _blob_mm.multimesh
+	nb = nv
+	if nb > _blob_cap:
+		while _blob_cap < nb: _blob_cap *= 2
+		_blob_cap = mini(_blob_cap, Swarm.CAP)
+		bmm.instance_count = _blob_cap
+		_bb.resize(_blob_cap * 8)
+		_bb.fill(0.0)
+	for v in nb:
+		var i := _vis[v]
+		var bo := v * 8
+		var br := sw.rad[i] * 1.15
+		var p := sw.pos[i]
+		_bb[bo] = br; _bb[bo + 3] = p.x; _bb[bo + 5] = br; _bb[bo + 7] = p.y
+	if nb > 0:
+		bmm.buffer = _bb
+	bmm.visible_instance_count = nb
+	var amm := _aura_mm.multimesh
+	amm.visible_instance_count = _aura_n
+	_aura_n = 0
+
+## Live foes of kind k into buf from slot 0; returns the slots used.
+func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int:
+	var c := _kind_col[k]
+	var vc: PackedFloat32Array = _vc[k]
+	var authored := not vc.is_empty()
+	var n := 0
+	for v in range(_start[k], _start[k + 1]):
+		var i := _order[v]
+		var p := sw.pos[i]
+		var dpl := p.distance_to(pp)
+		var f := sw.flags[i]
+		var dir := (pp - p) / maxf(0.001, dpl)
+		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
+		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]
+		elif (f & Swarm.F_ALLY) != 0 and sw.dir[i] != Vector2.ZERO: dir = sw.dir[i]
+		var o := n * FOE_STRIDE
+		var s := sw.rad[i]
+		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
+		buf[o] = dir.x * s; buf[o + 1] = 0.0; buf[o + 2] = -dir.y * s; buf[o + 3] = p.x
+		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = 0.0
+		buf[o + 8] = dir.y * s; buf[o + 9] = 0.0; buf[o + 10] = dir.x * s; buf[o + 11] = p.y
+		# per-instance colour and custom data reach the GPU as 16-bit halves (exact integers only to
+		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
+		# wrapped to whole cycles (it used to grow with time, and flag+256*seed decoded as random elite
+		# and ally bits: the swarm sparkled with their rim glows)
+		buf[o + 12] = c.r; buf[o + 13] = c.g; buf[o + 14] = c.b; buf[o + 15] = float(sw.uid[i] % 64) / 63.0
+		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
+		var ph := fposmod(time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
+		if not authored:
+			buf[o + 16] = ph
+		else:
+			# authored clips (vertex animation texture): spawn, then attack, then a flinch, else the walk
+			# cycle; the value is the frame row, which the shader blends with the next one
+			var age := w.t - sw.born[i]
+			var ta := w.t - sw.atk_t[i]
+			var th := w.t - sw.hit_at[i]
+			if vc[13] > 0.0 and age * vc[14] < vc[13] - 1.0:
+				buf[o + 16] = vc[12] + age * vc[14]
+			elif vc[4] > 0.0 and ta * vc[5] < vc[4] - 1.0:
+				buf[o + 16] = vc[3] + ta * vc[5]
+			elif vc[7] > 0.0 and th * vc[8] * 1.6 < vc[7] - 1.0:
+				buf[o + 16] = vc[6] + th * vc[8] * 1.6
+			else:
+				buf[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
+		buf[o + 17] = maxf(0.0, sw.flash[i])
+		buf[o + 18] = _status_code(i)
+		buf[o + 19] = float(f & 0xff)
+		n += 1
+	return n
 
 func _status_code(i: int) -> float:
 	var sw := w.sw
@@ -775,57 +830,60 @@ func add_corpse(kind: int, pos: Vector2, dir: Vector2, rad: float, seed_v: int) 
 	corpses.append([kind, pos, dir if dir != Vector2.ZERO else Vector2.RIGHT, rad, time, seed_v % 64])
 	Diag.first("corpse")
 
-func _corpses() -> void:
-	var span := Swarm.CAP * FOE_STRIDE
+## Expires old corpses and counts the rest per kind (they share their kind's MultiMesh).
+func _corpse_count() -> void:
 	var k2 := corpses.size() - 1
 	while k2 >= 0:
 		if time - float(corpses[k2][4]) > CORPSE_LIFE: corpses.remove_at(k2)
 		k2 -= 1
+	if _corpse_n.size() != _foe_mm.size(): _corpse_n.resize(_foe_mm.size())
+	_corpse_n.fill(0)
+	for c in corpses: _corpse_n[int(c[0])] += 1
+
+## Corpses of kind k into buf after its live foes (from slot n); returns the slots used.
+func _write_corpses(buf: PackedFloat32Array, k: int, n: int) -> int:
+	if _corpse_n[k] == 0: return n
+	var cap := buf.size() / FOE_STRIDE
+	var vcd: PackedFloat32Array = _vc[k]
+	var col := _kind_col[k]
 	for c in corpses:
-		var k: int = c[0]
-		var n := _foe_n[k]
-		if n >= Swarm.CAP: continue
+		if int(c[0]) != k: continue
+		if n >= cap: break
 		var age: float = time - float(c[4])
-		var vcd: PackedFloat32Array = _vc[k]
+		var o := n * FOE_STRIDE
+		var p: Vector2 = c[1]
+		var d: Vector2 = c[2]
+		var s: float = c[3]
 		if not vcd.is_empty() and vcd[10] > 0.0:           # an authored death clip: play it once, hold its last frame
-			var dd: Vector2 = c[2]
-			var ss: float = c[3]
-			var oo := k * span + n * FOE_STRIDE
-			var pd: Vector2 = c[1]
-			_fb[oo] = dd.x * ss; _fb[oo + 1] = 0.0; _fb[oo + 2] = -dd.y * ss; _fb[oo + 3] = pd.x
-			_fb[oo + 4] = 0.0; _fb[oo + 5] = ss; _fb[oo + 6] = 0.0; _fb[oo + 7] = 0.0
-			_fb[oo + 8] = dd.y * ss; _fb[oo + 9] = 0.0; _fb[oo + 10] = dd.x * ss; _fb[oo + 11] = pd.y
-			var cd := _kind_col[k]
-			_fb[oo + 12] = cd.r; _fb[oo + 13] = cd.g; _fb[oo + 14] = cd.b; _fb[oo + 15] = float(c[5]) / 63.0
-			_fb[oo + 16] = vcd[9] + minf(age * vcd[11], vcd[10] - 1.0)
-			_fb[oo + 17] = clampf((age - 1.6) / (CORPSE_LIFE - 1.6), 0.0, 1.0)
-			_fb[oo + 18] = 7.0
-			_fb[oo + 19] = 0.0
-			_foe_n[k] = n + 1
+			buf[o] = d.x * s; buf[o + 1] = 0.0; buf[o + 2] = -d.y * s; buf[o + 3] = p.x
+			buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = 0.0
+			buf[o + 8] = d.y * s; buf[o + 9] = 0.0; buf[o + 10] = d.x * s; buf[o + 11] = p.y
+			buf[o + 12] = col.r; buf[o + 13] = col.g; buf[o + 14] = col.b; buf[o + 15] = float(c[5]) / 63.0
+			buf[o + 16] = vcd[9] + minf(age * vcd[11], vcd[10] - 1.0)
+			buf[o + 17] = clampf((age - 1.6) / (CORPSE_LIFE - 1.6), 0.0, 1.0)
+			buf[o + 18] = 7.0
+			buf[o + 19] = 0.0
+			n += 1
 			continue
 		var fall := clampf(age / 0.28, 0.0, 1.0)
 		fall = 1.0 - (1.0 - fall) * (1.0 - fall)                       # ease-out topple
 		var a := fall * PI * 0.5
-		var d: Vector2 = c[2]
-		var s: float = c[3]
 		var xa := Vector3(-d.x, 0, -d.y)                                # falls backwards, away from the hero
 		var side := Vector3(-d.y, 0, d.x)
 		var ya := Vector3.UP * cos(a) + side * sin(a)
 		var za := xa.cross(ya)
-		var o := k * span + n * FOE_STRIDE
-		var p: Vector2 = c[1]
 		var bounce := sin(clampf((age - 0.28) / 0.2, 0.0, 1.0) * PI) * 0.08 * s
-		_fb[o] = xa.x * s; _fb[o + 1] = ya.x * s; _fb[o + 2] = za.x * s; _fb[o + 3] = p.x
-		_fb[o + 4] = xa.y * s; _fb[o + 5] = ya.y * s; _fb[o + 6] = za.y * s; _fb[o + 7] = 0.42 * s * fall + bounce
-		_fb[o + 8] = xa.z * s; _fb[o + 9] = ya.z * s; _fb[o + 10] = za.z * s; _fb[o + 11] = p.y
-		var col := _kind_col[k]
-		_fb[o + 12] = col.r; _fb[o + 13] = col.g; _fb[o + 14] = col.b; _fb[o + 15] = float(c[5]) / 63.0
-		_fb[o + 16] = 0.0
-		_fb[o + 17] = clampf((age - 1.2) / (CORPSE_LIFE - 1.2), 0.0, 1.0)  # dissolve
+		buf[o] = xa.x * s; buf[o + 1] = ya.x * s; buf[o + 2] = za.x * s; buf[o + 3] = p.x
+		buf[o + 4] = xa.y * s; buf[o + 5] = ya.y * s; buf[o + 6] = za.y * s; buf[o + 7] = 0.42 * s * fall + bounce
+		buf[o + 8] = xa.z * s; buf[o + 9] = ya.z * s; buf[o + 10] = za.z * s; buf[o + 11] = p.y
+		buf[o + 12] = col.r; buf[o + 13] = col.g; buf[o + 14] = col.b; buf[o + 15] = float(c[5]) / 63.0
+		buf[o + 16] = 0.0
+		buf[o + 17] = clampf((age - 1.2) / (CORPSE_LIFE - 1.2), 0.0, 1.0)  # dissolve
 		if age > 1.2: Diag.first("corpse dissolving")
-		_fb[o + 18] = 7.0
-		_fb[o + 19] = 0.0
-		_foe_n[k] = n + 1
+		buf[o + 18] = 7.0
+		buf[o + 19] = 0.0
+		n += 1
+	return n
 
 # ---------------------------------------------------------------- magic / rare monster auras
 var _aura_mm: MultiMeshInstance3D

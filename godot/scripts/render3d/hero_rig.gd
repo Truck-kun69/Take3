@@ -93,6 +93,10 @@ func _tag_meshes(n: Node, fm: ShaderMaterial) -> void:
 			d.rim_enabled = true
 			d.rim = 0.55
 			d.rim_tint = 0.35
+			# seen through anything that stands between the camera and the hero (a stencil-based x-ray in
+			# the hero's colour): props no longer fade themselves out with a per-pixel discard
+			d.stencil_mode = BaseMaterial3D.STENCIL_MODE_XRAY
+			d.stencil_color = Color(col.r, col.g, col.b, 0.55).lightened(0.3)
 			mi.set_surface_override_material(i, d)
 			if String(m.resource_name).begins_with("glow"):
 				_glow_over.append([d, d.emission_energy_multiplier])

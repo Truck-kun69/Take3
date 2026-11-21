@@ -159,6 +159,7 @@ var _last_info := -1
 var _last_combo := -1
 var _last_up := "?"
 var _ev_t := 0.0
+var _redraw_t := 0.0
 var _banner_scaled := false
 ## The lantern's flame, built once: a half ellipse plus a tip whose height follows the light.
 var _flame_o := PackedVector2Array()
@@ -323,7 +324,12 @@ func _process(dt: float) -> void:
 	flash_rect.color = Color(1, 1, 1, clampf(fl * 1.6, 0, 0.6))
 	var low := clampf((0.35 - w.hp / w.max_hp) / 0.35, 0, 1) * (0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008))
 	(vignette.material as ShaderMaterial).set_shader_parameter("k", low)
-	queue_redraw()
+	# the custom-drawn layer (off-screen markers, lantern, hoard and prophecy lines) redraws at 20 Hz:
+	# none of it needs the full frame rate, and every redraw rebuilds its polygons and text
+	_redraw_t -= dt
+	if _redraw_t <= 0.0 or relayout:
+		_redraw_t = 0.05
+		queue_redraw()
 
 static func _fmt(s: float) -> String:
 	s = maxf(0.0, ceilf(s))

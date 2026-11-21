@@ -31,9 +31,21 @@ func _ready() -> void:
 	_vig.material = sm
 	add_child(_vig)
 
-func _process(_dt: float) -> void:
+## Loot and elite plates: which ones exist and their text (item names, affix lists, measured widths) are
+## rebuilt at 20 Hz. Their screen positions are still projected every frame: projecting at 20 Hz made the
+## labels trail their objects by up to 50 ms whenever the camera moved, and a projection is one call.
+const PLATE_HZ := 20.0
+var _plate_t := 0.0
+var _loot: Array = []      # [pick, text, colour, size, y offset]
+var _elites: Array = []    # [uid, text]  (exiles: text is empty, they draw the name and a wide bar)
+
+func _process(dt: float) -> void:
 	visible = view != null and view.w != null and view.visible
 	if visible:
+		_plate_t -= dt
+		if _plate_t <= 0.0:
+			_plate_t = 1.0 / PLATE_HZ
+			_rebuild_plates()
 		queue_redraw()
 		var g := 0.0 if view.w.director.eclipse() else view.w.gloom()     # eclipse already has its own look
 		(_vig.material as ShaderMaterial).set_shader_parameter("gloom", g)
@@ -62,17 +74,11 @@ func _draw() -> void:
 	var vs := get_viewport_rect().size
 	var on := Rect2(Vector2(-60, -60), vs + Vector2(120, 120))
 	# loot labels (PoE style). Only magic+ items and rare drops get plates, to keep the screen clean.
-	for p in w.picks:
-		var sp := view.to_screen(p.pos, 26.0)
+	for e in _loot:
+		var pk: Dictionary = e[0]
+		var sp := view.to_screen(pk.pos, 26.0)
 		if not on.has_point(sp): continue
-		match p.k:
-			"item":
-				var it: Dictionary = p.data
-				if int(it.rarity) >= Content.Rarity.MAGIC:
-					_plate(sp + Vector2(0, -12), Items.name_of(it), Content.col(Content.RARITY_COL[it.rarity]), 16 if it.rarity < 2 else 18)
-			"currency": _plate(sp + Vector2(0, -10), Content.CURRENCY[p.data].name, Content.col(Content.CURRENCY[p.data].col), 15)
-			"lore": _plate(sp + Vector2(0, -10), "Lore Page", Color("e8dcc0"), 15)
-			"fragment": _plate(sp + Vector2(0, -10), "Fragment of " + String(p.data).capitalize(), Color("c48aff"), 17)
+		_plate(sp + Vector2(0, e[4]), e[1], e[2], e[3])
 	# event and object names
 	for ev in w.director.active:
 		var sp2 := view.to_screen(ev.pos, 60.0)
@@ -87,22 +93,17 @@ func _draw() -> void:
 	for o in w.director.objects:
 		var sp3 := view.to_screen(o.pos, 96.0)
 		if on.has_point(sp3): _text(sp3, Content.BUFFS[o.id].name, Content.col(Content.BUFFS[o.id].col), 14)
-	# elite affixes and boss / exile plates
-	for i in w.sw.n:
-		var f := w.sw.flags[i]
-		if (f & (Swarm.F_ELITE | Swarm.F_EXILE)) == 0: continue
-		var p3 := w.sw.pos[i]
-		if p3.distance_to(w.pp) > 420.0: continue
-		var sp4 := view.to_screen(p3, w.sw.rad[i] * 2.6 + 8.0)
-		if not on.has_point(sp4): continue            # off screen: no strings built, nothing drawn
-		if (f & Swarm.F_EXILE) != 0:
+	# elite affixes and exile plates (the list comes from _rebuild_plates; positions and life are live)
+	for e in _elites:
+		var i := w.sw.index_of(int(e[0]))
+		if i < 0: continue
+		var sp4 := view.to_screen(w.sw.pos[i], w.sw.rad[i] * 2.6 + 8.0)
+		if not on.has_point(sp4): continue
+		if e[1] == "":
 			_text(sp4 + Vector2(0, -12), w.bosses.exile_name, Color("ff8a2b"), 16, 5, f_name)
 			_bar(sp4, 70.0, w.sw.hp[i] / w.sw.mhp[i], Color("ff8a2b"))
-		elif w.sw.affix[i] != 0:
-			var names := ""
-			for bit in Content.AFFIX_NAMES:
-				if (w.sw.affix[i] & bit) != 0: names += Content.AFFIX_NAMES[bit] + " "
-			_text(sp4, names.strip_edges(), Color("8ab4ff"), 12, 4)
+		else:
+			_text(sp4, e[1], Color("8ab4ff"), 12, 4)
 			_bar(sp4 + Vector2(0, 6), 40.0, w.sw.hp[i] / w.sw.mhp[i], Color("ffd84a"))
 	# damage numbers
 	if not w.texts.is_empty(): Diag.first("damage numbers")
@@ -124,6 +125,32 @@ func _draw() -> void:
 		col.a = 1.0 - maxf(0.0, k - 0.55) * 2.2
 		var pop := 1.0 + (0.45 * (1.0 - minf(1.0, k * 7.0)) if e.tier == 1 else 0.15 * (1.0 - minf(1.0, k * 8.0)))
 		_text(sp5, txt, col, int(size * pop), 6 if e.tier == 1 else 5, f_name if e.tier == 3 else font)
+
+func _rebuild_plates() -> void:
+	var w := view.w
+	_loot.clear()
+	for p in w.picks:
+		match p.k:
+			"item":
+				var it: Dictionary = p.data
+				if int(it.rarity) >= Content.Rarity.MAGIC:
+					_loot.append([p, Items.name_of(it), Content.col(Content.RARITY_COL[it.rarity]), 16 if it.rarity < 2 else 18, -12.0])
+			"currency": _loot.append([p, Content.CURRENCY[p.data].name, Content.col(Content.CURRENCY[p.data].col), 15, -10.0])
+			"lore": _loot.append([p, "Lore Page", Color("e8dcc0"), 15, -10.0])
+			"fragment": _loot.append([p, "Fragment of " + String(p.data).capitalize(), Color("c48aff"), 17, -10.0])
+	_elites.clear()
+	var sw := w.sw
+	for i in sw.n:
+		var f := sw.flags[i]
+		if (f & (Swarm.F_ELITE | Swarm.F_EXILE)) == 0: continue
+		if sw.pos[i].distance_squared_to(w.pp) > 460.0 * 460.0: continue
+		if (f & Swarm.F_EXILE) != 0:
+			_elites.append([sw.uid[i], ""])
+		elif sw.affix[i] != 0:
+			var names := ""
+			for bit in Content.AFFIX_NAMES:
+				if (sw.affix[i] & bit) != 0: names += Content.AFFIX_NAMES[bit] + " "
+			_elites.append([sw.uid[i], names.strip_edges()])
 
 func _bar(p: Vector2, wdt: float, frac: float, col: Color) -> void:
 	var r := Rect2(p - Vector2(wdt * 0.5, 0), Vector2(wdt, 5))

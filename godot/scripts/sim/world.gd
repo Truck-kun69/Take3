@@ -121,6 +121,9 @@ var roll_age := 9.0
 var roll_cd := 0.0
 var roll_dir := Vector2.RIGHT
 var roll_buffer := 0.0
+var vel := Vector2.ZERO            # walking velocity (the roll moves the hero directly)
+const ACCEL_T := 0.06
+const DECEL_T := 0.05
 const ACTION_BUFFER := 0.12
 var ult_buffer := 0.0
 var flask_buffer := [0.0, 0.0]
@@ -381,7 +384,10 @@ func _step(dt: float) -> void:
 	terrain.prefetch(pp, 3, 1)
 	if terrain.tide > 0.0:
 		_step_tide()
-	if fmod(t, 7.0) < dt: terrain.trim(pp)
+	_trim_t -= dt
+	if _trim_t <= 0.0:
+		_trim_t += 7.0
+		terrain.trim(pp)
 	buffs.step(dt)
 	_step_light(dt)
 	_step_surfaces(dt)
@@ -434,16 +440,26 @@ func _step_player(dt: float) -> void:
 	var mvv := in_move.limit_length(1.0)
 	var tm := terrain.speed_mul(pp)
 	var np := pp
-	if roll_t > 0.0:
+	var rolling := roll_t > 0.0
+	if rolling:
 		roll_t -= dt
 		# a burst that eases out: 3.1x speed for the first 45% of the roll, tapering to 1.3x at the end.
 		# The average is the old flat 2.6x, so the distance (and every dodge tuned around it) is unchanged,
 		# but most of it is covered early. A roll is not slowed by shallows
 		var rp := clampf(1.0 - roll_t / ROLL_TIME, 0.0, 1.0)
 		np += roll_dir * spd * lerpf(3.1, 1.3, smoothstep(0.45, 1.0, rp)) * dt
+		vel = roll_dir * spd * tm                      # leave the roll already running
 	else:
-		np += mvv * spd * tm * dt
+		# walking: full speed in ACCEL_T, a stop (or a reversal) in DECEL_T. The roll above stays an instant impulse
+		var want := mvv * spd * tm
+		var stopping := want.length_squared() < 1.0 or want.dot(vel) < 0.0
+		vel = vel.move_toward(want, spd / (DECEL_T if stopping else ACCEL_T) * dt)
+		np += vel * dt
+	var before := pp
 	pp = terrain.move(pp, np)
+	if not rolling and dt > 0.0:
+		var moved := (pp - before) / dt                   # a wall or cliff stopped us: keep no stored speed
+		if moved.length_squared() < vel.length_squared(): vel = moved
 	if terrain.burns(pp):
 		_lava_t -= dt
 		if _lava_t <= 0.0:
@@ -497,6 +513,8 @@ func _step_player(dt: float) -> void:
 		hp = minf(max_hp, hp + rg * dt)
 	if buffs.has("conduit"):
 		_conduit(dt)
+	if buffs.has("thunderdome"):          # was nested inside _conduit: the Stormwright's ultimate only struck with a Conduit pylon active
+		_thunderdome(dt)
 
 var _lava_t := 0.0
 var _tide_step := 0
@@ -789,7 +807,7 @@ func _step_foes(dt: float) -> void:
 		var f := sw.flags[i]
 		if (f & (Swarm.F_BOSS | Swarm.F_EVENT | Swarm.F_EXILE | Swarm.F_GOBLIN | Swarm.F_HERALD | Swarm.F_RIFTG)) == 0 and sw.pos[i].distance_squared_to(pp) > far * far:
 			sw.set_pos(i, ring_point(40.0))
-		if (sw.affix[i] & Content.Aff.ARCANE) != 0 and sw.ai_s[i] == 0 and fmod(t + float(sw.uid[i]) * 0.37, 3.5) < dt:
+		if (sw.affix[i] & Content.Aff.ARCANE) != 0 and sw.arcane_due(i, dt) and sw.ai_s[i] == 0:
 			var o: Proj = _new_proj()
 			o.pos = sw.pos[i]; o.vel = (pp - sw.pos[i]).normalized() * 90.0; o.life = 6.0; o.r = 9.0; o.dmg = sw.dmg[i] * 1.2; o.col = Color("d070ff")
 			eshots.append(o)
@@ -1267,8 +1285,16 @@ func _orbit(dt: float, s: Dictionary) -> void:
 				Sfx.play("impact", 1.0, 0.55)
 				break
 
+## Countdown timers for periodic effects. They replace `fmod(t, period) < dt`, which skipped or
+## double-fired whenever dt changed (slow motion, hit-stop, frame hiccups) or t drifted in float.
+var _trim_t := 7.0
+var _conduit_t := 0.0
+var _dome_t := 0.0
+
 func _conduit(dt: float) -> void:
-	if fmod(t, 0.25) < dt:
+	_conduit_t -= dt
+	if _conduit_t <= 0.0:
+		_conduit_t += 0.25
 		var c := grid.query(pp, 220.0, sw)
 		var hl := grid.results.slice(0, mini(c, 3))
 		for q in hl.size():
@@ -1277,7 +1303,11 @@ func _conduit(dt: float) -> void:
 				var pts := PackedVector2Array([pp, (pp + sw.pos[i]) * 0.5 + Vector2(randf_range(-12, 12), randf_range(-12, 12)), sw.pos[i]])
 				fx.append({"k": "arc", "pos": pp, "col": Color("fff07a"), "life": 0.12, "t": 0.0, "pts": pts})
 				hit(i, weapon_damage_base() * 2.0, 1 << Content.El.LIGHT, Vector2.ZERO, 0.0, 0)
-	if buffs.has("thunderdome") and fmod(t, 0.1) < dt:
+
+func _thunderdome(dt: float) -> void:
+	_dome_t -= dt
+	if _dome_t <= 0.0:
+		_dome_t += 0.1
 		var j := grid.nearest(pp + Vector2(randf_range(-260, 260), randf_range(-200, 200)), 200.0, sw)
 		if j >= 0: strike_at(sw.pos[j], 48.0, weapon_damage_base() * 2.5, 1 << Content.El.LIGHT)
 
@@ -2105,7 +2135,9 @@ func _burst(at: Vector2, col: Color, n: int, spd: float) -> void:
 	if bursts.size() < 64:
 		bursts.append([at, col, n, spd])
 
-## tier: 0 normal, 1 crit, 2 reaction damage, 3 reaction label, 4 DoT tick
+## tier: 0 normal, 1 crit, 2 reaction damage, 3 reaction label, 4 DoT tick. At most MAX_TEXTS live at once:
+## past ~30 the numbers overlap into an unreadable cloud that hides the hero and the telegraphs.
+const MAX_TEXTS := 32
 func _text(at: Vector2, v: float, col: Color, tier: int, u: int, label: String = "") -> void:
 	var opt := int(Save.opt("dmg_numbers"))
 	if opt == 0 or (opt == 1 and tier != 1 and tier != 3):
@@ -2115,8 +2147,17 @@ func _text(at: Vector2, v: float, col: Color, tier: int, u: int, label: String =
 		if e.t < 0.12 and e.tier == tier:
 			e.v += v
 			return
-	if texts.size() >= 70:
-		texts.pop_front()
+	if texts.size() >= MAX_TEXTS:
+		# full: the oldest plain number goes first; crits and reaction names are dropped only when nothing else is left
+		var drop := 0
+		for j in texts.size():
+			var tj: int = texts[j].tier
+			if tj != 1 and tj != 3:
+				drop = j
+				break
+		var old: Dictionary = texts[drop]
+		if _agg.get(old.uid) == old: _agg.erase(old.uid)
+		texts.remove_at(drop)
 	var e2 := {"pos": at + Vector2(randf_range(-6, 6), 0), "v": v, "col": col, "tier": tier, "t": 0.0, "uid": u, "label": label}
 	texts.append(e2)
 	if u >= 0: _agg[u] = e2
