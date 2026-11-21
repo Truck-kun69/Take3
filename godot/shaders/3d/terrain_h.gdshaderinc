@@ -25,6 +25,13 @@ float th(vec2 xz) {
 	return mix(mix(h00, h10, t.x), mix(h01, h11, t.x), t.y);
 }
 
+// The model-space offset that a model basis b maps to a world-space lift of h straight up, without a
+// matrix inverse: for a basis whose columns are orthogonal (a rotation times a per-axis scale, which is
+// every transform that drapes geometry with th() here), B^-1 (0, h, 0) = h * (b[i].y / |b[i]|^2).
+vec3 lift(mat3 b, float h) {
+	return h * vec3(b[0].y / dot(b[0], b[0]), b[1].y / dot(b[1], b[1]), b[2].y / dot(b[2], b[2]));
+}
+
 // bilinear over cell centres, so ice sheets and charged water have soft edges instead of square cells
 vec2 tstate(vec2 xz) {
 	if (terrain_o.z < 2.0) return vec2(0.0);

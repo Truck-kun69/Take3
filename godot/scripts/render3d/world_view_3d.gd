@@ -334,9 +334,10 @@ func bind(world: World) -> void:
 	water_mat.set_shader_parameter("shallow_col", wc[1])
 	water_mat.set_shader_parameter("glow_col", Content.col(s.acc).lerp(Color(1.0, 0.45, 0.1), 0.6))
 	_tex_center = Vector2i(1 << 30, 0)
+	_hn = 0                       # the old world's height window is stale until the first frame recomposes it
 	_ts_ver = -1
 	_sf_ver = -1
-	_cam_y = w.terrain.height(w.pp)
+	_cam_y = ground_y(w.pp)
 	_liquid_kind = lk
 	for k in Models.FOE_KINDS.size():                # act-specific swarm variants (models/foes/<kind>_<stage>)
 		_foe_mm[k].multimesh.mesh = Models.foe_mesh(Models.FOE_KINDS[k], w.stage)
@@ -413,6 +414,8 @@ func _features() -> void:
 	if Quality.on("terrain") != _terr_on:
 		_terr_on = Quality.on("terrain")
 		_tex_center = Vector2i(1 << 30, 0)       # recompose: terrain_o.z = 0 makes every th() lookup return 0
+		_hn = 0                                  # and ground_y() 0 with it
+		_clear_props()                           # props were planted at the old heights
 	if Quality.on("props") != _props_on or Quality.high() != _hi_on:
 		_props_on = Quality.on("props")
 		_hi_on = Quality.high()
@@ -451,6 +454,8 @@ func _camera(dt: float) -> void:
 			r = maxf(r, Vector2(hit.x, hit.z).distance_to(w.pp))
 	w.view_r = clampf(r, 400.0, 1400.0)
 
+const SUN_FLOOR := 0.32
+const AMBIENT_FLOOR := 0.22
 func _lighting(dt: float) -> void:
 	var gl := w.gloom()            # 0 lit .. 1 dark (eclipse or the lantern running out)
 	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7) + 0.25 * gl * sin(time * 3.1) * sin(time * 17.0)
@@ -459,8 +464,10 @@ func _lighting(dt: float) -> void:
 	var to_cam := (cam.global_position - Vector3(w.pp.x, 0, w.pp.y))
 	to_cam.y = 0.0
 	key_light.position = Vector3(w.pp.x, 46.0 + gy, w.pp.y) + to_cam.normalized() * 55.0
-	sun.light_energy = lerpf(sun.light_energy, lerpf(0.7, 0.06, gl), minf(1.0, dt * 2.0))
-	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(0.3, 0.08, gl), minf(1.0, dt * 2.0))
+	# full gloom dims the sun and ambient to floors (SUN_FLOOR, AMBIENT_FLOOR), never to black: the ground and
+	# the swarm stay readable outside the torch's pool
+	sun.light_energy = lerpf(sun.light_energy, lerpf(0.7, SUN_FLOOR, gl), minf(1.0, dt * 2.0))
+	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(0.3, AMBIENT_FLOOR, gl), minf(1.0, dt * 2.0))
 	torch.light_energy = lerpf(3.2, 4.5, gl) * flick * LIGHT_GAIN
 	torch.omni_range = lerpf(300.0, 260.0, gl)
 	env.fog_density = lerpf(env.fog_density, lerpf(0.0007, 0.0014, gl), minf(1.0, dt))
@@ -530,6 +537,11 @@ func _terrain_tex(dt: float) -> void:
 		if _th_tex == null: _th_tex = ImageTexture.create_from_image(_th_img)
 		else: _th_tex.update(_th_img)
 		var o := Vector2(cc - Vector2i(half, half)) * Terrain.CHUNK
+		# the same heights on the CPU, for ground_y (one copy per chunk crossing)
+		_hd = _th_img.get_data().to_float32_array()
+		_hox = o.x
+		_hoz = o.y
+		_hn = n if Quality.on("terrain") else 0
 		Diag.mark("terrain texture rebuilt around chunk %s" % str(cc))
 		RenderingServer.global_shader_parameter_set("terrain_h", _th_tex)
 		RenderingServer.global_shader_parameter_set("terrain_o", Vector4(o.x, o.y, n if Quality.on("terrain") else 0, Terrain.CELL))
@@ -611,9 +623,31 @@ func _surf_fx() -> void:
 			k += 1
 			if k >= 5: break
 
-## Ground height under a point (flat until the terrain heightfield exists).
+## Ground height under a point: the bilinear lookup over 16-unit cell centres that th() does in
+## terrain_h.gdshaderinc and Terrain.height() does in the simulation, read from the 7 x 7 chunk window
+## composed for the height texture (Terrain.height measured 2.9 us a call). Outside the window it asks the
+## simulation; with hills switched off it is 0, matching the flat ground the shaders then draw.
+## Everything instanced in the 3D view (foes, effects, smoke, props, rigs, lights) is placed at
+## ground_y() + its own height on the CPU; only surfaces draped over the ground (terrain, decals,
+## blood marks, contact shadows, lightning ribbons) still sample th() per vertex.
+const INV_CELL := 1.0 / Terrain.CELL
+var _hd := PackedFloat32Array()     # the window's heights, row-major, _hn x _hn
+var _hn := 0                        # texels per side; 0 until composed and while hills are off
+var _hox := 0.0                     # world x, z of texel 0's corner
+var _hoz := 0.0
 func ground_y(p: Vector2) -> float:
-	return w.terrain.height(p) if w != null and w.terrain != null else 0.0
+	if _hn > 0:
+		var fx := (p.x - _hox) * INV_CELL - 0.5
+		var fz := (p.y - _hoz) * INV_CELL - 0.5
+		if fx >= 0.0 and fz >= 0.0 and fx < _hn - 1 and fz < _hn - 1:
+			var ix := int(fx)
+			var iz := int(fz)
+			var k := iz * _hn + ix
+			var a := lerpf(_hd[k], _hd[k + 1], fx - ix)
+			var b := lerpf(_hd[k + _hn], _hd[k + _hn + 1], fx - ix)
+			return lerpf(a, b, fz - iz)
+	if w == null or w.terrain == null or not Quality.on("terrain"): return 0.0
+	return w.terrain.height(p)
 
 ## Whether a prop of this kind may stand here (terrain rules: no trees in water, no props on cliffs).
 func _prop_ok(kind: String, p: Vector2) -> bool:
@@ -765,6 +799,12 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 	var vc: PackedFloat32Array = _vc[k]
 	var authored := not vc.is_empty()
 	var n := 0
+	# the ground height goes into the instance transform (foe.gdshader does no terrain lookup): ground_y's
+	# window lookup inlined, through locals, since this runs for every foe on screen every frame
+	var hd := _hd
+	var hn := _hn
+	var hox := _hox
+	var hoz := _hoz
 	for v in range(_start[k], _start[k + 1]):
 		var i := _order[v]
 		var p := sw.pos[i]
@@ -774,11 +814,22 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
 		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]
 		elif (f & Swarm.F_ALLY) != 0 and sw.dir[i] != Vector2.ZERO: dir = sw.dir[i]
+		var gy := 0.0
+		var fx := (p.x - hox) * INV_CELL - 0.5
+		var fz := (p.y - hoz) * INV_CELL - 0.5
+		if hn > 0 and fx >= 0.0 and fz >= 0.0 and fx < hn - 1 and fz < hn - 1:
+			var ix := int(fx)
+			var iz := int(fz)
+			var kk := iz * hn + ix
+			var ga := lerpf(hd[kk], hd[kk + 1], fx - ix)
+			gy = lerpf(ga, lerpf(hd[kk + hn], hd[kk + hn + 1], fx - ix), fz - iz)
+		else:
+			gy = ground_y(p)
 		var o := n * FOE_STRIDE
 		var s := sw.rad[i]
 		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
 		buf[o] = dir.x * s; buf[o + 1] = 0.0; buf[o + 2] = -dir.y * s; buf[o + 3] = p.x
-		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = 0.0
+		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = gy
 		buf[o + 8] = dir.y * s; buf[o + 9] = 0.0; buf[o + 10] = dir.x * s; buf[o + 11] = p.y
 		# per-instance colour and custom data reach the GPU as 16-bit halves (exact integers only to
 		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
@@ -822,12 +873,12 @@ func _status_code(i: int) -> float:
 var _kind_col: Array[Color] = []
 
 # ---------------------------------------------------------------- corpses: topple, lie, crumble
-var corpses: Array = []          # [kind, pos, dir, rad, t0, seed]
+var corpses: Array = []          # [kind, pos, dir, rad, t0, seed, ground height]
 const CORPSE_LIFE := 3.6
 func add_corpse(kind: int, pos: Vector2, dir: Vector2, rad: float, seed_v: int) -> void:
 	if kind == Content.E.BOSS or kind == Content.E.HERALD or kind == Content.E.EXILE: return
 	if corpses.size() >= 140: corpses.pop_front()
-	corpses.append([kind, pos, dir if dir != Vector2.ZERO else Vector2.RIGHT, rad, time, seed_v % 64])
+	corpses.append([kind, pos, dir if dir != Vector2.ZERO else Vector2.RIGHT, rad, time, seed_v % 64, ground_y(pos)])
 	Diag.first("corpse")
 
 ## Expires old corpses and counts the rest per kind (they share their kind's MultiMesh).
@@ -854,9 +905,10 @@ func _write_corpses(buf: PackedFloat32Array, k: int, n: int) -> int:
 		var p: Vector2 = c[1]
 		var d: Vector2 = c[2]
 		var s: float = c[3]
+		var gy: float = c[6]
 		if not vcd.is_empty() and vcd[10] > 0.0:           # an authored death clip: play it once, hold its last frame
 			buf[o] = d.x * s; buf[o + 1] = 0.0; buf[o + 2] = -d.y * s; buf[o + 3] = p.x
-			buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = 0.0
+			buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = gy
 			buf[o + 8] = d.y * s; buf[o + 9] = 0.0; buf[o + 10] = d.x * s; buf[o + 11] = p.y
 			buf[o + 12] = col.r; buf[o + 13] = col.g; buf[o + 14] = col.b; buf[o + 15] = float(c[5]) / 63.0
 			buf[o + 16] = vcd[9] + minf(age * vcd[11], vcd[10] - 1.0)
@@ -874,7 +926,7 @@ func _write_corpses(buf: PackedFloat32Array, k: int, n: int) -> int:
 		var za := xa.cross(ya)
 		var bounce := sin(clampf((age - 0.28) / 0.2, 0.0, 1.0) * PI) * 0.08 * s
 		buf[o] = xa.x * s; buf[o + 1] = ya.x * s; buf[o + 2] = za.x * s; buf[o + 3] = p.x
-		buf[o + 4] = xa.y * s; buf[o + 5] = ya.y * s; buf[o + 6] = za.y * s; buf[o + 7] = 0.42 * s * fall + bounce
+		buf[o + 4] = xa.y * s; buf[o + 5] = ya.y * s; buf[o + 6] = za.y * s; buf[o + 7] = gy + 0.42 * s * fall + bounce
 		buf[o + 8] = xa.z * s; buf[o + 9] = ya.z * s; buf[o + 10] = za.z * s; buf[o + 11] = p.y
 		buf[o + 12] = col.r; buf[o + 13] = col.g; buf[o + 14] = col.b; buf[o + 15] = float(c[5]) / 63.0
 		buf[o + 16] = 0.0
@@ -987,7 +1039,7 @@ func _assign_lights() -> void:
 			l.visible = true
 			if i == 0: Diag.first("dynamic light")
 			if i == 7: Diag.first("8 dynamic lights")
-			l.position = c[0] + Vector3(0, ground_y(Vector2(c[0].x, c[0].z)), 0)
+			l.position = c[0]                     # candidates are world positions (FX3D adds the ground height)
 			l.light_color = c[1]
 			l.light_energy = c[2] * LIGHT_GAIN
 			l.omni_range = c[3]

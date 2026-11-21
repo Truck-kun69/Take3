@@ -36,6 +36,7 @@ func _ready() -> void:
 		_gate_p01_tests()
 		_tyrant_fsm_tests()
 		_audio_tests()
+		_height_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -46,9 +47,11 @@ func _ready() -> void:
 			f.close()
 	get_tree().quit(1 if failures > 0 else 0)
 
+var _verbose := OS.get_environment("TESTS_VERBOSE") != ""        # print passing checks too
 func ok(cond: bool, what: String) -> void:
 	if cond:
 		passes += 1
+		if _verbose: print("  ok: " + what)
 	else:
 		failures += 1
 		print("  FAIL: " + what)
@@ -848,6 +851,121 @@ func _anim_tests() -> void:
 	w._contact()
 	ok(is_equal_approx(w.sw.atk_t[w.sw.index_of(uj)], w.t), "touching the hero plays the attack")
 	w.dispose()
+
+## The 3D view places foes, effects, smoke and lights at ground_y() + their own height on the CPU (the
+## instanced shaders do no terrain lookup). Checks that ground_y() is the simulation's height on hilly
+## ground and that what the view writes for foes, shots, crystals, debris, sparks and lights sits on it.
+func _height_tests() -> void:
+	print("== heights in the 3D view")
+	var w := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 41})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	var T := w.terrain
+	# a walkable spot with real hills around it: the height spans more than 40 units within 300
+	var spot := w.pp
+	var best := 0.0
+	for r in range(0, 3000, 150):
+		for a in 12:
+			var c := Vector2.from_angle(TAU * a / 12.0) * r
+			if not T.passable(c): continue
+			var lo := INF
+			var hi := -INF
+			for k in 16:
+				var h := T.height(c + Vector2.from_angle(TAU * k / 16.0) * 300.0)
+				lo = minf(lo, h); hi = maxf(hi, h)
+			if hi - lo > best:
+				best = hi - lo
+				spot = c
+		if best > 40.0: break
+	w.pp = spot
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	v._process(1.0 / 60.0)                 # composes the height window around the hero
+	var rng := RandomNumberGenerator.new(); rng.seed = 5
+	var worst := 0.0
+	var lo2 := INF
+	var hi2 := -INF
+	var pts := PackedVector2Array()
+	for k in 3000:
+		var p := spot + Vector2(rng.randf_range(-1400, 1400), rng.randf_range(-1400, 1400))
+		pts.append(p)
+		var hb := T.height(p)
+		worst = maxf(worst, absf(v.ground_y(p) - hb))
+		lo2 = minf(lo2, hb); hi2 = maxf(hi2, hb)
+	ok(worst < 0.01 and hi2 - lo2 > 40.0, "ground_y() equals Terrain.height() on hilly ground (max difference %.4f over a %.0f-unit height range)" % [worst, hi2 - lo2])
+	var t0 := Time.get_ticks_usec()
+	var acc := 0.0
+	for p in pts: acc += v.ground_y(p)
+	var t1 := Time.get_ticks_usec()
+	for p in pts: acc += T.height(p)
+	var t2 := Time.get_ticks_usec()
+	print("  ground_y %.2f us a call, Terrain.height %.2f us a call" % [float(t1 - t0) / pts.size(), float(t2 - t1) / pts.size()])
+	ok(t1 - t0 < t2 - t1, "and is cheaper than asking the simulation")
+	# foes: the ground height is in each instance's transform (row-major 3x4: element 7 is the y origin)
+	for k in 60: w.spawn_foe(Content.E.GRUNT + k % 5, spot + Vector2.from_angle(k * 0.7) * (90.0 + 4.0 * k), 0, 0, 50.0)
+	for k in 30: w.add_gem(spot + Vector2.from_angle(k * 1.3) * (60.0 + 7.0 * k), 1.0)
+	for k in 90: w.step(1.0 / 60.0)          # the hero's weapons fire; shots, kills, bursts and debris follow
+	for k in 3:                              # and a few shots of each side placed over the slopes
+		var pr := World.Proj.new()
+		pr.pos = spot + Vector2.from_angle(k * 2.1) * 150.0; pr.vel = Vector2(300, 40); pr.life = 2.0
+		w.projs.append(pr)
+		var es := World.Proj.new()
+		es.pos = spot + Vector2.from_angle(k * 2.1 + 1.0) * 170.0; es.vel = Vector2(-200, 60); es.life = 2.0; es.r = 6.0
+		w.eshots.append(es)
+	v._process(1.0 / 60.0)
+	var checked := 0
+	var bad := 0
+	for kind in v._foe_mm.size():
+		if kind >= v._fbk.size(): continue
+		var buf: PackedFloat32Array = v._fbk[kind]
+		for j in range(v._start[kind], v._start[kind + 1]):
+			var o := (j - v._start[kind]) * WorldView3D.FOE_STRIDE
+			checked += 1
+			if absf(buf[o + 7] - v.ground_y(w.sw.pos[v._order[j]])) > 0.01: bad += 1
+	ok(checked >= 20 and bad == 0, "every drawn foe stands at ground_y() (%d checked, %d off)" % [checked, bad])
+	var fx := v.fx
+	var pn := mini(w.projs.size(), 800)
+	var pbad := 0
+	for k in pn:
+		if absf(fx._pb[k * 20 + 7] - (v.ground_y(w.projs[k].pos) + 16.0)) > 0.01: pbad += 1
+	ok(pn > 0 and pbad == 0, "hero shots fly 16 above the ground under them (%d shots)" % pn)
+	var ebad := 0
+	for j in w.eshots.size():                # glow sprites: 4 per hero shot (head + trail), then 3 per enemy shot, ring first
+		var go := (4 * pn + 3 * j) * 20
+		if absf(fx._gb[go + 7] - (v.ground_y(w.eshots[j].pos) + 14.0)) > 0.01: ebad += 1
+	ok(w.eshots.size() > 0 and ebad == 0, "enemy shots fly 14 above the ground under them (%d shots)" % w.eshots.size())
+	var gbad := 0
+	var gn := 0
+	for i in w.gem_n:
+		if w.gem_pos[i].distance_to(w.pp) > w.view_r + 40.0: continue
+		var y := fx._gemb[gn * 20 + 7] - v.ground_y(w.gem_pos[i])
+		if y < 7.4 or y > 12.6: gbad += 1
+		gn += 1
+	ok(gn > 0 and gbad == 0, "XP crystals bob 7.5 to 12.5 above the ground (%d crystals)" % gn)
+	# debris: thrown, it lands and rests on the ground under it, never inside a slope
+	var dpos := spot + Vector2(40, 0)
+	for k in 12:
+		fx._debris(Vector3(dpos.x, v.ground_y(dpos) + 20.0, dpos.y), Vector3(randf_range(-1, 1), 1.2, randf_range(-1, 1)) * 200.0, Color.GRAY, 5.0, 1.5)
+	var dbad := 0
+	for f in 60:
+		fx._sim_debris(1.0 / 60.0)
+		for i in fx.d_n:
+			var p3: Vector3 = fx.d_pos[i]
+			if p3.y < v.ground_y(Vector2(p3.x, p3.z)) + fx.d_size[i] * 0.3 - 0.01: dbad += 1
+	ok(fx.d_n > 0 and dbad == 0, "debris never sinks below the ground under it (%d chips, 60 frames)" % fx.d_n)
+	# sparks from a hit burst start 10 above the ground there; lights are world positions
+	var bp := spot + Vector2(-70, 30)
+	var s0 := fx.s_n
+	w.bursts.append([bp, Color(1, 0.5, 0.2), 3, 100.0])
+	fx._consume_feed()
+	ok(fx.s_n > s0 and absf(fx.s_pos[fx.s_n - 1].y - (v.ground_y(bp) + 10.0)) < 0.01, "hit sparks start 10 above the ground at the hit")
+	var lbad := 0
+	var cands := fx.light_candidates()
+	for c in cands:
+		var lp: Vector3 = c[0]
+		if lp.y < v.ground_y(Vector2(lp.x, lp.z)) - 0.01: lbad += 1
+	ok(lbad == 0, "dynamic light candidates are above the ground (%d candidates)" % cands.size())
+	v.queue_free()
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

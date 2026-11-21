@@ -5,7 +5,7 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 #include "res://shaders/3d/terrain_h.gdshaderinc"
 void vertex() {
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(w.xz), 0.0);
+	VERTEX += lift(mat3(MODEL_MATRIX), th(w.xz));
 }
 void fragment() {
 	float x = abs(UV.y - 0.5) * 2.0;

@@ -182,6 +182,7 @@ func _pushers() -> void:
 	view.prop_mat.set_shader_parameter("push_n", 0 if Quality.tier() == 0 else 4)
 	fog_mat.set_shader_parameter("pushers", pushers)
 
+## A smoke puff at world position p (callers add view.ground_y: the smoke shader does no terrain lookup).
 func puff(p: Vector3, v: Vector3, c: Color, life: float, size: float, glow: float = 0.0) -> void:
 	var cap := SMOKE_CAP if Quality.tier() >= 1 else SMOKE_CAP / 3
 	if m_n >= cap: return
@@ -192,23 +193,25 @@ func puff(p: Vector3, v: Vector3, c: Color, life: float, size: float, glow: floa
 
 func _footsteps() -> void:
 	var s := signf(sin(w.walk_ph))
+	var gy := view.ground_y(w.pp)
 	if w.mv > 0.3 and s != _last_step_sign and w.roll_t <= 0.0:
 		var side := Vector2(-w.face.y, w.face.x) * 5.0 * s
 		var dust := (WorldView3D.STAGE_LOOK[w.stage].fog as Color).lightened(0.35)
 		for i in 2:
-			puff(Vector3(w.pp.x + side.x, 3, w.pp.y + side.y), Vector3(randf_range(-14, 14), randf_range(8, 20), randf_range(-14, 14)), Color(dust.r, dust.g, dust.b, 0.35), 0.7, 14.0)
+			puff(Vector3(w.pp.x + side.x, gy + 3.0, w.pp.y + side.y), Vector3(randf_range(-14, 14), randf_range(8, 20), randf_range(-14, 14)), Color(dust.r, dust.g, dust.b, 0.35), 0.7, 14.0)
 		Sfx.play("step", randf_range(0.9, 1.15), 0.5)
 	_last_step_sign = s
 	if w.roll_t > 0.0 and _last_roll <= 0.0:          # roll start: dust ring
 		for i in 10:
 			var a := TAU * i / 10.0
-			puff(Vector3(w.pp.x, 4, w.pp.y), Vector3(cos(a) * 70.0, 10.0, sin(a) * 70.0), Color(0.6, 0.55, 0.5, 0.4), 0.8, 18.0)
+			puff(Vector3(w.pp.x, gy + 4.0, w.pp.y), Vector3(cos(a) * 70.0, 10.0, sin(a) * 70.0), Color(0.6, 0.55, 0.5, 0.4), 0.8, 18.0)
 	_last_roll = w.roll_t
 	for z in w.teles:                                   # slams raise a dust cloud as they land
 		if z.hostile and z.arm > 0.0 and z.arm <= 0.05 and z.shape == 0:
+			var gz := view.ground_y(z.pos)
 			for i in 12:
 				var a2 := randf() * TAU
-				puff(Vector3(z.pos.x, 6, z.pos.y), Vector3(cos(a2), 0.3, sin(a2)) * randf_range(60, 140), Color(0.45, 0.4, 0.36, 0.5), 1.2, 30.0)
+				puff(Vector3(z.pos.x, gz + 6.0, z.pos.y), Vector3(cos(a2), 0.3, sin(a2)) * randf_range(60, 140), Color(0.45, 0.4, 0.36, 0.5), 1.2, 30.0)
 
 func _status_fx() -> void:
 	var sw := w.sw
@@ -217,17 +220,18 @@ func _status_fx() -> void:
 	for i in range(_frame % 2, sw.n, 2):
 		var p := sw.pos[i]
 		if p.distance_squared_to(w.pp) > r2: continue
-		var h := sw.rad[i] * 1.6
+		if sw.flash[i] <= 0.099 and sw.burn[i] <= 0.0 and sw.chill_t[i] <= 0.0 and sw.pois[i] <= 0.0 and sw.shock_t[i] <= 0.0: continue
+		var h := view.ground_y(p) + sw.rad[i] * 1.6           # world height of the body's middle
 		if sw.flash[i] > 0.099:                          # fresh hit: ichor sparks and sometimes a splatter
 			fxv._spark(Vector3(p.x, h, p.y), Vector3(randf_range(-1, 1), randf_range(0.5, 1.4), randf_range(-1, 1)) * 140.0, Color(0.55, 0.05, 0.06), 0.35, 5.0)
 			if randf() < 0.12: fxv._mark(p + Vector2(randf_range(-8, 8), randf_range(-8, 8)), sw.rad[i] * 0.7, 0)
 		if sw.burn[i] > 0.0 and randf() < 0.35:
 			fxv._spark(Vector3(p.x + randf_range(-6, 6), h, p.y + randf_range(-6, 6)), Vector3(randf_range(-10, 10), randf_range(40, 90), randf_range(-10, 10)), Color(1.0, 0.45, 0.1), 0.45, 9.0)
-			if randf() < 0.25: puff(Vector3(p.x, h + 10, p.y), Vector3(0, 35, 0), Color(0.12, 0.1, 0.1, 0.45), 1.2, 16.0)
+			if randf() < 0.25: puff(Vector3(p.x, h + 10.0, p.y), Vector3(0, 35, 0), Color(0.12, 0.1, 0.1, 0.45), 1.2, 16.0)
 		if sw.chill_t[i] > 0.0 and randf() < 0.12:
-			puff(Vector3(p.x, h * 0.6, p.y), Vector3(randf_range(-12, 12), 6, randf_range(-12, 12)), Color(0.7, 0.9, 1.0, 0.35), 0.9, 14.0, 0.3)
+			puff(Vector3(p.x, h - sw.rad[i] * 0.64, p.y), Vector3(randf_range(-12, 12), 6, randf_range(-12, 12)), Color(0.7, 0.9, 1.0, 0.35), 0.9, 14.0, 0.3)
 		if sw.pois[i] > 0.0 and randf() < 0.1:
-			puff(Vector3(p.x, h * 0.5, p.y), Vector3(randf_range(-8, 8), 14, randf_range(-8, 8)), Color(0.35, 0.8, 0.2, 0.4), 1.1, 15.0, 0.4)
+			puff(Vector3(p.x, h - sw.rad[i] * 0.8, p.y), Vector3(randf_range(-8, 8), 14, randf_range(-8, 8)), Color(0.35, 0.8, 0.2, 0.4), 1.1, 15.0, 0.4)
 		if sw.shock_t[i] > 0.0 and randf() < 0.15:
 			fxv._spark(Vector3(p.x + randf_range(-10, 10), h + randf_range(-5, 8), p.y + randf_range(-10, 10)), Vector3(randf_range(-60, 60), randf_range(0, 60), randf_range(-60, 60)), Color(1.0, 0.95, 0.5), 0.12, 6.0)
 
@@ -236,9 +240,10 @@ func _cast_flash() -> void:
 		_last_cast = w.cast_t
 		var el := Content.el_col(int(Content.HEROES[w.hero].elem), w.colorblind)
 		var hand := w.pp + w.cast_dir * 22.0
-		view.fx.add_light(Vector3(hand.x, 40, hand.y), el, 3.0, 160.0, 0.14)
+		var gh := view.ground_y(hand)
+		view.fx.add_light(Vector3(hand.x, gh + 40.0, hand.y), el, 3.0, 160.0, 0.14)
 		for i in 5:
-			view.fx._spark(Vector3(hand.x, 38, hand.y), Vector3(w.cast_dir.x * 120.0 + randf_range(-40, 40), randf_range(0, 50), w.cast_dir.y * 120.0 + randf_range(-40, 40)), el.lightened(0.3), 0.25, 6.0)
+			view.fx._spark(Vector3(hand.x, gh + 38.0, hand.y), Vector3(w.cast_dir.x * 120.0 + randf_range(-40, 40), randf_range(0, 50), w.cast_dir.y * 120.0 + randf_range(-40, 40)), el.lightened(0.3), 0.25, 6.0)
 
 func _breakables() -> void:
 	var counts := [0, 0]
@@ -255,10 +260,11 @@ func _breakables() -> void:
 	for e in w.broken:
 		var p2: Vector2 = e[0]
 		var c := Color(0.62, 0.42, 0.3) if e[1] == 0 else Color(0.45, 0.32, 0.2)
+		var g2 := view.ground_y(p2)
 		for i in 9:
-			view.fx._debris(Vector3(p2.x, 10, p2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(90, 200), c.darkened(randf_range(0, 0.4)), randf_range(2.5, 5.0))
+			view.fx._debris(Vector3(p2.x, g2 + 10.0, p2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(90, 200), c.darkened(randf_range(0, 0.4)), randf_range(2.5, 5.0))
 		for i in 6:
-			puff(Vector3(p2.x, 8, p2.y), Vector3(randf_range(-40, 40), randf_range(10, 40), randf_range(-40, 40)), Color(0.55, 0.48, 0.4, 0.45), 1.0, 20.0)
+			puff(Vector3(p2.x, g2 + 8.0, p2.y), Vector3(randf_range(-40, 40), randf_range(10, 40), randf_range(-40, 40)), Color(0.55, 0.48, 0.4, 0.45), 1.0, 20.0)
 	w.broken.clear()
 
 func _motes(dt: float) -> void:
@@ -281,7 +287,8 @@ func _motes(dt: float) -> void:
 		a *= clampf(1.0 - (dh - 140.0) / 160.0, 0.0, 1.0)                                       # only in the torch's pool
 		if a <= 0.01: continue
 		var c: Color = cfg.col
-		view.fx.ext_glow.append([p, 3.4, Color(c.r, c.g, c.b, a), 0.0])
+		# a mote keeps its height above the ground (p.y); the glow sprites take world positions
+		view.fx.ext_glow.append([Vector3(p.x, view.ground_y(Vector2(p.x, p.z)) + p.y, p.z), 3.4, Color(c.r, c.g, c.b, a), 0.0])
 
 func _sim(dt: float) -> void:
 	var i := 0

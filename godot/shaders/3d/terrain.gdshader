@@ -42,8 +42,9 @@ void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_n = vec3(0.0, 1.0, 0.0);
 	if (displace) {
-		wp.y = th(wp.xz);
-		VERTEX = (inverse(MODEL_MATRIX) * vec4(wp, 1.0)).xyz;
+		float h = th(wp.xz);
+		VERTEX += lift(mat3(MODEL_MATRIX), h - wp.y);    // the tiles are only translated: no 4x4 inverse per vertex
+		wp.y = h;
 		v_n = tnormal(wp.xz);
 	}
 }

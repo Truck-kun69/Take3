@@ -1,13 +1,12 @@
 shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 // Camera-facing additive sprites for projectiles, gems' halos, sparks and embers (MultiMesh).
-// INSTANCE_CUSTOM.x shape: 0 soft orb, 1 star flare, 2 ember (hot core), 3 ring
+// INSTANCE_CUSTOM.x shape: 0 soft orb, 1 star flare, 2 ember (hot core), 3 ring; .y brightness boost.
+// Instance positions are world positions (FX3D adds view.ground_y), so no terrain lookup here.
 varying vec4 v_custom;
-#include "res://shaders/3d/terrain_h.gdshaderinc"
 void vertex() {
 	v_custom = INSTANCE_CUSTOM;
 	vec4 o = MODEL_MATRIX[3];
-	o.y += th(o.xz);                                  // heights are above the terrain (elevation pass)
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], o);
 	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
 }

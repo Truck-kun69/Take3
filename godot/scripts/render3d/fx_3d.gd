@@ -5,6 +5,11 @@ extends Node3D
 ## pickups with rarity loot beams, lightning ribbons, ground decals (telegraphs, shockwaves, event
 ## circles, blood/scorch marks), event props (chests, pylons, shrines, merchant, altar) and the
 ## candidate list for the dynamic light pool.
+##
+## Heights: every instance, spark, debris chip, light and event prop is placed in world space at
+## view.ground_y(x, z) plus its own height, here on the CPU (the instanced shaders do no terrain lookup).
+## Only geometry draped over the ground per vertex (decals, blood marks, lightning ribbons) still adds
+## th() in its vertex shader.
 
 var view: WorldView3D
 var w: World
@@ -13,6 +18,7 @@ const GLOW_CAP := 2400
 const DEBRIS_CAP := 600
 const SPARK_CAP := 700
 const MARK_CAP := 96
+const ESHOT_RING := Color(1.0, 0.08, 0.46)      # enemy shots' ring: magenta-crimson
 const DECAL_POOL := 110
 
 var glow_mm: MultiMeshInstance3D
@@ -72,12 +78,8 @@ static func _lit_vc() -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
 render_mode diffuse_burley;
-#include "res://shaders/3d/terrain_h.gdshaderinc"
 varying vec4 v_c;
-void vertex() {
-	v_c = INSTANCE_CUSTOM;
-	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(MODEL_MATRIX[3].xz), 0.0);   // heights are above the terrain
-}
+void vertex() { v_c = INSTANCE_CUSTOM; }      // instance transforms carry world heights (view.ground_y)
 void fragment() { ALBEDO = COLOR.rgb; ROUGHNESS = 0.35 + 0.5 * v_c.y; METALLIC = v_c.z; EMISSION = COLOR.rgb * v_c.x; }"""
 	m.shader = sh
 	return m
@@ -114,8 +116,6 @@ func _ready() -> void:
 	bs.code = """shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 uniform float time = 0.0;
-#include "res://shaders/3d/terrain_h.gdshaderinc"
-void vertex() { VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(MODEL_MATRIX[3].xz), 0.0); }
 void fragment() {
 	float h = UV.y;
 	float a = pow(h, 2.2) * (0.75 + 0.25 * sin(time * 5.0 + UV.x * 20.0));
@@ -151,7 +151,7 @@ varying vec4 v_c;
 void vertex() {
 	v_c = INSTANCE_CUSTOM;
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(w.xz), 0.0);
+	VERTEX += lift(mat3(MODEL_MATRIX), th(w.xz));      // each corner drapes onto the ground
 }
 void fragment() {
 	vec2 p = (UV - 0.5) * 2.0;
@@ -217,15 +217,15 @@ func light_candidates() -> Array:
 		out.append([l[0], l[1], l[2] * f, l[3]])
 	for p in w.picks:
 		if p.k == "item" and int(p.data.rarity) >= Content.Rarity.RARE:
-			out.append([Vector3(p.pos.x, 30, p.pos.y), Content.col(Content.RARITY_COL[p.data.rarity]), 1.6, 120.0])
+			out.append([Vector3(p.pos.x, view.ground_y(p.pos) + 30.0, p.pos.y), Content.col(Content.RARITY_COL[p.data.rarity]), 1.6, 120.0])
 	for o in w.director.objects:
-		out.append([Vector3(o.pos.x, 50, o.pos.y), Content.col(Content.BUFFS[o.id].col), 2.2, 200.0])
+		out.append([Vector3(o.pos.x, view.ground_y(o.pos) + 50.0, o.pos.y), Content.col(Content.BUFFS[o.id].col), 2.2, 200.0])
 	for ev in w.director.active:
-		out.append([Vector3(ev.pos.x, 40, ev.pos.y), Content.col(Content.EVENTS[ev.id].col), 1.8, 260.0])
+		out.append([Vector3(ev.pos.x, view.ground_y(ev.pos) + 40.0, ev.pos.y), Content.col(Content.EVENTS[ev.id].col), 1.8, 260.0])
 	var pc := 0
 	for p in w.projs:
 		if pc >= 3: break
-		out.append([Vector3(p.pos.x, 16, p.pos.y), p.col, 1.2, 90.0])
+		out.append([Vector3(p.pos.x, view.ground_y(p.pos) + 16.0, p.pos.y), p.col, 1.2, 90.0])
 		pc += 1
 	# nearer and brighter first: weight by distance to the hero
 	for c in out:
@@ -233,6 +233,7 @@ func light_candidates() -> Array:
 		c[2] = c[2] * clampf(1.4 - d / 900.0, 0.2, 1.4)
 	return out
 
+## A transient light at world position p (ground height included).
 func add_light(p: Vector3, c: Color, e: float, r: float, life: float) -> void:
 	if _lights.size() < 24:
 		_lights.append([p, c, e, r, life, life])
@@ -244,8 +245,9 @@ func _consume_feed() -> void:
 		var cnt: int = b[2]
 		var sc: Color = b[1]
 		if sc.s < 0.25: sc = sc.lerp(Color(1.0, 0.7, 0.4), 0.6)         # pale hit colours read as white dust: warm them
+		var gy := view.ground_y(pos)
 		for i in mini(cnt, 6):
-			_spark(Vector3(pos.x, 10, pos.y), Vector3(randf_range(-1, 1), randf_range(0.4, 1.6), randf_range(-1, 1)) * float(b[3]) * 0.9, sc, randf_range(0.16, 0.36), randf_range(2.5, 4.5))
+			_spark(Vector3(pos.x, gy + 10.0, pos.y), Vector3(randf_range(-1, 1), randf_range(0.4, 1.6), randf_range(-1, 1)) * float(b[3]) * 0.9, sc, randf_range(0.16, 0.36), randf_range(2.5, 4.5))
 	w.bursts.clear()
 	for d in w.deaths:
 		var pos2: Vector2 = d[0]
@@ -254,26 +256,30 @@ func _consume_feed() -> void:
 		var elite: bool = d[3]
 		if d.size() > 6: view.add_corpse(int(d[4]), pos2, d[5], r, int(d[6]))
 		var dc := col.darkened(0.55).lerp(Color(0.22, 0.03, 0.03), 0.35)   # ash and gore, not pale chips
+		var gy2 := view.ground_y(pos2)
 		for i in (5 if elite else 2):
-			_debris(Vector3(pos2.x, r * 0.9, pos2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(120, 240), dc, r * randf_range(0.14, 0.3), randf_range(0.6, 1.1))
+			_debris(Vector3(pos2.x, gy2 + r * 0.9, pos2.y), Vector3(randf_range(-1, 1), randf_range(0.8, 1.8), randf_range(-1, 1)) * randf_range(120, 240), dc, r * randf_range(0.14, 0.3), randf_range(0.6, 1.1))
 		_mark(pos2, r * (1.6 if elite else 1.1), 0)
-		if elite: add_light(Vector3(pos2.x, 30, pos2.y), Color(1, 0.8, 0.4), 3.0, 180.0, 0.35)
+		if elite: add_light(Vector3(pos2.x, gy2 + 30.0, pos2.y), Color(1, 0.8, 0.4), 3.0, 180.0, 0.35)
 	w.deaths.clear()
 	for f in w.fx:
 		if f.get("seen", false): continue
 		f.seen = true
-		var p3 := Vector3(f.pos.x, 30, f.pos.y)
+		var g3 := view.ground_y(f.pos)
+		var p3 := Vector3(f.pos.x, g3 + 30.0, f.pos.y)
 		match f.k:
 			"ring": add_light(p3, f.col, 3.5, maxf(120.0, float(f.max) * 1.2), f.life)
-			"zap": add_light(Vector3(f.pos.x, 60, f.pos.y), f.col, 5.0, 200.0, 0.22); _mark(f.pos, f.r * 0.9, 1)
+			"zap": add_light(Vector3(f.pos.x, g3 + 60.0, f.pos.y), f.col, 5.0, 200.0, 0.22); _mark(f.pos, f.r * 0.9, 1)
 			"arc": add_light(p3, f.col, 2.0, 120.0, 0.15)
 	for z in w.teles:
 		if z.arm > 0.0 and z.arm <= 0.05 and z.col.a > 0.01 and z.hostile:
 			_mark(z.pos, z.r * 0.8 if z.shape == 0 else 40.0, 2)
-			add_light(Vector3(z.pos.x, 30, z.pos.y), z.col, 4.0, z.r * 2.5 + 60.0, 0.3)
+			add_light(Vector3(z.pos.x, view.ground_y(z.pos) + 30.0, z.pos.y), z.col, 4.0, z.r * 2.5 + 60.0, 0.3)
 			for i in 10:
-				_debris(Vector3(z.pos.x + randf_range(-z.r, z.r) * 0.5, 4, z.pos.y + randf_range(-z.r, z.r) * 0.5), Vector3(randf_range(-0.5, 0.5), randf_range(1.0, 2.0), randf_range(-0.5, 0.5)) * 200.0, Color(0.4, 0.37, 0.34), randf_range(3.0, 7.0))
+				var dp := z.pos + Vector2(randf_range(-z.r, z.r), randf_range(-z.r, z.r)) * 0.5
+				_debris(Vector3(dp.x, view.ground_y(dp) + 4.0, dp.y), Vector3(randf_range(-0.5, 0.5), randf_range(1.0, 2.0), randf_range(-0.5, 0.5)) * 200.0, Color(0.4, 0.37, 0.34), randf_range(3.0, 7.0))
 
+## p: the boss rig's world position (it already stands at the ground height).
 func boss_death(p: Vector3, c: Color) -> void:
 	add_light(p + Vector3(0, 60, 0), c, 8.0, 500.0, 1.2)
 	for i in 60:
@@ -281,12 +287,14 @@ func boss_death(p: Vector3, c: Color) -> void:
 	for i in 80:
 		_spark(p + Vector3(0, 50, 0), Vector3(randf_range(-1, 1), randf_range(-0.2, 1.5), randf_range(-1, 1)) * 420.0, c.lightened(0.3), randf_range(0.5, 1.2), randf_range(6.0, 14.0))
 
+## Sparks fly in world space from p (ground height included): gravity and drag only, no ground contact.
 func _spark(p: Vector3, v: Vector3, c: Color, life: float, size: float) -> void:
 	var cap := SPARK_CAP if Quality.tier() >= 1 else SPARK_CAP / 3
 	if s_n >= cap: return
 	s_pos[s_n] = p; s_vel[s_n] = v; s_life[s_n] = life; s_max[s_n] = life; s_col[s_n] = c; s_size[s_n] = size
 	s_n += 1
 
+## Debris starts at world position p (ground height included) and bounces on the ground under it.
 func _debris(p: Vector3, v: Vector3, c: Color, size: float, life: float = -1.0) -> void:
 	var cap := DEBRIS_CAP if Quality.tier() >= 1 else DEBRIS_CAP / 3
 	if d_n >= cap: return
@@ -313,10 +321,12 @@ func _sim_debris(dt: float) -> void:
 		var v := d_vel[i]
 		v.y -= 900.0 * dt
 		var p := d_pos[i] + v * dt
-		if p.y < d_size[i] * 0.3:                      # bounce, lose energy, stop spinning
-			p.y = d_size[i] * 0.3
-			v = Vector3(v.x * 0.55, -v.y * 0.35, v.z * 0.55)
-			d_spin[i] *= 0.6
+		var fl := view.ground_y(Vector2(p.x, p.z)) + d_size[i] * 0.3
+		if p.y < fl:                                   # on the ground under it: rest on it, and bounce if falling
+			p.y = fl
+			if v.y < 0.0:                              # (a chip thrown up a slope is lifted, not reflected)
+				v = Vector3(v.x * 0.55, -v.y * 0.35, v.z * 0.55)
+				d_spin[i] *= 0.6
 		d_pos[i] = p
 		d_vel[i] = v
 		d_rot[i] += d_spin[i] * dt
@@ -351,7 +361,7 @@ func _projectiles(gn: int) -> int:
 		if pn >= 800 or gn >= GLOW_CAP - 4: break
 		var v := Vector3(p.vel.x, 0, p.vel.y)
 		var d := v.normalized() if v.length() > 0.01 else Vector3.RIGHT
-		var pos := Vector3(p.pos.x, 16, p.pos.y)
+		var pos := Vector3(p.pos.x, view.ground_y(p.pos) + 16.0, p.pos.y)      # trails below are offset from this
 		var b := Basis(d * p.r * 3.4, Vector3.UP * p.r * 1.3, d.cross(Vector3.UP) * p.r * 1.3)
 		_wb(pn * 20, b, pos, p.col, Color(4.0, 0.0, 0.0, 0.0))
 		pn += 1
@@ -361,13 +371,13 @@ func _projectiles(gn: int) -> int:
 			_g(gn * 20, tp, p.r * (5.0 - k * 1.2), Color(p.col.r, p.col.g, p.col.b, 0.5 - k * 0.14), 0.0); gn += 1
 	for q in w.eshots:
 		if gn >= GLOW_CAP - 3: break
-		var qp := Vector3(q.pos.x, 14, q.pos.y)
-		# hostile shots: a saturated ring around a hot core reads as a threat (soft pale orbs read as dust)
-		var qc := Color(q.col.r, q.col.g, q.col.b).lerp(Color(1.0, 0.18, 0.32), 0.6)
-		qc = Color.from_hsv(qc.h, maxf(qc.s, 0.85), minf(qc.v, 0.8))
-		_g(gn * 20, qp, q.r * 3.0, Color(qc.r, qc.g, qc.b, 0.8), 3.0); gn += 1
-		_g(gn * 20, qp, q.r * 1.6, Color(1.0, 0.4, 0.3, 0.9), 2.0); gn += 1
-		_g(gn * 20, qp - Vector3(q.vel.x, 0, q.vel.y) * 0.03, q.r * 2.2, Color(qc.r, qc.g, qc.b, 0.3), 0.0); gn += 1
+		var qp := Vector3(q.pos.x, view.ground_y(q.pos) + 14.0, q.pos.y)
+		# hostile shots, one look for all of them: a white-hot core inside a vivid magenta-crimson ring. No
+		# hero spell uses that hue (fire is orange, cold cyan, lightning yellow), so a shot never reads as
+		# one of yours, and the ring's colour no longer follows the shooter's
+		_g(gn * 20, qp, q.r * 3.2, Color(ESHOT_RING.r, ESHOT_RING.g, ESHOT_RING.b, 0.95), 3.0, 0.6); gn += 1
+		_g(gn * 20, qp, q.r * 1.5, Color(1.0, 0.97, 0.95, 1.0), 2.0, 1.2); gn += 1
+		_g(gn * 20, qp - Vector3(q.vel.x, 0, q.vel.y) * 0.03, q.r * 2.2, Color(ESHOT_RING.r, ESHOT_RING.g, ESHOT_RING.b, 0.35), 0.0); gn += 1
 	var mm := proj_mm.multimesh
 	if pn > 0: mm.buffer = _pb          # nothing to draw: skip the upload
 	mm.visible_instance_count = pn
@@ -401,7 +411,7 @@ func _gems(dt: float) -> void:
 		var big := w.gem_val[i] >= 4.0
 		var s := 9.0 if big else 6.0
 		var b := Basis(Vector3.UP, time * 2.5 + i).scaled(Vector3(s, s * 1.6, s))
-		var p := Vector3(g.x, 10.0 + sin(time * 4.0 + i) * 2.5, g.y)
+		var p := Vector3(g.x, view.ground_y(g) + 10.0 + sin(time * 4.0 + i) * 2.5, g.y)
 		var c := Color("ffd84a") if big else gc
 		var o := n * 20
 		_gemb[o] = b.x.x; _gemb[o + 1] = b.y.x; _gemb[o + 2] = b.z.x; _gemb[o + 3] = p.x
@@ -424,7 +434,7 @@ func _blades() -> void:
 		var d := Vector3(tang.x, 0, tang.y)
 		var s := 22.0 if cyc else 15.0
 		var b := Basis(d * s, Vector3.UP * s, d.cross(Vector3.UP) * s)
-		mm.set_instance_transform(k, Transform3D(b, Vector3(bp.x, 14, bp.y)))
+		mm.set_instance_transform(k, Transform3D(b, Vector3(bp.x, view.ground_y(bp) + 14.0, bp.y)))
 		mm.set_instance_color(k, Color(0.95, 0.85, 0.55))
 		mm.set_instance_custom_data(k, Color(1.5 if cyc else 0.6, 0.0, 0.9, 0.0))
 	mm.visible_instance_count = n
@@ -453,6 +463,7 @@ func _pickups(gn: int) -> int:
 	for p in w.picks:
 		var pos: Vector2 = p.pos
 		if pos.distance_to(w.pp) > w.view_r + 60.0: continue
+		var gy := view.ground_y(pos)
 		var bob := sin(time * 4.0 + pos.x * 0.07) * 2.0
 		var shape := "orb"
 		var c := Color.WHITE
@@ -469,7 +480,7 @@ func _pickups(gn: int) -> int:
 				s = Vector3(9, 12, 6); em = 0.4
 				if int(it.rarity) >= Content.Rarity.MAGIC and bn < 120:
 					var h: float = 60.0 + 70.0 * it.rarity
-					bmm.set_instance_transform(bn, Transform3D(Basis().scaled(Vector3(10 + it.rarity * 3, h, 10 + it.rarity * 3)), Vector3(pos.x, h * 0.5, pos.y)))
+					bmm.set_instance_transform(bn, Transform3D(Basis().scaled(Vector3(10 + it.rarity * 3, h, 10 + it.rarity * 3)), Vector3(pos.x, gy + h * 0.5, pos.y)))
 					bmm.set_instance_color(bn, Color(c.r, c.g, c.b, 0.5 + 0.15 * it.rarity))
 					bn += 1
 			"currency": c = Content.col(Content.CURRENCY[p.data].col); s = Vector3(7, 7, 7); em = 1.5
@@ -477,7 +488,7 @@ func _pickups(gn: int) -> int:
 			"fragment", "splinter":
 				shape = "octa"; c = Color("c48aff"); s = Vector3(8, 16, 8); em = 2.0
 				if p.k == "fragment" and bn < 120:
-					bmm.set_instance_transform(bn, Transform3D(Basis().scaled(Vector3(14, 260, 14)), Vector3(pos.x, 130, pos.y)))
+					bmm.set_instance_transform(bn, Transform3D(Basis().scaled(Vector3(14, 260, 14)), Vector3(pos.x, gy + 130.0, pos.y)))
 					bmm.set_instance_color(bn, Color(0.77, 0.54, 1.0, 0.8))
 					bn += 1
 			"progress": c = Color("ff4fd8"); em = 2.5
@@ -489,12 +500,12 @@ func _pickups(gn: int) -> int:
 		var mm: MultiMesh = pick_mm[shape].multimesh
 		var n: int = counts[shape]
 		if n >= mm.instance_count: continue
-		mm.set_instance_transform(n, Transform3D(rot.scaled(s), Vector3(pos.x, 9.0 + bob, pos.y)))
+		mm.set_instance_transform(n, Transform3D(rot.scaled(s), Vector3(pos.x, gy + 9.0 + bob, pos.y)))
 		mm.set_instance_color(n, c)
 		mm.set_instance_custom_data(n, Color(em, 0.2, 0.6 if shape == "disc" else 0.0, 0.0))
 		counts[shape] = n + 1
 		if em >= 1.5 and gn < GLOW_CAP:
-			_g(gn * 20, Vector3(pos.x, 10.0 + bob, pos.y), 30.0, Color(c.r, c.g, c.b, 0.5), 0.0)
+			_g(gn * 20, Vector3(pos.x, gy + 10.0 + bob, pos.y), 30.0, Color(c.r, c.g, c.b, 0.5), 0.0)
 			gn += 1
 	for shape in counts:
 		pick_mm[shape].multimesh.visible_instance_count = counts[shape]

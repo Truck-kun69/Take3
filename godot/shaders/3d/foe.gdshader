@@ -18,7 +18,6 @@ uniform sampler2D vat_nrm : filter_nearest, repeat_disable;
 varying flat float v_part;
 varying vec4 v_custom;
 varying vec3 v_mpos;
-#include "res://shaders/3d/terrain_h.gdshaderinc"
 
 global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
 
@@ -90,9 +89,8 @@ void vertex() {
 		// read as confetti from the game camera once a fight left dozens of bodies)
 		VERTEX.y -= INSTANCE_CUSTOM.y * (has_vat ? 0.6 : 0.9);
 	}
-	// stand on the terrain under the instance's origin (elevation pass)
-	vec3 wo = MODEL_MATRIX[3].xyz;
-	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, th(wo.xz), 0.0);
+	// no terrain lookup here: WorldView3D writes the ground height under each foe into its instance
+	// transform (_write_foes, _write_corpses), so this stage does no height texture fetches
 }
 
 void fragment() {
