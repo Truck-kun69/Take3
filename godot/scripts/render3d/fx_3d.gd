@@ -361,7 +361,8 @@ func _projectiles(gn: int) -> int:
 		if pn >= 800 or gn >= GLOW_CAP - 4: break
 		var v := Vector3(p.vel.x, 0, p.vel.y)
 		var d := v.normalized() if v.length() > 0.01 else Vector3.RIGHT
-		var pos := Vector3(p.pos.x, view.ground_y(p.pos) + 16.0, p.pos.y)      # trails below are offset from this
+		var at := p.pos if p.prev == Vector2.INF else view.lerp_pos(p.prev, p.pos)     # between the last two ticks
+		var pos := Vector3(at.x, view.ground_y(at) + 16.0, at.y)      # trails below are offset from this
 		var b := Basis(d * p.r * 3.4, Vector3.UP * p.r * 1.3, d.cross(Vector3.UP) * p.r * 1.3)
 		_wb(pn * 20, b, pos, p.col, Color(4.0, 0.0, 0.0, 0.0))
 		pn += 1
@@ -371,7 +372,8 @@ func _projectiles(gn: int) -> int:
 			_g(gn * 20, tp, p.r * (5.0 - k * 1.2), Color(p.col.r, p.col.g, p.col.b, 0.5 - k * 0.14), 0.0); gn += 1
 	for q in w.eshots:
 		if gn >= GLOW_CAP - 3: break
-		var qp := Vector3(q.pos.x, view.ground_y(q.pos) + 14.0, q.pos.y)
+		var qa := q.pos if q.prev == Vector2.INF else view.lerp_pos(q.prev, q.pos)
+		var qp := Vector3(qa.x, view.ground_y(qa) + 14.0, qa.y)
 		# hostile shots, one look for all of them: a white-hot core inside a vivid magenta-crimson ring. No
 		# hero spell uses that hue (fire is orange, cold cyan, lightning yellow), so a shot never reads as
 		# one of yours, and the ring's colour no longer follows the shooter's
@@ -429,8 +431,8 @@ func _blades() -> void:
 	var n := mini(w.blades.size(), 32)
 	var cyc := w.buffs.has("cyclone")
 	for k in n:
-		var bp := w.blades[k]
-		var tang := (bp - w.pp).orthogonal().normalized()
+		var bp := view.lerp_pos(w.blades_prev[k], w.blades[k]) if k < w.blades_prev.size() else w.blades[k]
+		var tang := (bp - view.hero_p).orthogonal().normalized()
 		var d := Vector3(tang.x, 0, tang.y)
 		var s := 22.0 if cyc else 15.0
 		var b := Basis(d * s, Vector3.UP * s, d.cross(Vector3.UP) * s)

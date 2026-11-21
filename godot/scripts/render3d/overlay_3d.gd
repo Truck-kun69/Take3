@@ -99,7 +99,7 @@ func _draw() -> void:
 	for e in _elites:
 		var i := w.sw.index_of(int(e[0]))
 		if i < 0: continue
-		var sp4 := view.to_screen(w.sw.pos[i], w.sw.rad[i] * 2.6 + 8.0)
+		var sp4 := view.to_screen(view.lerp_pos(w.sw.prev[i], w.sw.pos[i]), w.sw.rad[i] * 2.6 + 8.0)     # where the foe is drawn
 		if not on.has_point(sp4): continue
 		if e[1] == "":
 			_text(sp4 + Vector2(0, -12), w.bosses.exile_name, Color("ff8a2b"), 16, 5, f_name)

@@ -28,6 +28,7 @@ class Proj:
 	var dead := false
 	var col := Color.WHITE
 	var kind := 0             # 0 shot, 1 mine, 2 returning glaive, 3 homing wisp, 4 totem
+	var prev := Vector2.INF   # position at the start of the latest tick (INF: fired during it), see _snapshot
 	var age := 0.0
 	var aux := 0.0            # mine/totem: blast radius or fire interval; glaive: 1 once it has turned back
 	var tick := 0.0
@@ -364,8 +365,21 @@ func step(dt: float) -> void:
 	if over:
 		return
 	var _t0 := Time.get_ticks_usec()
+	_snapshot()
 	_step(dt)
 	step_us = lerpf(step_us, float(Time.get_ticks_usec() - _t0), 0.1)
+
+## Where things stood at the start of the latest tick. The simulation runs at a fixed 60 Hz while frames
+## come at any rate; the 3D view draws the hero, the camera target, foes, both sides' shots and the
+## orbiting blades at prev.lerp(now, FixedStep.alpha()), so motion is smooth between ticks.
+var prev_pp := Vector2.ZERO
+var blades_prev := PackedVector2Array()
+func _snapshot() -> void:
+	prev_pp = pp
+	sw.prev = sw.pos.duplicate()
+	blades_prev = blades.duplicate()
+	for p in projs: p.prev = p.pos
+	for q in eshots: q.prev = q.pos
 
 func _step(dt: float) -> void:
 	if over:

@@ -246,12 +246,15 @@ func _bind_view() -> void:
 
 ## The simulation clock: see FixedStep. Input is read in _process before stepping (Godot runs
 ## _physics_process before _process, so stepping there would act on last frame's input).
+## After the ticks, the 3D view gets the fraction of a tick left over (alpha): it draws moving things
+## between the previous tick and this one (World._snapshot), so motion is smooth at any frame rate.
 var _clock := FixedStep.new()
 func _sim(dt: float) -> void:
 	var n := _clock.advance(dt)
 	for k in n:
 		if world == null or world.over: break
 		world.step(FixedStep.STEP)
+	if view3d != null: view3d.alpha = _clock.alpha()
 
 func _on_level() -> void:
 	if state != "play": return

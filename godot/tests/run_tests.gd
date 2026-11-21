@@ -37,6 +37,7 @@ func _ready() -> void:
 		_tyrant_fsm_tests()
 		_audio_tests()
 		_height_tests()
+		_interp_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -965,6 +966,65 @@ func _height_tests() -> void:
 		var lp: Vector3 = c[0]
 		if lp.y < v.ground_y(Vector2(lp.x, lp.z)) - 0.01: lbad += 1
 	ok(lbad == 0, "dynamic light candidates are above the ground (%d candidates)" % cands.size())
+	v.queue_free()
+
+## Drawing between ticks: World snapshots positions at the start of each tick, Main hands the view
+## FixedStep.alpha(), and the view draws prev.lerp(now, alpha).
+func _interp_tests() -> void:
+	print("== interpolation between ticks")
+	var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 51})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	var i := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(300, 0), 0, 0, 50.0)
+	ok(w.sw.prev[i] == w.sw.pos[i], "a new foe starts with its previous position where it spawned")
+	w.in_move = Vector2.RIGHT
+	for k in 20: w.step(FixedStep.STEP)
+	var before := w.pp
+	var fpos := w.sw.pos[i]
+	w.step(FixedStep.STEP)
+	ok(w.prev_pp == before and w.pp != before, "each tick keeps where the hero stood at its start")
+	ok(w.sw.prev[i] == fpos, "and where each foe stood")
+	# removing a foe moves the last one into its slot, previous position included
+	var j := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(-300, 40), 0, 0, 50.0)
+	w.step(FixedStep.STEP)
+	var lastp := w.sw.prev[w.sw.n - 1]
+	var last_uid := w.sw.uid[w.sw.n - 1]
+	w.sw.remove(i)
+	var moved := w.sw.index_of(last_uid)
+	ok(j >= 0 and w.sw.prev[moved] == lastp, "a foe moved to another slot keeps its previous position")
+	# the view's lerp, and its teleport guard
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	v.alpha = 0.5
+	v._process(1.0 / 60.0)
+	ok(v.hero_p.distance_to((w.prev_pp + w.pp) * 0.5) < 0.001, "at alpha 0.5 the hero is drawn halfway between the last two ticks")
+	ok(v.lerp_pos(Vector2.ZERO, Vector2(500, 0)) == Vector2(500, 0), "a jump of 500 in one tick is drawn where it landed (teleport)")
+	# a 120 Hz display: one tick every other frame. Drawn at the latest tick, the walking hero stood still on
+	# every other frame; drawn between ticks it moves an even amount every frame
+	var m := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 52})
+	m.stats.set_source("t", [["max_hp", "add", 1e6]]); m.hp = 1e6
+	m.in_move = Vector2.RIGHT
+	for k in 30: m.step(FixedStep.STEP)              # up to full walking speed
+	var clock := FixedStep.new()
+	var last_drawn := m.pp
+	var last_raw := m.pp
+	var steps_drawn: Array[float] = []
+	var steps_raw: Array[float] = []
+	for f in 120:
+		var n := clock.advance(1.0 / 120.0)
+		for k in n: m.step(FixedStep.STEP)
+		var drawn := m.prev_pp.lerp(m.pp, clock.alpha())
+		steps_drawn.append(drawn.x - last_drawn.x)
+		steps_raw.append(m.pp.x - last_raw.x)
+		last_drawn = drawn
+		last_raw = m.pp
+	steps_drawn = steps_drawn.slice(4)
+	steps_raw = steps_raw.slice(4)
+	var still_raw := steps_raw.filter(func(d): return absf(d) < 0.001).size()
+	var still_drawn := steps_drawn.filter(func(d): return absf(d) < 0.001).size()
+	ok(still_raw >= 50 and still_drawn == 0 and steps_drawn.max() < steps_drawn.min() * 1.3,
+		"at 120 Hz the drawn hero moves every frame (%d of %d frames stood still at the latest tick, %d between ticks; per-frame step %.2f to %.2f)" % [still_raw, steps_raw.size(), still_drawn, steps_drawn.min(), steps_drawn.max()])
 	v.queue_free()
 
 func _world(cfg: Dictionary) -> World:

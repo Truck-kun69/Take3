@@ -21,6 +21,7 @@ const F_HERALD := 256
 
 var n := 0
 var pos := PackedVector2Array()
+var prev := PackedVector2Array()      # position at the start of the latest tick (World._snapshot), for drawing between ticks
 var kb := PackedVector2Array()        # knockback velocity, decays
 var sep := PackedVector2Array()       # separation push (CPU or GPU result)
 var dir := PackedVector2Array()       # charge direction / AI scratch
@@ -65,7 +66,7 @@ var _uid_next := 1
 var uid_index: Dictionary = {}        # uid -> index (kept current across swaps)
 
 func _init() -> void:
-	for a in ["pos", "kb", "sep", "dir"]:
+	for a in ["pos", "prev", "kb", "sep", "dir"]:
 		var v: PackedVector2Array = get(a)
 		v.resize(CAP)
 		set(a, v)
@@ -91,7 +92,7 @@ func add(k: int, p: Vector2, h: float, s: float, r: float, d: float, x: float, f
 		return -1
 	var i := n
 	n += 1
-	pos[i] = p; kb[i] = Vector2.ZERO; sep[i] = Vector2.ZERO; dir[i] = Vector2.ZERO
+	pos[i] = p; prev[i] = p; kb[i] = Vector2.ZERO; sep[i] = Vector2.ZERO; dir[i] = Vector2.ZERO
 	hp[i] = h; mhp[i] = h; shield[i] = h * 0.6 if (af & Content.Aff.SHIELDED) else 0.0
 	spd[i] = s; rad[i] = r; dmg[i] = d; xp[i] = x; flash[i] = 0.0
 	ai_t[i] = randf_range(1.0, 2.5); ai_s[i] = 0; kind[i] = k; flags[i] = fl; affix[i] = af; tag[i] = 0; hit_t[i] = -9.0
@@ -108,7 +109,7 @@ func remove(i: int) -> void:
 	var l := n - 1
 	uid_index.erase(uid[i])
 	if i != l:
-		pos[i] = pos[l]; kb[i] = kb[l]; sep[i] = sep[l]; dir[i] = dir[l]
+		pos[i] = pos[l]; prev[i] = prev[l]; kb[i] = kb[l]; sep[i] = sep[l]; dir[i] = dir[l]
 		hp[i] = hp[l]; mhp[i] = mhp[l]; shield[i] = shield[l]; spd[i] = spd[l]; rad[i] = rad[l]; dmg[i] = dmg[l]; xp[i] = xp[l]
 		flash[i] = flash[l]; ai_t[i] = ai_t[l]; ai_s[i] = ai_s[l]; kind[i] = kind[l]; flags[i] = flags[l]; affix[i] = affix[l]
 		uid[i] = uid[l]; tag[i] = tag[l]; hit_t[i] = hit_t[l]

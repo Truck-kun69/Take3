@@ -55,6 +55,12 @@ var GROUND_Q := 20.0            # ground grid spacing, set per graphics tier (Qu
 var water: MeshInstance3D
 var water_mat: ShaderMaterial
 var _cam_y := 0.0
+## Fraction of a simulation tick since the latest one (FixedStep.alpha), set by Main after each frame's
+## ticks. Moving things are drawn at prev.lerp(now, alpha) (World._snapshot); 1 draws the latest tick.
+var alpha := 1.0
+var hero_p := Vector2.ZERO            # the hero's drawn position this frame (between the last two ticks)
+const SNAP_DIST2 := 120.0 * 120.0     # farther than this in one tick is a teleport: drawn where it landed
+var _ipos := PackedVector2Array()     # per swarm slot: the drawn position this frame (written by _foes)
 var _prop_cells := {}        # Vector2i chunk -> Node3D holding one MultiMesh per prop kind (culled and LOD'd per cell)
 var _chunk_key := ""
 var _look: Dictionary
@@ -359,6 +365,10 @@ func bind(world: World) -> void:
 	torch.shadow_enabled = false          # set by _features (never on phones)
 	torch.shadow_bias = 0.08
 
+## Where something that moved from a to b over the latest tick is drawn this frame.
+func lerp_pos(a: Vector2, b: Vector2) -> Vector2:
+	return b if a.distance_squared_to(b) > SNAP_DIST2 else a.lerp(b, alpha)
+
 ## World -> screen, used by the overlay and the HUD compass.
 func to_screen(p: Vector2, h: float = 0.0) -> Vector2:
 	return cam.unproject_position(Vector3(p.x, h + ground_y(p), p.y))
@@ -369,6 +379,7 @@ func _process(dt: float) -> void:
 		return
 	var t0 := Time.get_ticks_usec()
 	time += dt
+	hero_p = lerp_pos(w.prev_pp, w.pp)
 	for m in [terrain_mat, prop_mat, _aura_mm.material_override]:
 		m.set_shader_parameter("time", time)
 	for fm in foe_mats: fm.set_shader_parameter("time", time)
@@ -430,8 +441,8 @@ func _camera(dt: float) -> void:
 	var boss_on := w.bosses.boss_hp_frac() >= 0.0
 	var dist := 600.0 * view_scale * (1.18 if boss_on else 1.0)
 	var lead := Vector3(w.face.x, 0, w.face.y) * 40.0 * w.mv
-	_cam_y = lerpf(_cam_y, ground_y(w.pp), minf(1.0, dt * 4.0))          # the camera rides the hills, smoothly
-	var tgt := Vector3(w.pp.x, _cam_y, w.pp.y) + lead
+	_cam_y = lerpf(_cam_y, ground_y(hero_p), minf(1.0, dt * 4.0))        # the camera rides the hills, smoothly
+	var tgt := Vector3(hero_p.x, _cam_y, hero_p.y) + lead                  # the drawn hero, not the latest tick
 	_cam_target = _cam_target.lerp(tgt, minf(1.0, dt * 6.0))
 	var pitch := deg_to_rad(52.0)
 	var off := Vector3(0, sin(pitch), cos(pitch)) * dist
@@ -460,11 +471,11 @@ const AMBIENT_FLOOR := 0.22
 func _lighting(dt: float) -> void:
 	var gl := w.gloom()            # 0 lit .. 1 dark (eclipse or the lantern running out)
 	var flick := 1.0 + 0.12 * sin(time * 9.0) + 0.06 * sin(time * 23.7) + 0.25 * gl * sin(time * 3.1) * sin(time * 17.0)
-	var gy := ground_y(w.pp)
-	torch.position = Vector3(w.pp.x, 52.0 + gy, w.pp.y)
-	var to_cam := (cam.global_position - Vector3(w.pp.x, 0, w.pp.y))
+	var gy := ground_y(hero_p)
+	torch.position = Vector3(hero_p.x, 52.0 + gy, hero_p.y)
+	var to_cam := (cam.global_position - Vector3(hero_p.x, 0, hero_p.y))
 	to_cam.y = 0.0
-	key_light.position = Vector3(w.pp.x, 46.0 + gy, w.pp.y) + to_cam.normalized() * 55.0
+	key_light.position = Vector3(hero_p.x, 46.0 + gy, hero_p.y) + to_cam.normalized() * 55.0
 	# full gloom dims the sun and ambient to floors (SUN_FLOOR, AMBIENT_FLOOR), never to black: the ground and
 	# the swarm stay readable outside the torch's pool
 	sun.light_energy = lerpf(sun.light_energy, lerpf(0.7, SUN_FLOOR, gl), minf(1.0, dt * 2.0))
@@ -710,19 +721,25 @@ func _foes() -> void:
 		_start.resize(nk + 1)
 		_cursor.resize(nk)
 	if _vis.size() != Swarm.CAP: _vis.resize(Swarm.CAP)
+	if _ipos.size() != Swarm.CAP: _ipos.resize(Swarm.CAP)
 	_foe_n.fill(0)
 	var nb := 0
 	var cull := w.view_r + 60.0
 	var gl := w.gloom()
 	var dark_r := lerpf(2000.0, 280.0, gl) if gl > 0.05 else INF     # beyond the lantern's reach, foes are unseen
-	var pp := w.pp
-	# pass 1: which foes are drawn (counted per kind), their contact shadows and elite auras
+	var pp := hero_p
+	var ap := alpha
+	# pass 1: which foes are drawn (counted per kind), where (between the last two ticks), contact shadows
+	# and elite auras
 	var nv := 0
 	for i in sw.n:
 		var k := sw.kind[i]
 		if k == Content.E.BOSS or k == Content.E.HERALD or k == Content.E.EXILE:
 			continue
 		var p := sw.pos[i]
+		var q := sw.prev[i]
+		if q.distance_squared_to(p) <= SNAP_DIST2: p = q.lerp(p, ap)
+		_ipos[i] = p
 		var dpl := p.distance_to(pp)
 		if dpl > cull: continue
 		var f := sw.flags[i]
@@ -785,7 +802,7 @@ func _foes() -> void:
 		var i := _vis[v]
 		var bo := v * 8
 		var br := sw.rad[i] * 1.15
-		var p := sw.pos[i]
+		var p := _ipos[i]
 		_bb[bo] = br; _bb[bo + 3] = p.x; _bb[bo + 5] = br; _bb[bo + 7] = p.y
 	if nb > 0:
 		bmm.buffer = _bb
@@ -808,7 +825,7 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 	var hoz := _hoz
 	for v in range(_start[k], _start[k + 1]):
 		var i := _order[v]
-		var p := sw.pos[i]
+		var p := _ipos[i]
 		var dpl := p.distance_to(pp)
 		var f := sw.flags[i]
 		var dir := (pp - p) / maxf(0.001, dpl)
@@ -966,9 +983,9 @@ func _foe_color(k: int) -> Color:
 
 # ================================================================= hero and bosses
 func _hero(dt: float) -> void:
-	hero.animate({"pos": w.pp, "face": w.face, "mv": w.mv, "ph": w.walk_ph, "cast_age": w.t - w.cast_t, "cast_dir": w.cast_dir,
+	hero.animate({"pos": hero_p, "face": w.face, "mv": w.mv, "ph": w.walk_ph, "cast_age": w.t - w.cast_t, "cast_dir": w.cast_dir,
 		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
-	hero.position.y += ground_y(w.pp)
+	hero.position.y += ground_y(hero_p)
 	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
 
 var exile_rigs := {}
@@ -986,10 +1003,11 @@ func _exiles(dt: float) -> void:
 			rig.build({"bolt": "spark", "nova": "ember", "storm": "storm"}.get(wid, "warden"), Color("4a2a2a"))
 			rig.scale = Vector3.ONE * 1.35
 			exile_rigs[u] = rig
-		var to := w.pp - w.sw.pos[i]
-		rig.animate({"pos": w.sw.pos[i], "face": to.normalized(), "mv": 1.0 if w.sw.freeze_t[i] <= 0.0 else 0.0, "ph": time * 9.0 + u, "cast_age": fmod(time + u, 1.6),
+		var at := lerp_pos(w.sw.prev[i], w.sw.pos[i])
+		var to := hero_p - at
+		rig.animate({"pos": at, "face": to.normalized(), "mv": 1.0 if w.sw.freeze_t[i] <= 0.0 else 0.0, "ph": time * 9.0 + u, "cast_age": fmod(time + u, 1.6),
 			"cast_dir": to.normalized(), "roll": -1.0, "hit": clampf(w.sw.flash[i] * 10.0, 0, 1), "dead": false, "t": time}, dt)
-		rig.position.y += ground_y(w.sw.pos[i])
+		rig.position.y += ground_y(at)
 	for u in exile_rigs.keys():
 		if not alive.has(u):
 			exile_rigs[u].queue_free()
@@ -1018,9 +1036,10 @@ func _bosses(dt: float) -> void:
 		var st: Dictionary = w.bosses.bstate.get(u, {})
 		var atk := float(st.get("atk_t", -9.0)) > w.t - dt * 1.5
 		if k == Content.E.HERALD: atk = float(w.bosses.H.get("atk_t", -9.0)) > w.t - dt * 1.5
-		rig.animate({"pos": w.sw.pos[i], "face": (w.pp - w.sw.pos[i]).normalized(), "hp_frac": w.sw.hp[i] / w.sw.mhp[i], "flash": w.sw.flash[i],
+		var bat := lerp_pos(w.sw.prev[i], w.sw.pos[i])
+		rig.animate({"pos": bat, "face": (hero_p - bat).normalized(), "hp_frac": w.sw.hp[i] / w.sw.mhp[i], "flash": w.sw.flash[i],
 			"t": time, "dt": dt, "attack": atk, "phase": w.bosses.herald_phase()})
-		rig.position.y += ground_y(w.sw.pos[i])
+		rig.position.y += ground_y(bat)
 	for u in boss_rigs.keys():
 		if not alive.has(u):
 			var rig2: BossRig = boss_rigs[u]
