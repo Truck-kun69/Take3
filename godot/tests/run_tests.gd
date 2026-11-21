@@ -36,7 +36,6 @@ func _ready() -> void:
 		_gate_p01_tests()
 		_tyrant_fsm_tests()
 		_audio_tests()
-		_jump_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -818,90 +817,6 @@ func _audio_tests() -> void:
 		var p2 := Sfx._pitch("gem", 1.0, 100400)
 		var p3 := Sfx._pitch("gem", 1.0, 101000)
 		ok(is_equal_approx(p0, 1.0) and is_equal_approx(p1, pow(2.0, 1.0 / 12.0)) and is_equal_approx(p2, pow(2.0, 2.0 / 12.0)) and is_equal_approx(p3, 1.0), "gem pickups climb a semitone each and reset after a 0.45 s gap")
-
-## A spot facing a cliff band: walkable here, walkable 150-200 units ahead, a cliff cell in between.
-func _find_cliff_crossing(w: World) -> Array:
-	var T := w.terrain
-	for ring in range(8, 60):
-		for k in 48:
-			var a := TAU * k / 48.0
-			var p := Vector2(cos(a), sin(a)) * float(ring) * 32.0
-			if not T.passable(p): continue
-			for dk in 16:
-				var d := Vector2.from_angle(TAU * dk / 16.0)
-				var hit := false
-				for step in range(1, 6):
-					if T.type_at(p + d * step * 16.0) == Terrain.CLIFF: hit = true
-				if not (hit and T.passable(p + d * 180.0) and T.passable(p + d * World.JUMP_DIST)): continue
-				# a real wall: walking straight at it for 2 s gets nowhere near the far side
-				var q := p
-				for f in 120: q = T.move(q, q + d * 160.0 / 60.0)
-				if (q - p).dot(d) < 60.0:
-					return [p, d]
-	return []
-
-func _jump_tests() -> void:
-	print("== jump")
-	var found := []
-	var w: World
-	for st in [1, 3, 2, 0, 4]:
-		w = _world({"mode": "campaign", "hero": 0, "stage": st, "seed": 51})
-		found = _find_cliff_crossing(w)
-		if not found.is_empty(): break
-	ok(not found.is_empty(), "found a cliff to test against")
-	if found.is_empty(): return
-	w.stats.set_source("t", [["max_hp", "add", 1e7]]); w.hp = 1e7
-	w.weapons.clear()
-	var start: Vector2 = found[0]
-	var dir: Vector2 = found[1]
-	w.pp = start
-	w.in_move = dir
-	for k in 120: w.step(1.0 / 60.0)
-	var walked := (w.pp - start).dot(dir)
-	ok(walked < 90.0, "walking stops at the cliff (%.0f units in 2 s)" % walked)
-	w.pp = start
-	w.vel = Vector2.ZERO
-	w.jump_cd = 0.0
-	w.in_jump = true
-	w.step(1.0 / 60.0)
-	ok(w.airborne(), "the jump takes off")
-	var peak_ok := true
-	for k in 60:
-		w.step(1.0 / 60.0)
-		if w.airborne() and w.jump_progress() < 0.0: peak_ok = false
-	var crossed := (w.pp - start).dot(dir)
-	ok(not w.airborne() and crossed > 150.0 and w.terrain.passable(w.pp), "and lands past the cliff on solid ground (%.0f units)" % crossed)
-	ok(w.jump_cd > 0.0, "then it is on cooldown")
-	var before := w.pp
-	w.in_jump = true
-	w.in_move = Vector2.ZERO
-	w.step(1.0 / 60.0)
-	ok(not w.airborne(), "a second jump inside the cooldown does nothing")
-	# landings are always on solid ground, from anywhere, in any direction
-	var bad := 0
-	var rng := RandomNumberGenerator.new(); rng.seed = 7
-	for k in 400:
-		var p := Vector2(rng.randf_range(-2500, 2500), rng.randf_range(-2500, 2500))
-		if not w.terrain.passable(p): continue
-		var to := w.jump_landing(p, Vector2.from_angle(rng.randf() * TAU))
-		if not w.terrain.passable(to): bad += 1
-	ok(bad == 0, "every landing is on walkable ground (%d bad of 400 tries)" % bad)
-	# in the air: no melee contact, ground telegraphs miss; projectiles still hit
-	var a := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 52})
-	a.weapons.clear()
-	for k in 5: a.step(1.0 / 60.0)
-	a.in_jump = true
-	a.in_move = Vector2.RIGHT
-	a.step(1.0 / 60.0)
-	for k in 6: a.spawn_foe(Content.E.BRUTE, a.pp + Vector2(randf_range(-10, 10), randf_range(-10, 10)), 0, 0, 50.0)
-	a.add_tele(0, a.pp, 300.0, 0.05, 0.0, 30.0, true, false, -1, Color.RED, "test slam")
-	var hp0 := a.hp
-	for k in 15: a.step(1.0 / 60.0)
-	ok(a.airborne() and a.hp == hp0, "airborne: neither the swarm nor a slam lands a hit")
-	a.spawn_eshot(a.pp + Vector2(-20, 0), Vector2(600, 0), 7.0)
-	a.inv_t = 0.0
-	for k in 3: a.step(1.0 / 60.0)
-	ok(a.hp < hp0, "but projectiles still do")
 
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")

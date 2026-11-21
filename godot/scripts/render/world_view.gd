@@ -472,13 +472,11 @@ func _draw_actors() -> void:
 
 func _draw_hero(c: Node2D, hcol: Color) -> void:
 	var p := w.pp
-	var jp := w.jump_progress()
-	var lift := 4.0 * 26.0 * jp * (1.0 - jp) if jp >= 0.0 else 0.0     # a jump lifts the body off its shadow
-	var bob := sin(w.walk_ph) * 2.0 * w.mv - lift
+	var bob := sin(w.walk_ph) * 2.0 * w.mv
 	var f := w.face
 	var flip := -1.0 if f.x < 0.0 else 1.0
 	c.draw_set_transform(Vector2.ZERO)
-	c.draw_circle(p + Vector2(0, 13), 12.0 * (1.0 - 0.012 * lift), Color(0, 0, 0, 0.35))
+	c.draw_circle(p + Vector2(0, 13), 12.0, Color(0, 0, 0, 0.35))
 	var hit := w.hit_t > 0.0
 	var inv := w.inv_t > 0.0 and fmod(time, 0.12) < 0.06
 	var body := Color.WHITE if hit else hcol

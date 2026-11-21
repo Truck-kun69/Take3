@@ -145,7 +145,7 @@ func show_menu() -> void:
 			b3.tooltip_text = "%s  Reward: %s" % [Content.PROPHECIES[act_p.id].d, Content.PROPHECY_REWARDS[act_p.reward]]
 		row.add_child(b3)
 	v.add_child(row)
-	var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  F jump  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
+	var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(help)
 	v.add_child(_spacer(10))

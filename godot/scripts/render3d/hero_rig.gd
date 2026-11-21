@@ -404,7 +404,6 @@ var _v_run := 85.0
 var _last_cast_age := 9.0
 var _cast_flip := 0
 var _roll_k := 0.0
-var _jump_k := 0.0
 var _spd := 0.0
 var _was_hit := false
 
@@ -450,15 +449,10 @@ func _build_tree() -> void:
 	bt.add_node("roll_seek", AnimationNodeTimeSeek.new()); bt.connect_node("roll_seek", 0, "roll_clip")
 	bt.add_node("roll", AnimationNodeBlend2.new())
 	bt.connect_node("roll", 0, prev); bt.connect_node("roll", 1, "roll_seek")
-	# jump: the authored clip scrubbed by the simulation's jump progress (older models without one use the roll)
-	bt.add_node("jump_clip", _clip("jump" if anim.has_animation("jump") else "roll"))
-	bt.add_node("jump_seek", AnimationNodeTimeSeek.new()); bt.connect_node("jump_seek", 0, "jump_clip")
-	bt.add_node("jump", AnimationNodeBlend2.new())
-	bt.connect_node("jump", 0, "roll"); bt.connect_node("jump", 1, "jump_seek")
 	var hit := AnimationNodeOneShot.new()
 	hit.fadein_time = 0.05; hit.fadeout_time = 0.2
 	bt.add_node("hit_clip", _clip("hit")); bt.add_node("hit", hit)
-	bt.connect_node("hit", 0, "jump"); bt.connect_node("hit", 1, "hit_clip")
+	bt.connect_node("hit", 0, "roll"); bt.connect_node("hit", 1, "hit_clip")
 	var life := AnimationNodeTransition.new()
 	life.xfade_time = 0.12
 	life.add_input("alive"); life.add_input("dead")
@@ -507,12 +501,6 @@ func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 		tree.set("parameters/roll/blend_amount", _roll_k)
 		if roll >= 0.0:
 			tree.set("parameters/roll_seek/seek_request", clampf(roll, 0.0, 0.98) * anim.get_animation("roll").length)
-		var jp := float(st.get("jump", -1.0))
-		_jump_k = move_toward(_jump_k, 1.0 if jp >= 0.0 else 0.0, dt * 14.0)
-		tree.set("parameters/jump/blend_amount", _jump_k)
-		if jp >= 0.0:
-			var jn := "jump" if anim.has_animation("jump") else "roll"
-			tree.set("parameters/jump_seek/seek_request", clampf(jp, 0.0, 0.98) * anim.get_animation(jn).length)
 		var hit_now := _hit > 0.5
 		if hit_now and not _was_hit and roll < 0.0: tree.set("parameters/hit/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		_was_hit = hit_now
