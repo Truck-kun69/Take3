@@ -38,6 +38,7 @@ func _ready() -> void:
 		_audio_tests()
 		_height_tests()
 		_interp_tests()
+		_vat_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -1026,6 +1027,32 @@ func _interp_tests() -> void:
 	ok(still_raw >= 50 and still_drawn == 0 and steps_drawn.max() < steps_drawn.min() * 1.3,
 		"at 120 Hz the drawn hero moves every frame (%d of %d frames stood still at the latest tick, %d between ticks; per-frame step %.2f to %.2f)" % [still_raw, steps_raw.size(), still_drawn, steps_drawn.min(), steps_drawn.max()])
 	v.queue_free()
+
+## Packed vertex animation (tools/vat_pack.py, SVA2): every foe kind and act variant loads, with all five
+## clips inside its rows and played at 12 fps or more (the spawn clips were baked at 6 and stay so).
+func _vat_tests() -> void:
+	print("== packed vertex animation")
+	var files := 0
+	var bad: Array[String] = []
+	var d := DirAccess.open("res://models/foes")
+	for f in d.get_files():
+		if not f.ends_with(".vat"): continue
+		files += 1
+		var kind := f.get_basename()
+		var parts := kind.split("_")
+		var vat := Models.foe_vat(parts[0], int(parts[1]) if parts.size() > 1 else -1)
+		if vat.is_empty():
+			bad.append(kind + ": did not load"); continue
+		var rows: int = vat.rows
+		var tex: ImageTexture = vat.pos
+		if tex.get_width() != int(vat.verts) or tex.get_height() != rows: bad.append(kind + ": texture size")
+		var c: PackedFloat32Array = vat.clips
+		for si in Models.VAT_SLOTS.size():
+			var first := c[si * 3]; var n := c[si * 3 + 1]; var fps := c[si * 3 + 2]
+			var slot: String = Models.VAT_SLOTS[si]
+			if n < 2 or first + n + 1 > rows: bad.append("%s %s: rows %d..%d of %d" % [kind, slot, first, first + n, rows])
+			if fps < (5.9 if slot == "spawn" else 11.9): bad.append("%s %s: %.1f fps" % [kind, slot, fps])
+	ok(files >= 11 and bad.is_empty(), "all %d foe animations load, five clips each, at 12 fps or more%s" % [files, ("  " + "; ".join(bad)) if not bad.is_empty() else ""])
 
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true

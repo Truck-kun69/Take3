@@ -54,13 +54,16 @@ def cape_fns():
     return {"idle": still, "walk": moving(0.3), "run": moving(0.55), "cast": burst, "cast2": burst, "attack": burst, "roll": moving(0.8), "hit": burst, "die": still}
 
 MODELS = B.MODELS
+# Triangle budgets for the body (weapons come on top): a hero is 100 to 250 px tall from the game camera
+# and is drawn three times a frame (colour, sun shadow, the x-ray silhouette); 28000 was ~2.5x what
+# reads at that size and made each hero scene ~1.3 MB.
 HEROES = {
-    "warden": {"concept": "warden_23", "tris": 28000, "weapons": [("warden_sword", "sword"), ("warden_shield", "shield")]},
-    "spark": {"concept": "spark_23", "tris": 28000, "weapons": [("spark_staff", "staff")]},
-    "ember": {"concept": "ember_11", "tris": 28000, "weapons": [("ember_staff", "staff")]},
+    "warden": {"concept": "warden_23", "tris": 10000, "weapons": [("warden_sword", "sword"), ("warden_shield", "shield")]},
+    "spark": {"concept": "spark_23", "tris": 10000, "weapons": [("spark_staff", "staff")]},
+    "ember": {"concept": "ember_11", "tris": 10000, "weapons": [("ember_staff", "staff")]},
     # Act V boss, the Tide Bishop: same pipeline at 2.5x a hero, boss clips, saved to the act's boss slot
-    "tyrant_4": {"concept": "tyrant_4_11", "tris": 32000, "weapons": [("tyrant_4_crozier", "staff")], "boss": True, "scale": 2.5},
-    "storm": {"concept": "storm_11", "tris": 28000, "weapons": [("storm_staff", "staff")]},
+    "tyrant_4": {"concept": "tyrant_4_11", "tris": 13000, "weapons": [("tyrant_4_crozier", "staff")], "boss": True, "scale": 2.5},
+    "storm": {"concept": "storm_11", "tris": 10000, "weapons": [("storm_staff", "staff")]},
 }
 NOSE_TO_ANKLE = 40.6          # humanoid(50): head 43.2, ankle 2.6
 SC = 1.0                      # size relative to a 50-unit hero (bosses are bigger; set per build)
@@ -473,17 +476,17 @@ def place_weapon(path, kind, J, hero_h=50.0):
 
 
 def shrink_textures(tex_dir):
-    """The sources carry 2048 px body maps and 1024 px accessory maps; a hero is 60 to 400 px tall on
-    screen. Ship body albedo at 1024 and accessory albedo at 512, metal-roughness maps (Image_1*) at
-    half of that. Done on the files (not as a Godot import size limit: the editor reset that option
-    when it re-imported the scenes), so the game imports them GPU-compressed at these sizes."""
+    """The sources carry 2048 px body maps and 1024 px accessory maps; a hero is 100 to 250 px tall on
+    screen. Ship body albedo at 512 and accessory albedo at 256, metal-roughness maps (Image_1*) at half
+    of that. Done on the files (not as a Godot import size limit: the editor reset that option when it
+    re-imported the scenes), so the game imports them GPU-compressed (ETC2 on phones) at these sizes."""
     for fn in sorted(os.listdir(tex_dir)):
         if not fn.lower().endswith(".jpg"): continue
         fp = os.path.join(tex_dir, fn)
         img = bpy.data.images.load(fp)
         w = img.size[0]
         big = w >= 2048
-        target = ((512 if big else 256) if fn.startswith("Image_1") else (1024 if big else 512))
+        target = ((256 if big else 128) if fn.startswith("Image_1") else (512 if big else 256))
         if w > target:
             img.scale(target, target)
             img.filepath_raw = fp

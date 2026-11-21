@@ -68,24 +68,31 @@ static func foe_vat(kind: String, stage: int = -1) -> Dictionary:
 	var out := {}
 	var path := "res://models/foes/%s.vat" % kind
 	if FileAccess.file_exists(path):
+		# SVA2 (tools/vat_pack.py): header, clip table, then a deflated body of positions as RGB float16 and
+		# normals as octahedral RG8 (foe.gdshader decodes them), inflated once here and cached
 		var b := FileAccess.get_file_as_bytes(path)
-		if b.size() > 12 and b.slice(0, 4).get_string_from_ascii() == "SVAT":
+		if b.size() > 16 and b.slice(0, 4).get_string_from_ascii() == "SVA2":
 			var nv := b.decode_u16(4)
 			var rows := b.decode_u16(6)
 			var nc := b.decode_u16(8)
+			var raw := b.decode_u32(12)
 			var clips := PackedFloat32Array()
 			clips.resize(VAT_SLOTS.size() * 3)
-			var o := 12
+			var o := 16
 			for c in nc:
 				var nm := b.slice(o, o + 8).get_string_from_ascii()
 				var si := VAT_SLOTS.find(nm)
 				if si >= 0:
 					clips[si * 3] = b.decode_u16(o + 8); clips[si * 3 + 1] = b.decode_u16(o + 10); clips[si * 3 + 2] = b.decode_float(o + 12)
 				o += 20
-			var psz := rows * nv * 8
-			var pimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RGBAH, b.slice(o, o + psz))
-			var nimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RGBA8, b.slice(o + psz, o + psz + rows * nv * 4))
-			out = {"pos": ImageTexture.create_from_image(pimg), "nrm": ImageTexture.create_from_image(nimg), "clips": clips, "verts": nv, "rows": rows}
+			var body := b.slice(o).decompress(raw, FileAccess.COMPRESSION_DEFLATE)
+			var psz := rows * nv * 6
+			if body.size() == raw and raw == rows * nv * 8:
+				var pimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RGBH, body.slice(0, psz))
+				var nimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RG8, body.slice(psz, raw))
+				out = {"pos": ImageTexture.create_from_image(pimg), "nrm": ImageTexture.create_from_image(nimg), "clips": clips, "verts": nv, "rows": rows}
+			else:
+				Diag.mark("VAT %s: body is %d bytes, expected %d" % [kind, body.size(), raw])
 	_cache[key] = out
 	return out
 

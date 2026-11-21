@@ -11,7 +11,8 @@ uniform vec3 eye_col : source_color = vec3(1.0, 0.8, 0.35);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
 uniform bool colorblind = false;
 // Vertex animation texture (Models.foe_vat): row = frame, column = vertex (UV.x). INSTANCE_CUSTOM.x is then
-// the frame coordinate into it (the CPU picks the clip and time), blended between two rows.
+// the frame coordinate into it (the CPU picks the clip and time), blended between two rows. Positions are
+// RGB float16, normals octahedral RG8.
 uniform bool has_vat = false;
 uniform sampler2D vat_pos : filter_nearest, repeat_disable;
 uniform sampler2D vat_nrm : filter_nearest, repeat_disable;
@@ -39,6 +40,16 @@ vec3 status_col(float s) {
 	return vec3(0.75, 0.95, 1.0);
 }
 
+// vat_nrm holds octahedral normals (tools/vat_pack.py): two 8-bit channels per unit vector
+vec3 oct_normal(vec2 e) {
+	vec2 f = e * 2.0 - 1.0;
+	vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+	float t = clamp(-n.z, 0.0, 1.0);
+	n.x += n.x >= 0.0 ? -t : t;
+	n.y += n.y >= 0.0 ? -t : t;
+	return normalize(n);
+}
+
 void vertex() {
 	v_custom = INSTANCE_CUSTOM;
 	v_mpos = VERTEX;
@@ -51,7 +62,7 @@ void vertex() {
 		float fr = clamp(INSTANCE_CUSTOM.x, 0.0, float(sz.y - 2));
 		int f0 = int(floor(fr));
 		VERTEX = mix(texelFetch(vat_pos, ivec2(vi, f0), 0).xyz, texelFetch(vat_pos, ivec2(vi, f0 + 1), 0).xyz, fr - float(f0));
-		NORMAL = normalize(texelFetch(vat_nrm, ivec2(vi, f0), 0).xyz * 2.0 - 1.0);
+		NORMAL = oct_normal(texelFetch(vat_nrm, ivec2(vi, f0), 0).xy);
 		v_mpos = VERTEX;
 	} else if (INSTANCE_CUSTOM.z < 6.5) {                           // corpses (7) are not animated
 		float ph = INSTANCE_CUSTOM.x;

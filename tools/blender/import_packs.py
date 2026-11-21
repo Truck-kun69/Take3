@@ -353,10 +353,11 @@ def bake_vat(kind, cfg, arm, ob, T, M0, src_pos, skin, path):
       Each final vertex takes the bone weights of the nearest baked source vertex. Its position in a
       frame is sum_b w_b * [T * B_b(frame) * B_b(bake pose)^-1 * T^-1] * p, so offsets from decimation,
       held weapons and grown crystals all ride their bones rigidly.
-    File (little endian): "SVAT", u16 verts, u16 rows, u16 clips, u16 0; per clip: 8-byte name, u16 first
-    row, u16 frames, f32 fps, u8 loop, 3 pad; positions rows*verts RGBA float16 (Godot axes); normals
+    Baked as SVAT (little endian): "SVAT", u16 verts, u16 rows, u16 clips, u16 0; per clip: 8-byte name, u16
+    first row, u16 frames, f32 fps, u8 loop, 3 pad; positions rows*verts RGBA float16 (Godot axes); normals
     rows*verts RGBA8 (xyz * 0.5 + 0.5). Every clip carries one extra row (its first frame again when it
-    loops, its last when it does not) so the shader can always blend row r with r + 1.
+    loops, its last when it does not) so the shader can always blend row r with r + 1. Then written out
+    as SVA2 (tools/vat_pack.py), the form the game loads.
     The mesh's first UV channel is set to ((vertex + 0.5) / verts, 0.5): the texture column."""
     import struct
     from mathutils import kdtree
@@ -417,6 +418,13 @@ def bake_vat(kind, cfg, arm, ob, T, M0, src_pos, skin, path):
         for slot, first_row, cnt, fps, loop in table:
             f.write(slot.encode().ljust(8, b"\0") + struct.pack("<2Hf4B", first_row, cnt, fps, 1 if loop else 0, 0, 0, 0))
         f.write(pos.tobytes()); f.write(nrm.tobytes())
+    # what the game loads is the packed form (tools/vat_pack.py: clips resampled to 12-15 fps, RGB float16
+    # positions, octahedral normals, deflated)
+    sys.path.insert(0, os.path.dirname(HERE))
+    import vat_pack
+    packed = vat_pack.pack(*vat_pack.read_svat(open(path, "rb").read()))[0]
+    with open(path, "wb") as f:
+        f.write(packed)
     uv = me.uv_layers["UVMap"].data
     for lo in me.loops: uv[lo.index].uv = ((lo.vertex_index + 0.5) / n, 0.5)
     pose(arm, cfg.get("action", "Idle"), cfg.get("frame", 1))

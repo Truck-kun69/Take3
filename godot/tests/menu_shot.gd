@@ -1,6 +1,6 @@
 extends Node
 ## The title menu and its sub-screens at any window size, for layout checks:
-##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1600x720 res://tests/menu_shot.tscn -- <outdir> [touch 0/1] [fresh 0/1]
+##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1600x720 res://tests/menu_shot.tscn -- <outdir> [touch 0/1] [fresh 0/1] [hero]
 ## touch 1 lays out for a touchscreen; fresh 1 is a new profile (nothing cleared), 0 a mid-game one.
 var main: Node
 var out := "user://menu_shots"
@@ -24,7 +24,7 @@ func _ready() -> void:
 		sv.data.currency.chaos = 3; sv.data.currency.exalt = 1; sv.data.currency.regal = 2
 		sv.data.fragments = {"rupture": 1, "greed": 1, "dread": 1}
 		sv.data.echoes = 7; sv.data.torment_max = 2; sv.data.torment = 1
-	sv.data.hero = 2
+	sv.data.hero = int(a[3]) if a.size() > 3 else 2
 	main = load("res://scenes/main.tscn").instantiate()
 	main.bot_drive = true
 	add_child(main)
