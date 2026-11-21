@@ -78,3 +78,8 @@ terrain_f={
 "type": "sampler2D",
 "value": ""
 }
+
+[compression]
+
+formats/zstd/compression_level=19
+formats/zstd/long_distance_matching=true

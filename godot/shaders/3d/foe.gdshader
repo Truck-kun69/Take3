@@ -10,12 +10,15 @@ uniform float time = 0.0;
 uniform vec3 eye_col : source_color = vec3(1.0, 0.8, 0.35);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
 uniform bool colorblind = false;
-// Vertex animation texture (Models.foe_vat): row = frame, column = vertex (UV.x). INSTANCE_CUSTOM.x is then
-// the frame coordinate into it (the CPU picks the clip and time), blended between two rows. Positions are
-// RGB float16, normals octahedral RG8.
+// Vertex animation texture (Models.foe_vat, SVA3): row = frame, column = vertex (UV.x). INSTANCE_CUSTOM.x is
+// then the frame coordinate into it (the CPU picks the clip and time), blended between two rows. Positions
+// are RGBA8, 10 bits per axis over the clip set's box (vat_min + q / 1023 * vat_ext: RGB the top 8 bits,
+// A the low 2 bits of x | y << 2 | z << 4); normals octahedral RG8.
 uniform bool has_vat = false;
 uniform sampler2D vat_pos : filter_nearest, repeat_disable;
 uniform sampler2D vat_nrm : filter_nearest, repeat_disable;
+uniform vec3 vat_min = vec3(0.0);
+uniform vec3 vat_ext = vec3(1.0);
 varying flat float v_part;
 varying vec4 v_custom;
 varying vec3 v_mpos;
@@ -52,6 +55,14 @@ vec3 oct_normal(vec2 e) {
 	return normalize(n);
 }
 
+vec3 vat_p(int vi, int row) {
+	vec4 t = texelFetch(vat_pos, ivec2(vi, row), 0);
+	vec3 h = floor(t.rgb * 255.0 + 0.5);
+	float a = floor(t.a * 255.0 + 0.5);
+	vec3 l = vec3(mod(a, 4.0), mod(floor(a * 0.25), 4.0), floor(a * 0.0625));
+	return vat_min + (h * 4.0 + l) * (vat_ext * (1.0 / 1023.0));
+}
+
 void vertex() {
 	v_custom = INSTANCE_CUSTOM;
 	v_mpos = VERTEX;
@@ -63,7 +74,7 @@ void vertex() {
 		int vi = clamp(int(UV.x * float(sz.x)), 0, sz.x - 1);
 		float fr = clamp(INSTANCE_CUSTOM.x, 0.0, float(sz.y - 2));
 		int f0 = int(floor(fr));
-		VERTEX = mix(texelFetch(vat_pos, ivec2(vi, f0), 0).xyz, texelFetch(vat_pos, ivec2(vi, f0 + 1), 0).xyz, fr - float(f0));
+		VERTEX = mix(vat_p(vi, f0), vat_p(vi, f0 + 1), fr - float(f0));
 		NORMAL = oct_normal(texelFetch(vat_nrm, ivec2(vi, f0), 0).xy);
 		v_mpos = VERTEX;
 	} else if (INSTANCE_CUSTOM.z < 6.5) {                           // corpses (7) are not animated

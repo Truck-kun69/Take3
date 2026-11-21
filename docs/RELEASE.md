@@ -14,6 +14,19 @@ builds:
 
 The files are attached to the workflow run as the `shardfall-android` artifact for 30 days.
 
+## APK size (budget: 50 MB)
+
+0.9.7: 49.90 MB (49,897,056 bytes), both APKs. The largest parts, compressed: the engine library 23.75 MB,
+textures 13.7 MB (of them the eight 1024 x 1024 ground sets, albedo and normal, 11.2 MB), scenes 4.8 MB,
+foe animation (`.vat`, SVA3) 1.9 MB, `classes.dex` 1.7 MB, music 1.7 MB.
+
+After Godot exports a release or Lite APK, `tools/build_android.sh` repacks it (`tools/apk_repack.py`):
+the `.ctex` textures Godot stores uncompressed are deflated (13.5 -> 11.3 MB) and the engine library
+and `classes.dex` are recompressed with zopfli (26.3 -> 25.5 MB, needs `pip install zopfli`; cached by
+content hash). Every entry's content is checked to be byte-identical (CRC and size). The APK is then
+aligned (`zipalign -p 4`) and signed again with the same key, v2 and v3 only (minSdkVersion is 24).
+Imported scenes use zstd level 19 with long-distance matching (`project.godot`, `[compression]`).
+
 ## The release key
 
 Until a release key is configured, APKs are signed with the shared test key in `tools/keys`. That

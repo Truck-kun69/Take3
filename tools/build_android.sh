@@ -9,6 +9,8 @@
 #                                        Vulkan drivers crash, e.g. Mali-G52; release template, same key)
 #   tools/build_android.sh aab        -> build/shardfall-release.aab (Gradle build; needs the Android
 #                                        build template and network access to Google Maven + Gradle)
+# Release and Lite APKs are then repacked (tools/apk_repack.py: textures deflated, the engine library
+# zopfli-compressed when `pip install zopfli` is available), aligned and signed again with the same key.
 # Run tools/provision.sh first. Exits non-zero if the export or the signature check fails.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,6 +31,7 @@ case "$MODE" in
       echo "note: no SHARDFALL_KEYSTORE; signing with the shared test key (fine for sideloading, not for the Play Store)"
       SHARDFALL_KEYSTORE="$ROOT/tools/keys/debug.keystore" SHARDFALL_KEYSTORE_USER=androiddebugkey SHARDFALL_KEYSTORE_PASS=android
     fi
+    export SHARDFALL_KEYSTORE SHARDFALL_KEYSTORE_USER SHARDFALL_KEYSTORE_PASS
     export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$SHARDFALL_KEYSTORE"
     export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$SHARDFALL_KEYSTORE_USER"
     export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
@@ -61,6 +64,21 @@ case "$MODE" in
     "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
 esac
 [ -f "$OUT" ] || { echo "export failed: $OUT missing" >&2; exit 1; }
+if [ "$MODE" = "release" ] || [ "$MODE" = "lite" ]; then
+  # Repack (tools/apk_repack.py): deflate the textures Godot stores raw and zopfli-recompress the engine
+  # library, contents unchanged; then align and sign again with the same key as the export.
+  RAW="$ROOT/build/.repack-raw.apk"
+  ALIGNED="$ROOT/build/.repack-aligned.apk"
+  python3 "$ROOT/tools/apk_repack.py" "$OUT" "$RAW" --cache "${APK_REPACK_CACHE:-$TOOLS/apk-repack-cache}"
+  "$BT/zipalign" -f -p 4 "$RAW" "$ALIGNED"
+  "$BT/zipalign" -c -p 4 "$ALIGNED"
+  # v2 + v3 signatures; no v1 (JAR) signature: minSdkVersion is 24, and every Android from 7.0 (API 24)
+  # verifies v2, so META-INF/*.SF / .MF would only add about 50 KB
+  "$BT/apksigner" sign --ks "$SHARDFALL_KEYSTORE" --ks-key-alias "$SHARDFALL_KEYSTORE_USER" \
+    --ks-pass env:SHARDFALL_KEYSTORE_PASS --key-pass env:SHARDFALL_KEYSTORE_PASS \
+    --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --out "$OUT" "$ALIGNED"
+  rm -f "$RAW" "$ALIGNED" "$OUT.idsig"
+fi
 if [ "${OUT##*.}" = "apk" ]; then
   "$BT/apksigner" verify --print-certs "$OUT" | head -3
   "$BT/aapt2" dump badging "$OUT" 2>/dev/null | grep -E "^package|sdkVersion|native-code" || true

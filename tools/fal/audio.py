@@ -105,7 +105,7 @@ def music(work, stages):
         ff(["-i", raw, "-filter_complex",
             f"[0]atrim=0:{x},asetpts=PTS-STARTPTS,afade=t=in:d={x}[h];[0]atrim={d - x}:{d},asetpts=PTS-STARTPTS,afade=t=out:d={x}[t];[h][t]amix=inputs=2:normalize=0[seam];"
             f"[0]atrim={x}:{d - x},asetpts=PTS-STARTPTS[mid];[mid][seam]concat=n=2:v=0:a=1,loudnorm=I=-20:TP=-2[o]",
-            "-map", "[o]", "-ar", "44100", "-ac", "2", "-c:a", "libvorbis", "-q:a", "4", os.path.join(out, f"{st}.ogg")])
+            "-map", "[o]", "-ar", "44100", "-ac", "2", "-c:a", "libvorbis", "-q:a", "2", os.path.join(out, f"{st}.ogg")])
         print("music", st, f"{d:.1f}s")
 
 

@@ -374,6 +374,8 @@ func bind(world: World) -> void:
 		if not vat.is_empty():
 			foe_mats[k].set_shader_parameter("vat_pos", vat.pos)
 			foe_mats[k].set_shader_parameter("vat_nrm", vat.nrm)
+			foe_mats[k].set_shader_parameter("vat_min", vat.vmin)
+			foe_mats[k].set_shader_parameter("vat_ext", vat.vext)
 		_vc[k] = vat.clips if not vat.is_empty() else PackedFloat32Array()
 	_cam_pos = Vector3(w.pp.x, 0, w.pp.y)
 	_cam_target = _cam_pos

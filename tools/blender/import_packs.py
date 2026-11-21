@@ -357,7 +357,7 @@ def bake_vat(kind, cfg, arm, ob, T, M0, src_pos, skin, path):
     first row, u16 frames, f32 fps, u8 loop, 3 pad; positions rows*verts RGBA float16 (Godot axes); normals
     rows*verts RGBA8 (xyz * 0.5 + 0.5). Every clip carries one extra row (its first frame again when it
     loops, its last when it does not) so the shader can always blend row r with r + 1. Then written out
-    as SVA2 (tools/vat_pack.py), the form the game loads.
+    as SVA3 (tools/vat_pack.py), the form the game loads.
     The mesh's first UV channel is set to ((vertex + 0.5) / verts, 0.5): the texture column."""
     import struct
     from mathutils import kdtree
@@ -418,8 +418,8 @@ def bake_vat(kind, cfg, arm, ob, T, M0, src_pos, skin, path):
         for slot, first_row, cnt, fps, loop in table:
             f.write(slot.encode().ljust(8, b"\0") + struct.pack("<2Hf4B", first_row, cnt, fps, 1 if loop else 0, 0, 0, 0))
         f.write(pos.tobytes()); f.write(nrm.tobytes())
-    # what the game loads is the packed form (tools/vat_pack.py: clips resampled to 12-15 fps, RGB float16
-    # positions, octahedral normals, deflated)
+    # what the game loads is the packed form (tools/vat_pack.py: clips resampled to 12-15 fps, positions at
+    # 10 bits per axis in RGBA8, octahedral normals at 7 bits, deflated)
     sys.path.insert(0, os.path.dirname(HERE))
     import vat_pack
     packed = vat_pack.pack(*vat_pack.read_svat(open(path, "rb").read()))[0]

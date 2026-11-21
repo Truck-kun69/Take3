@@ -177,8 +177,8 @@ rose between GR1 and GR8.
 * **Late-rift spikes**: GR15 peaked at 14 ms worst frame with 1,500+ reactions and 44 damage numbers
   per second. Next steps: spread the reaction budget across frames instead of dropping jobs, and move
   `Swarm` (statuses, separation, movement) to a C++ GDExtension for the CPU path.
-* **APK size**: 55 MB because the debug build ships x86_64 for emulators too; arm64-only release is
-  roughly half.
+* **APK size**: 49.90 MB for 0.9.7 against a 50 MB budget (docs/RELEASE.md, "APK size"): almost no
+  room is left; new assets need an equal saving elsewhere.
 * **No art pipeline**: everything is procedural (SDF bodies, canvas-drawn props). A sprite atlas would
   plug into the same MultiMesh batches via a texture and UV rect in `INSTANCE_CUSTOM`.
 * **Bot ≠ human**: all balance numbers come from a deliberately mediocre bot. Touch feel (dead

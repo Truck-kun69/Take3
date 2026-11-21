@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 60
     env:
       SKIP_BLENDER: "1"
+      APK_REPACK_CACHE: /home/runner/apk-repack-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,6 +33,15 @@ jobs:
           key: toolchain-${{ hashFiles('tools/provision.sh') }}
       - name: Provision Godot, export templates and the Android SDK
         run: bash tools/provision.sh
+      # tools/apk_repack.py recompresses the engine library with zopfli (about 2 minutes); the result only
+      # changes with the Godot version, so it is cached
+      - name: APK repack cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/apk-repack-cache
+          key: apk-repack-${{ hashFiles('tools/provision.sh') }}
+      - name: Install zopfli
+        run: python3 -m pip install --user zopfli
       - name: Import assets
         run: ~/toolchains/godot/godot --headless --path godot --import || true
       - name: Parse check (every script compiles)

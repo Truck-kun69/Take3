@@ -68,17 +68,20 @@ static func foe_vat(kind: String, stage: int = -1) -> Dictionary:
 	var out := {}
 	var path := "res://models/foes/%s.vat" % kind
 	if FileAccess.file_exists(path):
-		# SVA2 (tools/vat_pack.py): header, clip table, then a deflated body of positions as RGB float16 and
-		# normals as octahedral RG8 (foe.gdshader decodes them), inflated once here and cached
+		# SVA3 (tools/vat_pack.py): header, the positions' bounding box, clip table, then a deflated body of
+		# positions as RGBA8 (10 bits per axis over the box: RGB the top 8 bits, A the low 2 bits of each) and
+		# normals as octahedral RG8; foe.gdshader decodes both. Inflated once here and cached.
 		var b := FileAccess.get_file_as_bytes(path)
-		if b.size() > 16 and b.slice(0, 4).get_string_from_ascii() == "SVA2":
+		if b.size() > 40 and b.slice(0, 4).get_string_from_ascii() == "SVA3":
 			var nv := b.decode_u16(4)
 			var rows := b.decode_u16(6)
 			var nc := b.decode_u16(8)
 			var raw := b.decode_u32(12)
+			var vmin := Vector3(b.decode_float(16), b.decode_float(20), b.decode_float(24))
+			var vext := Vector3(b.decode_float(28), b.decode_float(32), b.decode_float(36))
 			var clips := PackedFloat32Array()
 			clips.resize(VAT_SLOTS.size() * 3)
-			var o := 16
+			var o := 40
 			for c in nc:
 				var nm := b.slice(o, o + 8).get_string_from_ascii()
 				var si := VAT_SLOTS.find(nm)
@@ -86,13 +89,16 @@ static func foe_vat(kind: String, stage: int = -1) -> Dictionary:
 					clips[si * 3] = b.decode_u16(o + 8); clips[si * 3 + 1] = b.decode_u16(o + 10); clips[si * 3 + 2] = b.decode_float(o + 12)
 				o += 20
 			var body := b.slice(o).decompress(raw, FileAccess.COMPRESSION_DEFLATE)
-			var psz := rows * nv * 6
-			if body.size() == raw and raw == rows * nv * 8:
-				var pimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RGBH, body.slice(0, psz))
+			var psz := rows * nv * 4
+			if body.size() == raw and raw == rows * nv * 6:
+				var pimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RGBA8, body.slice(0, psz))
 				var nimg := Image.create_from_data(nv, rows, false, Image.FORMAT_RG8, body.slice(psz, raw))
-				out = {"pos": ImageTexture.create_from_image(pimg), "nrm": ImageTexture.create_from_image(nimg), "clips": clips, "verts": nv, "rows": rows}
+				out = {"pos": ImageTexture.create_from_image(pimg), "nrm": ImageTexture.create_from_image(nimg), "clips": clips,
+					"verts": nv, "rows": rows, "vmin": vmin, "vext": vext}
 			else:
 				Diag.mark("VAT %s: body is %d bytes, expected %d" % [kind, body.size(), raw])
+		elif b.size() >= 4:
+			Diag.mark("VAT %s: not SVA3 (%s); run tools/vat_pack.py" % [kind, b.slice(0, 4).get_string_from_ascii()])
 	_cache[key] = out
 	return out
 

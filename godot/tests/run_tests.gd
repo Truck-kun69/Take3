@@ -1306,8 +1306,9 @@ func _interp_tests() -> void:
 		"at 120 Hz the drawn hero moves every frame (%d of %d frames stood still at the latest tick, %d between ticks; per-frame step %.2f to %.2f)" % [still_raw, steps_raw.size(), still_drawn, steps_drawn.min(), steps_drawn.max()])
 	v.queue_free()
 
-## Packed vertex animation (tools/vat_pack.py, SVA2): every foe kind and act variant loads, with all five
-## clips inside its rows and played at 12 fps or more (the spawn clips were baked at 6 and stay so).
+## Packed vertex animation (tools/vat_pack.py, SVA3): every foe kind and act variant loads, with all five
+## clips inside its rows and played at 12 fps or more (the spawn clips were baked at 6 and stay so); the
+## positions are RGBA8 texels that decode (as foe.gdshader's vat_p does) to points inside their box.
 func _vat_tests() -> void:
 	print("== packed vertex animation")
 	var files := 0
@@ -1324,6 +1325,21 @@ func _vat_tests() -> void:
 		var rows: int = vat.rows
 		var tex: ImageTexture = vat.pos
 		if tex.get_width() != int(vat.verts) or tex.get_height() != rows: bad.append(kind + ": texture size")
+		var img := tex.get_image()
+		var vmin: Vector3 = vat.vmin
+		var vext: Vector3 = vat.vext
+		if img.get_format() != Image.FORMAT_RGBA8 or (vat.nrm as ImageTexture).get_image().get_format() != Image.FORMAT_RG8: bad.append(kind + ": texture formats")
+		if vext.y < 0.3 or vext.y > 20.0: bad.append(kind + ": box height %.2f" % vext.y)
+		var lo_y := INF
+		var hi_y := -INF
+		for k in 64:
+			var c8 := img.get_pixel(int(k * 37) % img.get_width(), int(k * 11) % rows)
+			var a := roundi(c8.a * 255.0)
+			var q := Vector3(roundi(c8.r * 255.0) * 4 + (a & 3), roundi(c8.g * 255.0) * 4 + ((a >> 2) & 3), roundi(c8.b * 255.0) * 4 + (a >> 4))
+			var p := vmin + q / 1023.0 * vext
+			lo_y = minf(lo_y, p.y); hi_y = maxf(hi_y, p.y)
+			if p.x < vmin.x - 1e-4 or p.x > vmin.x + vext.x + 1e-4 or p.z < vmin.z - 1e-4 or p.z > vmin.z + vext.z + 1e-4: bad.append(kind + ": texel outside its box")
+		if hi_y - lo_y < vext.y * 0.2: bad.append(kind + ": sampled points span %.2f of %.2f" % [hi_y - lo_y, vext.y])
 		var c: PackedFloat32Array = vat.clips
 		for si in Models.VAT_SLOTS.size():
 			var first := c[si * 3]; var n := c[si * 3 + 1]; var fps := c[si * 3 + 2]
