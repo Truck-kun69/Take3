@@ -160,6 +160,7 @@ var _last_combo := -1
 var _last_up := "?"
 var _ev_t := 0.0
 var _redraw_t := 0.0
+var _safe := Vector4.ZERO              # safe-area insets in canvas units (left, top, right, bottom)
 var _banner_scaled := false
 ## The lantern's flame, built once: a half ellipse plus a tip whose height follows the light.
 var _flame_o := PackedVector2Array()
@@ -210,32 +211,34 @@ func _process(dt: float) -> void:
 		_last_vs = vs
 		_last_touch = touch
 		var gs := clampf(minf(vs.x, vs.y) / 720.0, 0.75, 1.25) * (0.85 if touch else 1.0)
+		var m := UIKit.safe_margins(vs)          # x left, y top, z right, w bottom: camera cutouts, rounded corners
+		_safe = m
 		var gsize := 150.0 * gs
 		life.size = Vector2(gsize, gsize)
-		life.position = Vector2(14, vs.y - gsize - 12)
+		life.position = Vector2(14 + m.x, vs.y - gsize - 12 - m.w)
 		ultg.visible = not touch
 		ultg.size = Vector2(gsize, gsize)
-		ultg.position = Vector2(vs.x - gsize - 14, vs.y - gsize - 12)
+		ultg.position = Vector2(vs.x - gsize - 14 - m.z, vs.y - gsize - 12 - m.w)
 		bar.visible = not touch
 		var bw := minf(vs.x - 2 * gsize - 60, 4 * 76.0 * gs + 3 * 10)
 		bar.slot = 76.0 * gs
 		bar.size = Vector2(bw, 76.0 * gs + 20)
-		bar.position = Vector2((vs.x - bw) * 0.5, vs.y - bar.size.y - 22)
+		bar.position = Vector2((vs.x - bw) * 0.5, vs.y - bar.size.y - 22 - m.w)
 		var xl := life.position.x + gsize + 10
 		var xr := (ultg.position.x - 10) if not touch else (vs.x * 0.55)
-		xp_bar.position = Vector2(xl, vs.y - 26)
+		xp_bar.position = Vector2(xl, vs.y - 26 - m.w)
 		xp_bar.size = Vector2(maxf(60.0, xr - xl), 16)
-		pause_btn.position = Vector2(vs.x - 70, 10)
-		buffs.position = Vector2(14, 12)
+		pause_btn.position = Vector2(vs.x - 70 - m.z, 10 + m.y)
+		buffs.position = Vector2(14 + m.x, 12 + m.y)
 		buffs.size = Vector2(vs.x * 0.35, 60)
 		events_lbl.size = Vector2(minf(360, vs.x * 0.4), 0)
-		events_lbl.position = Vector2(vs.x - events_lbl.size.x - 16, 70)
+		events_lbl.position = Vector2(vs.x - events_lbl.size.x - 16 - m.z, 70 + m.y)
 		combo_lbl.size = Vector2(200, 0)
 		banner_box.pivot_offset = Vector2(vs.x * 0.5, 40.0)
 		banner_box.size = Vector2(vs.x, 0)
 		banner_box.position = Vector2(0, vs.y * 0.2)
-		toasts.position = Vector2(18, vs.y * 0.4)
-		fps_lbl.position = Vector2(vs.x - 330, vs.y - 70)
+		toasts.position = Vector2(18 + m.x, vs.y * 0.4)
+		fps_lbl.position = Vector2(vs.x - 330 - m.z, vs.y - 70 - m.w)
 	# globes and bottom bar: values
 	life.fill = w.hp / w.max_hp
 	var hp_i := ceili(w.hp)
@@ -265,7 +268,7 @@ func _process(dt: float) -> void:
 		plate_dirty = _put("info", info, "Level %d   ·   %d slain   ·   %d gold" % [w.lvl, w.kills, int(w.gold)]) or plate_dirty
 	if plate_dirty:
 		top_plate.size = Vector2(0, 0)
-		top_plate.position = Vector2((vs.x - top_plate.get_combined_minimum_size().x) * 0.5, 8)
+		top_plate.position = Vector2((vs.x - top_plate.get_combined_minimum_size().x) * 0.5, 8 + _safe.y)
 	var bf := w.bosses.boss_hp_frac()
 	var boss_on := bf >= 0.0
 	if boss_on != boss_box.visible:
@@ -299,7 +302,7 @@ func _process(dt: float) -> void:
 		_last_combo = combo_i
 		_put("combo", combo_lbl, ("x%d" % combo_i) if combo_i > 0 else "")
 	if ev_dirty:
-		combo_lbl.position = Vector2(vs.x - 216, 70 + events_lbl.get_combined_minimum_size().y + 6)
+		combo_lbl.position = Vector2(vs.x - 216 - _safe.z, events_lbl.position.y + events_lbl.get_combined_minimum_size().y + 6)
 	# banner and toasts
 	var a := 0.0
 	if banner_time > 0.0:
@@ -313,7 +316,7 @@ func _process(dt: float) -> void:
 	var up_txt := upgrade_lbl.text
 	if up_txt != _last_up or relayout:
 		_last_up = up_txt
-		upgrade_lbl.position = Vector2((vs.x - upgrade_lbl.get_combined_minimum_size().x) * 0.5, bar.position.y - 30 if not touch else vs.y - 230)
+		upgrade_lbl.position = Vector2((vs.x - upgrade_lbl.get_combined_minimum_size().x) * 0.5, bar.position.y - 30 if not touch else vs.y - 230 - _safe.w)
 	fps_lbl.visible = bool(Save.opt("show_fps"))
 	if fps_lbl.visible:
 		_frame_ms = lerpf(_frame_ms, dt * 1000.0, 0.1)

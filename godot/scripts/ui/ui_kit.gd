@@ -18,6 +18,22 @@ const RIFT := Color("8fd8ff")
 static var touch_mode := -1        # -1: ask the device, 0: force desktop layout (tests), 1: force touch layout
 
 ## True when the touch layout (on-screen buttons, no action bar) should be used.
+## Insets (left, top, right, bottom) that keep UI clear of camera cutouts and rounded corners, in the
+## viewport's 2D units: DisplayServer reports the safe area in screen pixels, the HUD is laid out in
+## stretched canvas units. Phones only (on desktop the window may sit anywhere on the display). This
+## calls into Java on Android: call it on layout changes, not every frame.
+static var safe_override := Vector4(-1, -1, -1, -1)    # tests: pretend to be a phone with these insets
+static func safe_margins(vs: Vector2) -> Vector4:
+	if safe_override.x >= 0.0: return safe_override
+	if not OS.has_feature("mobile"): return Vector4.ZERO
+	var win := Vector2(DisplayServer.window_get_size())
+	if win.x <= 0.0 or win.y <= 0.0: return Vector4.ZERO
+	var safe := Rect2(DisplayServer.get_display_safe_area())
+	safe.position -= Vector2(DisplayServer.window_get_position())
+	var k := vs / win
+	return Vector4(maxf(0.0, safe.position.x) * k.x, maxf(0.0, safe.position.y) * k.y,
+		maxf(0.0, win.x - safe.end.x) * k.x, maxf(0.0, win.y - safe.end.y) * k.y)
+
 static func is_touch() -> bool:
 	if touch_mode >= 0: return touch_mode == 1
 	return DisplayServer.is_touchscreen_available() or bool(Save.opt("force_touch_ui"))

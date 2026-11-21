@@ -12,6 +12,9 @@ func _ready() -> void:
 	if a.size() > 0: out = a[0]
 	if a.size() > 1: pre = a[1]
 	if a.size() > 2: UIKit.touch_mode = int(a[2])          # 0 = desktop layout, 1 = touch layout
+	if OS.get_environment("SHOT_SAFE") != "":                # e.g. "60,0,40,24": a phone's cutout and corner insets
+		var m := OS.get_environment("SHOT_SAFE").split(",")
+		UIKit.safe_override = Vector4(float(m[0]), float(m[1]), float(m[2]), float(m[3]))
 	DirAccess.make_dir_recursive_absolute(out)
 	var sv := get_node("/root/Save")
 	sv.path = "user://ui_shot_profile.json"

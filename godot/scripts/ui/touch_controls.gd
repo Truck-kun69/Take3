@@ -12,7 +12,7 @@ signal roll
 signal ult
 signal flask(i: int)
 
-const R := 64.0
+const R0 := 64.0                    # stick radius at the 720 px reference height; scaled like the buttons
 const DEAD := 0.12
 var stick_id := -1
 var origin := Vector2.ZERO
@@ -29,23 +29,40 @@ func _ready() -> void:
 func _left_handed() -> bool: return bool(Save.opt("left_handed"))
 func _fixed() -> bool: return int(Save.opt("joy_mode")) == 1
 
-func _buttons() -> Array:
+## Layout, cached: rebuilt only when the size, the handedness option or the safe area changes (it used
+## to allocate four Dictionaries on every touch event and every redraw). Everything sits inside the
+## display's safe area (camera cutouts, rounded corners).
+var _layout: Array[Dictionary] = []
+var _home := Vector2.ZERO
+var R := R0
+var _lay_size := Vector2(-1, -1)
+var _lay_lh := false
+
+func _relayout() -> void:
 	var s := size
+	_lay_size = s
+	_lay_lh = _left_handed()
+	var m := UIKit.safe_margins(s)
 	var sc := clampf(minf(s.x, s.y) / 720.0, 0.75, 1.4)
-	var side := -1.0 if _left_handed() else 1.0
-	var base_x := s.x - 110.0 * sc if side > 0.0 else 110.0 * sc
-	var y := s.y - 120.0 * sc
-	return [
+	R = R0 * sc
+	var side := -1.0 if _lay_lh else 1.0
+	var base_x := (s.x - 110.0 * sc - m.z) if side > 0.0 else (110.0 * sc + m.x)
+	var y := s.y - 120.0 * sc - m.w
+	_layout = [
 		{"id": "roll", "pos": Vector2(base_x, y), "r": 52.0 * sc, "label": "ROLL"},
 		{"id": "ult", "pos": Vector2(base_x - side * 128.0 * sc, y + 22.0 * sc), "r": 42.0 * sc, "label": "ULT"},
 		{"id": "f0", "pos": Vector2(base_x - side * 18.0 * sc, y - 118.0 * sc), "r": 32.0 * sc, "label": "1"},
 		{"id": "f1", "pos": Vector2(base_x - side * 100.0 * sc, y - 82.0 * sc), "r": 32.0 * sc, "label": "2"},
 	]
+	_home = Vector2(s.x - 150.0 * sc - m.z, s.y - 150.0 * sc - m.w) if _lay_lh else Vector2(150.0 * sc + m.x, s.y - 150.0 * sc - m.w)
+
+func _buttons() -> Array[Dictionary]:
+	if _layout.is_empty(): _relayout()
+	return _layout
 
 func _stick_home() -> Vector2:
-	var s := size
-	var sc := clampf(minf(s.x, s.y) / 720.0, 0.75, 1.4)
-	return Vector2(s.x - 150.0 * sc, s.y - 150.0 * sc) if _left_handed() else Vector2(150.0 * sc, s.y - 150.0 * sc)
+	if _layout.is_empty(): _relayout()
+	return _home
 
 func _in_move_half(p: Vector2) -> bool:
 	return (p.x > size.x * 0.5) if _left_handed() else (p.x < size.x * 0.5)
@@ -104,20 +121,42 @@ func _press(id: String) -> void:
 	if Save.opt("haptics"):
 		Input.vibrate_handheld(15)
 
-## Redraw only when something drawn has changed. The controls used to rebuild ~20 anti-aliased arcs and
-## two 33-point polygons every frame, including while nothing was touched and nothing was charging.
-var _sig := -1
-func _process(_dt: float) -> void:
-	var animating := false
-	var q := 0
+## Redraw only when something drawn has changed: touches redraw from _gui_input; here, layout changes,
+## charge levels (quantised to what a redraw can show) and the touch mode. The roll cooldown sweep and
+## the "ultimate ready" pulse animate at 20 Hz. No per-frame allocations.
+const ANIM_HZ := 20.0
+var _anim_t := 0.0
+var _q_ult := -1
+var _q_f0 := -1
+var _q_f1 := -1
+var _q_mode := -1
+var _was_cd := false
+func _process(dt: float) -> void:
+	var redraw := false
+	if size != _lay_size or _left_handed() != _lay_lh:
+		_relayout()
+		redraw = true
+	var mode := (UIKit.touch_mode + 1) * 2 + (1 if _seen_touch else 0)
+	if mode != _q_mode:
+		_q_mode = mode
+		redraw = true
 	if world != null:
-		# cooldown sweep and the "ultimate ready" pulse animate; charge levels are quantised to what a redraw can show
-		animating = world.roll_cd > 0.0 or world.ult >= 100.0
-		q = int(world.ult) + int(world.flasks[0].c / world.flasks[0].max * 64.0) * 128 + int(world.flasks[1].c / world.flasks[1].max * 64.0) * 16384
-	var sig := hash([stick_id, origin, knob, _btn_touch.values(), q, get_viewport_rect().size, UIKit.touch_mode, _seen_touch, world != null])
-	if animating or sig != _sig:
-		_sig = sig
-		queue_redraw()
+		var u := int(world.ult)
+		var f0 := int(world.flasks[0].c / maxf(1.0, world.flasks[0].max) * 32.0)
+		var f1 := int(world.flasks[1].c / maxf(1.0, world.flasks[1].max) * 32.0)
+		if u != _q_ult or f0 != _q_f0 or f1 != _q_f1:
+			_q_ult = u; _q_f0 = f0; _q_f1 = f1
+			redraw = true
+		var cd := world.roll_cd > 0.0
+		if cd != _was_cd:
+			_was_cd = cd
+			redraw = true
+		if cd or world.ult >= 100.0:
+			_anim_t -= dt
+			if _anim_t <= 0.0:
+				_anim_t = 1.0 / ANIM_HZ
+				redraw = true
+	if redraw: queue_redraw()
 
 ## Unit circle for the flask liquid polygon, built once.
 static var _unit: PackedVector2Array
@@ -141,10 +180,11 @@ func _draw() -> void:
 		for k in 4:                                   # compass notches
 			var a := k * PI / 2.0
 			draw_line(origin + Vector2(cos(a), sin(a)) * (R - 8.0), origin + Vector2(cos(a), sin(a)) * (R + 6.0), Color(BRONZE.r, BRONZE.g, BRONZE.b, 0.7), 2.0)
-		draw_circle(knob, 27.0, Color(0.05, 0.04, 0.05, 0.75))
-		draw_circle(knob, 21.0, Color(BRONZE_D.r, BRONZE_D.g, BRONZE_D.b, 0.8))
-		_ring(knob, 26.0, 0.95, 2.5)
-		draw_circle(knob + Vector2(-6, -7), 6.0, Color(1, 0.9, 0.7, 0.18))
+		var ks := R / R0                              # the knob scales with the stick
+		draw_circle(knob, 27.0 * ks, Color(0.05, 0.04, 0.05, 0.75))
+		draw_circle(knob, 21.0 * ks, Color(BRONZE_D.r, BRONZE_D.g, BRONZE_D.b, 0.8))
+		_ring(knob, 26.0 * ks, 0.95, 2.5)
+		draw_circle(knob + Vector2(-6, -7) * ks, 6.0 * ks, Color(1, 0.9, 0.7, 0.18))
 	elif _fixed():
 		_ring(_stick_home(), R, 0.35)
 	var font := UIKit.font("display")
