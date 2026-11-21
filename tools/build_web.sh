@@ -12,15 +12,8 @@ if [ ! -f "$TPL/web_nothreads_release.zip" ]; then
 fi
 mkdir -p "$ROOT/build/web"
 cd "$ROOT/godot"
-# Web-only texture budget: hero textures ship at 1024 instead of 2048 (desktop and Android keep 2048).
-# The import setting is changed for the export and restored afterwards.
-WEB_LIMIT=(models/heroes/*_tex/*.import models/bosses/*_tex/*.import)
-restore() {
-  for f in "${WEB_LIMIT[@]}"; do sed -i 's/^process\/size_limit=.*/process\/size_limit=0/' "$f"; done
-  "$TOOLS/godot/godot" --headless --path . --import >/dev/null 2>&1 || true
-}
-trap restore EXIT
-for f in "${WEB_LIMIT[@]}"; do sed -i 's/^process\/size_limit=.*/process\/size_limit=1024/' "$f"; done
+# Hero and boss textures are 512 px or less at the source (tools/blender/realistic_heroes.py), the same
+# for every platform, so the web export needs no texture limit of its own.
 "$TOOLS/godot/godot" --headless --path . --import >/dev/null 2>&1 || true
 "$TOOLS/godot/godot" --headless --path . --export-release "Web" "$ROOT/build/web/index.html"
 python3 "$ROOT/tools/pack_web.py" "$ROOT/build/web" "$ROOT/build/shardfall.html"
