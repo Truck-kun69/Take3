@@ -2150,7 +2150,10 @@ func _text(at: Vector2, v: float, col: Color, tier: int, u: int, label: String =
 			e.v += v
 			return
 	if texts.size() >= MAX_TEXTS:
-		# full: the oldest plain number goes first; crits and reaction names are dropped only when nothing else is left
+		# full: a new plain number is simply not shown (O(1); in a big fight hundreds arrive per tick). A crit
+		# or a reaction name takes the place of the oldest plain number, or of the oldest entry if none is left
+		if tier != 1 and tier != 3:
+			return
 		var drop := 0
 		for j in texts.size():
 			var tj: int = texts[j].tier

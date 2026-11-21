@@ -113,7 +113,7 @@ func _tyrant_windup(i: int, st: Dictionary, half: bool, guardian: bool, p: Vecto
 	var to := w.pp - p
 	var d := to.length()
 	var dir := to / maxf(1.0, d)
-	var opts: Array = [["cleave", 3.0 if d > 160.0 else 1.0], ["volley", 2.0 if d > 200.0 else 1.0], ["slam", 3.0 if d < 280.0 else 1.5]]
+	var opts: Array = [["cleave", 3.0 if d > 160.0 else 1.0], ["volley", 2.0 if d > 200.0 else (0.6 if d > 140.0 else 0.0)], ["slam", 3.0 if d < 280.0 else 1.5]]
 	if st.sm_cd <= 0.0: opts.append(["summon", 1.5])
 	if w.stage == 4 and not guardian: opts.append(["bell", 2.0])
 	if guardian and st.beam_cd <= 0.0: opts.append(["beam", 2.5])

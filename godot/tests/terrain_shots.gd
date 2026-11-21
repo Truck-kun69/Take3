@@ -91,7 +91,8 @@ func _process(dt: float) -> void:
 					si += 1; phase = 0; t = 0.0
 		3:
 			main.world.in_move = Vector2(0.3, 0.2)
-			if t > 4.0:
+			var at := float(OS.get_environment("SHOT_BOSS_T")) if OS.get_environment("SHOT_BOSS_T") != "" else 4.0
+			if t > at:
 				await _snap("stage%d_boss" % stages[si])
 				si += 1; phase = 0; t = 0.0
 		_:

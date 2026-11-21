@@ -6,6 +6,7 @@ var main: Node
 var t := 0.0
 var phase := 0
 var frames := 0
+var settle := 0
 var t0 := 0
 var sim_acc := 0.0
 var view_acc := 0.0
@@ -56,8 +57,17 @@ func _process(dt: float) -> void:
 				for c in v.ground.get_children(): c.material_override = sm
 			elif v.get(nm) != null: v.get(nm).visible = false
 		while w.sw.n < _env("LATE_FOES", 110): w.spawn_foe(Content.E.GRUNT + (w.sw.n % 5), w.pp + Vector2(randf_range(-520, 520), randf_range(-320, 320)), 0, 0, 40.0)
-		if t > 3.0 and frames == 0: t0 = Time.get_ticks_usec()
-		if t > 3.0:
+		# freeze at the same game time in every build (frame rates differ, so wall time is no reference),
+		# let three frames settle, then time 40 frames of an identical, unchanging scene
+		if w.t >= 352.0 and Engine.time_scale > 0.0:
+			Engine.time_scale = 0.0
+			settle = 3
+		if Engine.time_scale > 0.0: return
+		if settle > 0:
+			settle -= 1
+			return
+		if frames == 0: t0 = Time.get_ticks_usec()
+		if true:
 			frames += 1
 			sim_acc += w.step_us; view_acc += Diag.view_us
 			if frames == 40:

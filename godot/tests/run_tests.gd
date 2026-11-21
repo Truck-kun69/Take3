@@ -764,6 +764,9 @@ func _tyrant_fsm_tests() -> void:
 	var prev_state := -1
 	var prev_pos := Vector2.ZERO
 	for k in 60 * 60:
+		if k % 150 == 0:                             # a kiting hero: every 2.5 s back off to a random range
+			var bi := w.sw.index_of(u)
+			if bi >= 0: w.pp = w.sw.pos[bi] + Vector2.from_angle(w.rng.randf() * TAU) * w.rng.randf_range(80.0, 380.0)
 		w.step(1.0 / 60.0)
 		var st: Dictionary = w.bosses.bstate[u]
 		var i := w.sw.index_of(u)
@@ -897,6 +900,11 @@ func _sims() -> void:
 	var rows: Array = []
 	for h in 4:
 		rows.append(run_bot({"mode": "campaign", "hero": h, "stage": 0, "seed": 100 + h, "weapons_pool": Content.WEAPON_IDS}, 620.0, h))
+	if OS.get_environment("SIM_ONE") != "":                 # one run, for A/B checks
+		for sd in OS.get_environment("SIM_ONE").split(","):
+			var r1 := run_bot({"mode": "campaign", "hero": 0, "stage": 0, "seed": int(sd), "weapons_pool": Content.WEAPON_IDS}, 620.0, int(sd))
+			print("  ONE seed=%s won=%s t=%s lvl=%d killer=%s hp_low=%s" % [sd, r1.won, r1.t, r1.lvl, r1.killer, r1.hp_low])
+		return
 	if OS.get_environment("SIM_QUICK") != "":
 		rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 3, "seed": 78}, 660.0, 5))
 		for r in rows:

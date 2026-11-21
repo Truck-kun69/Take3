@@ -24,6 +24,12 @@ func _process(dt: float) -> void:
 	if t > 3.0:
 		done = true
 		var v: WorldView3D = main.view3d
+		var best := INF
+		for blk in 6:
+			var tb := Time.get_ticks_usec()
+			for kk in 60: v._foes()
+			best = minf(best, (Time.get_ticks_usec() - tb) / 60.0)
+		print("FOEMIN %.3f ms" % (best / 1000.0))
 		var probes := {}
 		for name in ["_foes", "_corpse_count"]:
 			var t0 := Time.get_ticks_usec()
