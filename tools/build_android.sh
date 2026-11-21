@@ -34,8 +34,10 @@ case "$MODE" in
     export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
     if [ "$MODE" = "lite" ]; then
       # the phone renderer is a project setting: switch it for this export only, restore it after
+      # restore from a copy, not from git: `git checkout` also threw away any uncommitted edits to the file
+      cp project.godot "$ROOT/build/.project.godot.bak"
+      trap 'cp "$ROOT/build/.project.godot.bak" "$ROOT/godot/project.godot"' EXIT
       sed -i 's/^renderer\/rendering_method.mobile=.*/renderer\/rendering_method.mobile="gl_compatibility"/' project.godot
-      trap 'git -C "$ROOT" checkout -- godot/project.godot' EXIT
       OUT="$ROOT/build/shardfall-lite.apk"
       "$GODOT" --headless --path . --export-release "Android Lite" "$OUT"
     else
@@ -53,8 +55,9 @@ case "$MODE" in
     : "${SHARDFALL_KEYSTORE:?a release keystore is required for an AAB}"
     export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$SHARDFALL_KEYSTORE" GODOT_ANDROID_KEYSTORE_RELEASE_USER="$SHARDFALL_KEYSTORE_USER" GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
     OUT="$ROOT/build/shardfall-release.aab"
+    cp export_presets.cfg "$ROOT/build/.export_presets.cfg.bak"
+    trap 'cp "$ROOT/build/.export_presets.cfg.bak" "$ROOT/godot/export_presets.cfg"' EXIT
     sed -i 's/^gradle_build\/use_gradle_build=false/gradle_build\/use_gradle_build=true/; s/^gradle_build\/export_format=0/gradle_build\/export_format=1/' export_presets.cfg
-    trap 'git -C "$ROOT" checkout -- godot/export_presets.cfg' EXIT
     "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
 esac
 [ -f "$OUT" ] || { echo "export failed: $OUT missing" >&2; exit 1; }

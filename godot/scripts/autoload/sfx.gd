@@ -7,8 +7,14 @@ extends Node
 ## Authored audio wins when present:
 ##   res://audio/sfx/<name>.(wav|ogg|mp3)      replaces a synthesized sound of the same name
 ##   res://audio/music/<stage index>.(ogg|mp3)  replaces the generated stage ambience
-## Playback: one player per sound, its stream set once (up to 3 overlapping voices), a per-sound rate
-## limit, a cap on new voices per frame, and distance attenuation via play_at().
+## Playback: one player per sound, its stream set once (up to 3 overlapping voices; 5 for the
+## rapid-fire gem, impact and kill, where a new voice cuts off the oldest instead of being muted for
+## 50 ms), a cap on new voices per frame, and positional sounds through play_at(): a small pool of
+## AudioStreamPlayer2D per sound (fixed streams, oldest voice stolen), panned and attenuated around
+## an AudioListener2D that follows the hero. XP gems climb a semitone per pickup while they come
+## within 0.45 s of each other.
+## Buses (default_bus_layout.tres): Master (hard limiter, so a reaction cascade cannot clip), Music
+## (the act's music or ambience), SFX, UI (menu clicks and crafting).
 ##
 ## Android (S22) crash, Nov 2026: the old round-robin pool of 16 players swapped a new stream into a
 ## player on every play, often while it was still playing, dozens of times a second in a fight. The
@@ -19,6 +25,13 @@ extends Node
 
 var RATE := 22050               # set to the output mix rate in _ready
 const VOICES := 3
+const RAPID := {"gem": true, "impact": true, "kill": true}     # 5 voices, oldest stolen, no 50 ms lockout
+const RAPID_VOICES := 5
+const UI_SOUNDS := {"click": true, "craft": true}
+const CLIMB := {"gem": true}                                    # pitch climbs a semitone per quick pickup
+const CLIMB_GAP_MS := 450
+const CLIMB_MAX := 12
+const PAN_VOICES := 3                                           # positional voices per sound
 const MAX_NEW_PER_FRAME := 6
 const CRITICAL := {"boss": true, "ult": true, "level": true, "lose": true, "win": true, "drop_legendary": true, "perfect": true, "event": true, "react": true, "hurt": true}
 var streams := {}
@@ -28,6 +41,11 @@ var _last := {}
 var _frame := -1
 var _frame_n := 0
 var listener := Vector2.ZERO
+var _ear: AudioListener2D
+var _pan := {}                  # name -> Array of AudioStreamPlayer2D (streams fixed)
+var _pan_start := {}            # name -> PackedInt64Array: when each voice started (oldest is stolen)
+var _climb_ms := {}
+var _climb_step := {}
 
 # layer: [freq, seconds, wave (0 sine 1 square 2 saw 3 triangle 4 noise), slide, volume, delay, lowpass 0..1]
 const DEFS := {
@@ -75,12 +93,42 @@ func _ready() -> void:
 		streams[k] = ov if ov != null else _bake(DEFS[k])
 		var p := AudioStreamPlayer.new()
 		p.stream = streams[k]
-		p.max_polyphony = 1 if safe else VOICES
+		p.max_polyphony = _voices(k, safe)
+		p.bus = &"UI" if UI_SOUNDS.has(k) else &"SFX"
 		add_child(p)
 		players[k] = p
 	ambience = AudioStreamPlayer.new()
 	ambience.volume_db = -14.0
+	ambience.bus = &"Music"
 	add_child(ambience)
+	_ear = AudioListener2D.new()
+	add_child(_ear)
+	_ear.make_current()
+
+func _voices(k: String, safe: bool) -> int:
+	if safe: return 1
+	return RAPID_VOICES if RAPID.has(k) else VOICES
+
+func _process(_dt: float) -> void:
+	if _ear != null: _ear.global_position = listener
+
+## The positional voices of one sound, created on its first play_at.
+func _pan_pool(name: String) -> Array:
+	if _pan.has(name): return _pan[name]
+	var pool: Array = []
+	var starts := PackedInt64Array()
+	for v in PAN_VOICES:
+		var q := AudioStreamPlayer2D.new()
+		q.stream = streams[name]
+		q.bus = &"SFX"
+		q.max_distance = 1000.0
+		q.attenuation = 1.0
+		add_child(q)
+		pool.append(q)
+		starts.append(-1)
+	_pan[name] = pool
+	_pan_start[name] = starts
+	return pool
 
 func _override(base: String) -> AudioStream:
 	for ext in ["wav", "ogg", "mp3"]:
@@ -182,7 +230,9 @@ func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
 	if not Save.opt("sound") or not players.has(name):
 		return
 	var now := Time.get_ticks_msec()
-	if now - int(_last.get(name, -1000)) < 50:
+	# repeats: rapid sounds only skip a second copy in the same frame (their extra voices cut off the
+	# oldest); everything else keeps a 50 ms gap
+	if now - int(_last.get(name, -1000)) < (16 if RAPID.has(name) else 50):
 		return
 	var f := Engine.get_process_frames()
 	if f != _frame:
@@ -197,20 +247,64 @@ func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
 	_last[name] = now
 	Diag.first("sound " + name)
 	var p: AudioStreamPlayer = players[name]
-	var ps := 1.0 if Save.opt("sfx_safe") else clampf(pitch * randf_range(0.94, 1.06), 0.5, 2.0)
-	if not is_finite(ps): ps = 1.0
-	p.pitch_scale = ps
+	p.pitch_scale = _pitch(name, pitch, now)
 	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")) * gain)), -60.0, 6.0)
 	p.play()
 
+## Pitch for one play: a semitone climb for chained pickups, a small random spread for the rest.
+func _pitch(name: String, pitch: float, now: int) -> float:
+	if Save.opt("sfx_safe"): return 1.0
+	var ps := pitch * randf_range(0.94, 1.06)
+	if CLIMB.has(name):
+		var stp := 0
+		if now - int(_climb_ms.get(name, -100000)) < CLIMB_GAP_MS: stp = mini(CLIMB_MAX, int(_climb_step.get(name, 0)) + 1)
+		_climb_ms[name] = now
+		_climb_step[name] = stp
+		ps = pitch * pow(2.0, float(stp) / 12.0)
+	ps = clampf(ps, 0.5, 2.5)
+	return ps if is_finite(ps) else 1.0
+
 ## Option change: polyphony follows the Safe setting.
 func apply_options() -> void:
-	for k in players: players[k].max_polyphony = 1 if Save.opt("sfx_safe") else VOICES
+	for k in players: players[k].max_polyphony = _voices(k, bool(Save.opt("sfx_safe")))
 	if Save.opt("sfx_safe") or not Save.opt("sound"): ambience.stop()
 
-## Distance-attenuated: full volume within 150 units of the listener, silent past ~900.
+## Positional: panned left/right and attenuated around the hero (silent past ~1000 units). Each sound
+## has PAN_VOICES fixed-stream voices; a new play takes a free one or cuts off the oldest. The Safe
+## sound engine plays it centred through the plain player instead.
 func play_at(name: String, at: Vector2, pitch: float = 1.0) -> void:
 	var d := at.distance_to(listener)
-	var g := clampf(1.0 - (d - 150.0) / 750.0, 0.0, 1.0)
-	if g > 0.05:
-		play(name, pitch, g)
+	if d > 1000.0: return
+	if Save.opt("sfx_safe") or not streams.has(name):
+		var g := clampf(1.0 - (d - 150.0) / 750.0, 0.0, 1.0)
+		if g > 0.05: play(name, pitch, g)
+		return
+	if not Save.opt("sound"): return
+	var f := Engine.get_process_frames()
+	if f != _frame:
+		_frame = f
+		_frame_n = 0
+	if not CRITICAL.has(name):
+		if _frame_n >= MAX_NEW_PER_FRAME: return
+		_frame_n += 1
+	var now := Time.get_ticks_msec()
+	var pool := _pan_pool(name)
+	var starts: PackedInt64Array = _pan_start[name]
+	var pick := 0
+	var oldest := 9223372036854775807
+	for v in pool.size():
+		var q: AudioStreamPlayer2D = pool[v]
+		if not q.playing:
+			pick = v
+			break
+		if starts[v] < oldest:
+			oldest = starts[v]
+			pick = v
+	starts[pick] = now
+	_pan_start[name] = starts
+	var sp: AudioStreamPlayer2D = pool[pick]
+	sp.global_position = at
+	sp.pitch_scale = _pitch(name, pitch, now)
+	sp.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")))), -60.0, 6.0)
+	Diag.first("sound " + name)
+	sp.play()

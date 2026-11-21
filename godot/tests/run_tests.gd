@@ -34,6 +34,8 @@ func _ready() -> void:
 		_alpha_weapon_tests()
 		_v7_tests()
 		_gate_p01_tests()
+		_tyrant_fsm_tests()
+		_audio_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -746,6 +748,72 @@ func _gate_p01_tests() -> void:
 	m.in_move = Vector2.ZERO
 	for k in 3: m.step(1.0 / 60.0)
 	ok(m.vel.length() < 1.0, "and stops within 0.05 s")
+
+func _tyrant_fsm_tests() -> void:
+	print("== tyrant state machine")
+	var w := _world({"mode": "campaign", "hero": 0, "stage": 4, "seed": 41})
+	w.stats.set_source("t", [["max_hp", "add", 1e7], ["regen", "add", 1e6]]); w.hp = 1e7
+	w.weapons.clear()
+	w.bosses.spawn_stage_boss(false)
+	var u: int = w.bosses.stage_uids[0]
+	var seen := {}
+	var attacks: Array[String] = []
+	var states := {}
+	var exposed_ok := true
+	var moved_in_windup := false
+	var prev_state := -1
+	var prev_pos := Vector2.ZERO
+	for k in 60 * 60:
+		w.step(1.0 / 60.0)
+		var st: Dictionary = w.bosses.bstate[u]
+		var i := w.sw.index_of(u)
+		if i < 0: break
+		var s := int(st.get("s", -1))
+		states[s] = true
+		if s == Bosses.WINDUP and prev_state == Bosses.WINDUP and w.sw.pos[i].distance_to(prev_pos) > 3.0: moved_in_windup = true
+		if s == Bosses.WINDUP and prev_state != Bosses.WINDUP: attacks.append(String(st.atk))
+		if bool(st.exposed) and s != Bosses.RECOVER: exposed_ok = false
+		prev_state = s
+		prev_pos = w.sw.pos[i]
+	for a in attacks: seen[a] = true
+	var repeats := 0
+	for k in range(1, attacks.size()):
+		if attacks[k] == attacks[k - 1]: repeats += 1
+	ok(states.size() == 4, "the tyrant goes through chase, windup, execute and recover")
+	ok(attacks.size() >= 12, "it attacks steadily (%d attacks in 60 s)" % attacks.size())
+	ok(seen.has("cleave") and seen.has("volley") and seen.has("slam") and seen.has("bell"), "it uses dash-cleave, volley, slam and (Act V) the bell: %s" % str(seen.keys()))
+	ok(repeats == 0, "never the same attack twice in a row")
+	ok(not moved_in_windup, "it stands still while winding up")
+	ok(exposed_ok, "it is Exposed only while recovering")
+	var w2 := _world({"mode": "campaign", "hero": 0, "stage": 0, "seed": 42})
+	w2.bosses.spawn_stage_boss(false)
+	var u2: int = w2.bosses.stage_uids[0]
+	var j := w2.sw.index_of(u2)
+	w2.step(1.0 / 60.0)
+	var st2: Dictionary = w2.bosses.bstate[u2]
+	var h0 := w2.sw.hp[j]
+	w2.hit(j, 100.0, 0, Vector2.ZERO, 0.0, 1)
+	var plain := h0 - w2.sw.hp[j]
+	st2.exposed = true
+	h0 = w2.sw.hp[j]
+	w2.hit(j, 100.0, 0, Vector2.ZERO, 0.0, 1)
+	var exp := h0 - w2.sw.hp[j]
+	ok(absf(exp / plain - 1.3) < 0.01, "an Exposed tyrant takes 30%% more damage (%.2fx)" % (exp / plain))
+
+func _audio_tests() -> void:
+	print("== audio buses, voices, pitch climb")
+	ok(AudioServer.get_bus_index("Music") > 0 and AudioServer.get_bus_index("SFX") > 0 and AudioServer.get_bus_index("UI") > 0, "Music, SFX and UI buses exist")
+	ok(AudioServer.get_bus_effect_count(0) > 0 and AudioServer.get_bus_effect(0, 0) is AudioEffectHardLimiter, "the Master bus ends in a hard limiter")
+	ok(Sfx.players["gem"].bus == &"SFX" and Sfx.players["click"].bus == &"UI" and Sfx.ambience.bus == &"Music", "sounds are routed to their buses")
+	var safe := bool(Save.opt("sfx_safe"))
+	ok(Sfx.players["gem"].max_polyphony == (1 if safe else 5) and Sfx.players["boss"].max_polyphony == (1 if safe else 3), "rapid-fire sounds get 5 voices")
+	if not safe:
+		Sfx._climb_ms.erase("gem")
+		var p0 := Sfx._pitch("gem", 1.0, 100000)
+		var p1 := Sfx._pitch("gem", 1.0, 100200)
+		var p2 := Sfx._pitch("gem", 1.0, 100400)
+		var p3 := Sfx._pitch("gem", 1.0, 101000)
+		ok(is_equal_approx(p0, 1.0) and is_equal_approx(p1, pow(2.0, 1.0 / 12.0)) and is_equal_approx(p2, pow(2.0, 2.0 / 12.0)) and is_equal_approx(p3, 1.0), "gem pickups climb a semitone each and reset after a 0.45 s gap")
 
 func _anim_tests() -> void:
 	print("== foe animation (vertex animation textures)")

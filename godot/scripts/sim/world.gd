@@ -1341,6 +1341,8 @@ func hit(i: int, dmg: float, em: int, kdir: Vector2, kb: float, depth: int) -> v
 		dmg *= 1.5
 	var bt := _bestiary_bonus(sw.kind[i])
 	if bt > 0.0: dmg *= 1.0 + bt
+	if (f & (Swarm.F_BOSS | Swarm.F_RIFTG)) != 0 and bosses.exposed(sw.uid[i]):
+		dmg *= 1.3                                  # a tyrant recovering from a cleave or slam (Bosses)
 	var absorbed := sw.take(i, dmg)
 	metrics.dmg_dealt += dmg
 	if kb > 0.0 and (f & (Swarm.F_BOSS | Swarm.F_HERALD | Swarm.F_RIFTG)) == 0:

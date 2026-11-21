@@ -34,6 +34,8 @@ jobs:
         run: bash tools/provision.sh
       - name: Import assets
         run: ~/toolchains/godot/godot --headless --path godot --import || true
+      - name: Parse check (every script compiles)
+        run: ~/toolchains/godot/godot --headless --path godot res://tests/parse_all.tscn
       - name: Unit tests
         run: |
           ~/toolchains/godot/godot --headless --path godot res://tests/tests.tscn -- unit | tee test.log

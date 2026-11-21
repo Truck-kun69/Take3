@@ -11,6 +11,24 @@ const PATH := "user://diag.txt"
 const PREV := "user://diag_prev.txt"
 const CLEAN := ["== exit", "== background"]
 
+## Engine errors and warnings, caught through a Logger. On Android the engine's own log file is off
+## (it wrote every message to flash), so this is how the crash report still shows what the engine
+## complained about: each distinct message once, at most MAX_ENGINE per session, into the trail.
+class ErrorTrail extends Logger:
+	var seen := {}
+	var count := 0
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		var msg := rationale if rationale != "" else code
+		var key := "%s:%d:%s" % [file.get_file(), line, msg.left(60)]
+		if seen.has(key) or count >= Diag.MAX_ENGINE: return
+		seen[key] = true
+		count += 1
+		Diag.mark("engine %s: %s (%s:%d %s)" % [["error", "warning", "script error", "shader error"][clampi(error_type, 0, 3)], msg.left(140), file.get_file(), line, function])
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
+
+const MAX_ENGINE := 40
+var _mutex := Mutex.new()          # the logger can be called from the render and audio threads
 var crashed_last := false
 var report: PackedStringArray = PackedStringArray()   # previous session's tail (when it crashed)
 var _f: FileAccess
@@ -27,7 +45,7 @@ func _enter_tree() -> void:
 			crashed_last = true
 			report = PackedStringArray()
 			for l in lines:                          # every first occurrence, then the tail of the trail
-				if l.contains(" first ") or l.contains("== boot") or l.contains(" device ") or l.contains(" gpu ") or l.contains(" start "): report.append(l)
+				if l.contains(" first ") or l.contains("== boot") or l.contains(" device ") or l.contains(" gpu ") or l.contains(" start ") or l.contains(" engine "): report.append(l)
 			report.append("-- last moments --")
 			report.append_array(lines.slice(maxi(0, lines.size() - 16)))
 			var eng := _engine_errors()
@@ -37,6 +55,7 @@ func _enter_tree() -> void:
 			var pf := FileAccess.open(PREV, FileAccess.WRITE)
 			if pf != null: pf.store_string("\n".join(lines) + "\n" + "\n".join(eng))
 	_f = FileAccess.open(PATH, FileAccess.WRITE)
+	OS.add_logger(ErrorTrail.new())
 	mark("== boot %s" % Time.get_datetime_string_from_system())
 	mark("device %s | %s %s | cpus %d" % [OS.get_model_name(), OS.get_name(), OS.get_version(), OS.get_processor_count()])
 
@@ -70,9 +89,11 @@ func first(key: String) -> void:
 	mark("first " + key)
 
 func mark(s: String) -> void:
-	if _f == null: return
-	_f.store_line("%7.2f %s" % [Time.get_ticks_msec() / 1000.0, s])
-	_f.flush()
+	_mutex.lock()
+	if _f != null:
+		_f.store_line("%7.2f %s" % [Time.get_ticks_msec() / 1000.0, s])
+		_f.flush()
+	_mutex.unlock()
 
 ## Twice a second while a run is live: enough to see what was growing when it died.
 func beat(w: World, dt: float, label: String = "run") -> void:

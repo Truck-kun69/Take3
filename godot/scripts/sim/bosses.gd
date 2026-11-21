@@ -52,49 +52,178 @@ func spawn_stage_boss(twin: bool) -> void:
 	w.shake = 0.8
 	Sfx.play("boss")
 
+# Tyrants and the Rift Guardian fight as a state machine: CHASE (walk at the hero) -> WINDUP (stand,
+# telegraph the attack) -> EXECUTE (it lands) -> RECOVER (stand still; after the dash-cleave and the
+# slam it is Exposed and takes 30% more damage: the punish window) -> CHASE. One attack at a time,
+# never the same one twice in a row, chosen by range:
+#   cleave  a line telegraph, a dash along it, then a cone cleave where it stops
+#   volley  a cone telegraph, then three (four below half life) waves of shots down it
+#   slam    a circle under the hero, the longest windup and the longest punish window
+#   summon  a roar and a ring of minions (on its own cooldown)
+#   bell    the Tide Bishop only: a wide cold blast around the hero
+#   beam    the Rift Guardian only: a sweeping beam it channels in place
+# Below half life the windups and the gaps between attacks shorten and it walks faster.
+enum { CHASE, WINDUP, EXECUTE, RECOVER }
+
 func _tyrant(i: int, st: Dictionary, dt: float, guardian: bool) -> void:
 	var half := w.sw.hp[i] < w.sw.mhp[i] * 0.5
-	st.bt -= dt; st.sm -= dt; st.sl -= dt
 	var p := w.sw.pos[i]
-	if st.bt <= 0.0:
-		var nb := 16 if half else 10
-		var off := w.rng.randf() * TAU
-		for k in nb:
-			var a := off + TAU * k / nb
-			w.spawn_eshot(p, Vector2(cos(a), sin(a)) * 150.0 * float(Content.STAGES[w.stage].spd), 8.0)
-		st.bt = 1.6 if half else 2.4
-		st.atk_t = w.t
-		Sfx.play("zap")
-	if st.sm <= 0.0:
-		st.sm = 5.0 if half else 7.0
-		for k in 8:
-			var a2 := TAU * k / 8.0
-			w.spawn_foe(Content.E.GRUNT, p + Vector2(cos(a2), sin(a2)) * 60.0, 0)
-	if st.sl <= 0.0:
-		st.sl = 6.0 if half else 8.5
-		w.add_tele(0, w.pp, 96.0, 1.0, 0.0, 18.0, true, false, -1, Color(1, 0.25, 0.3, 0.55), "a slam")
-		st.atk_t = w.t
-	if w.stage == 4 and not guardian:
-		# the Tide Bishop: a tolling bell (a wide cold blast telegraphed around the hero) and, below half
-		# life, the nave floods for good
-		st.tb = float(st.get("tb", 4.0)) - dt
-		if st.tb <= 0.0:
-			st.tb = 6.0 if half else 9.0
-			w.add_tele(0, w.pp, 150.0, 1.3, 0.0, 14.0, true, false, Content.El.COLD, Color(0.5, 0.95, 0.85, 0.5), "the tolling bell")
-			st.atk_t = w.t
+	if not st.has("s"):
+		st.s = CHASE
+		st.t = 1.0 + float(st.get("bt", 2.0)) - 2.0           # twins start out of step
+		st.spd = w.sw.spd[i]
+		st.atk = ""
+		st.last = ""
+		st.sm_cd = 6.0
+		st.beam_cd = 3.0
+		st.exposed = false
+	st.t -= dt
+	st.sm_cd -= dt
+	st.beam_cd -= dt
+	match int(st.s):
+		CHASE:
+			w.sw.set_speed(i, (62.0 * w.spd_mult()) if half else float(st.spd))
+			if st.t <= 0.0: _tyrant_windup(i, st, half, guardian, p)
+		WINDUP:
+			w.sw.set_speed(i, 0.0)
+			if st.t <= 0.0: _tyrant_execute(i, st, half, p)
+		EXECUTE:
+			w.sw.set_speed(i, 0.0)
+			_tyrant_execute_step(i, st, dt, half, p)
+			if st.t <= 0.0: _tyrant_recover(i, st, half)
+		RECOVER:
+			w.sw.set_speed(i, 0.0)
+			if st.t <= 0.0:
+				st.s = CHASE
+				st.exposed = false
+				st.t = w.rng.randf_range(0.7, 1.2) if half else w.rng.randf_range(1.1, 1.8)
+	if w.stage == 4 and not guardian and half and not st.get("flood", false):
+		# below half life the Tide Bishop floods the nave for good
+		st.flood = true
+		w.terrain.tide += 10.0
+		w.banner.emit("The nave floods", "The Tide Bishop calls the sea in.", Color("7fe0c0"))
+		w.shake = 0.7
+
+## True while this boss stands Exposed after a dash-cleave or a slam (World.hit adds 30% damage).
+func exposed(u: int) -> bool:
+	var st: Dictionary = bstate.get(u, {})
+	return bool(st.get("exposed", false))
+
+func _tyrant_windup(i: int, st: Dictionary, half: bool, guardian: bool, p: Vector2) -> void:
+	var to := w.pp - p
+	var d := to.length()
+	var dir := to / maxf(1.0, d)
+	var opts: Array = [["cleave", 3.0 if d > 160.0 else 1.0], ["volley", 2.0 if d > 200.0 else 1.0], ["slam", 3.0 if d < 280.0 else 1.5]]
+	if st.sm_cd <= 0.0: opts.append(["summon", 1.5])
+	if w.stage == 4 and not guardian: opts.append(["bell", 2.0])
+	if guardian and st.beam_cd <= 0.0: opts.append(["beam", 2.5])
+	var tot := 0.0
+	for o in opts:
+		if o[0] == st.last: o[1] = 0.0
+		tot += float(o[1])
+	var r := w.rng.randf() * tot
+	var atk: String = opts[0][0]
+	for o in opts:
+		r -= float(o[1])
+		if r <= 0.0 and float(o[1]) > 0.0:
+			atk = o[0]
+			break
+	st.atk = atk
+	st.last = atk
+	st.dir = dir
+	st.s = WINDUP
+	st.atk_t = w.t                                   # the rig plays its attack clip through windup and strike
+	match atk:
+		"cleave":
+			st.t = 0.6 if half else 0.75
+			st.len = clampf(d + 60.0, 160.0, 420.0)
+			var z := w.add_tele(2, p, 0.0, st.t, 0.0, 20.0, true, false, -1, Color(1, 0.3, 0.25, 0.5), "a dash-cleave")
+			z.length = st.len; z.width = 76.0; z.dir = dir
+		"volley":
+			st.t = 0.5 if half else 0.6
+			var zv := w.add_tele(3, p, 460.0, st.t, 0.0, 0.0, false, false, -1, Color(1, 0.55, 0.3, 0.35), "a volley")
+			zv.dir = dir; zv.ang = 0.5
+		"slam":
+			st.t = 0.85 if half else 1.0
+			w.add_tele(0, w.pp, 110.0, st.t, 0.0, 22.0, true, false, -1, Color(1, 0.25, 0.3, 0.55), "a slam")
+		"summon":
+			st.t = 0.6
 			Sfx.play("boss")
-		if half and not st.get("flood", false):
-			st.flood = true
-			w.terrain.tide += 10.0
-			w.banner.emit("The nave floods", "The Tide Bishop calls the sea in.", Color("7fe0c0"))
-			w.shake = 0.7
-	st.beam = float(st.get("beam", 5.0)) - dt
-	if guardian and st.beam <= 0.0:
-		st.beam += 9.0
-		var z := w.add_tele(2, p, 0.0, 1.0, 3.5, 6.0, true, false, -1, Color(1, 0.3, 0.9, 0.45), "the guardian's beam")
-		z.length = 620.0; z.width = 36.0; z.dir = (w.pp - p).normalized(); z.spin = 0.9; z.tick = 0.25
-	if half:
-		w.sw.set_speed(i, 62.0 * w.spd_mult())
+		"bell":
+			st.t = 1.3
+			w.add_tele(0, w.pp, 150.0, st.t, 0.0, 14.0, true, false, Content.El.COLD, Color(0.5, 0.95, 0.85, 0.5), "the tolling bell")
+			Sfx.play("boss")
+		"beam":
+			st.t = 1.0
+			var zb := w.add_tele(2, p, 0.0, st.t, 3.5, 6.0, true, false, -1, Color(1, 0.3, 0.9, 0.45), "the guardian's beam")
+			zb.length = 620.0; zb.width = 36.0; zb.dir = dir; zb.spin = 0.9; zb.tick = 0.25
+
+func _tyrant_execute(i: int, st: Dictionary, half: bool, p: Vector2) -> void:
+	st.s = EXECUTE
+	st.wave = 0
+	st.wave_t = 0.0
+	var dir: Vector2 = st.dir
+	match String(st.atk):
+		"cleave":
+			st.t = 0.6                                   # 0.3 s dash, then the cleave lands where it stopped
+			st.dash_v = float(st.len) / 0.3
+			st.dash_t = 0.3
+			var z := w.add_tele(3, p + dir * float(st.len), 140.0, 0.6, 0.0, 16.0, true, false, -1, Color(1, 0.35, 0.25, 0.5), "a dash-cleave")
+			z.dir = dir; z.ang = 0.9
+			Sfx.play("roll")
+		"volley":
+			st.waves = 4 if half else 3
+			st.t = 0.15 * float(st.waves)
+		"slam":
+			st.t = 0.05
+			w.shake = maxf(w.shake, 0.5)
+		"summon":
+			st.t = 0.05
+			for k in 8:
+				var a2 := TAU * k / 8.0
+				w.spawn_foe(Content.E.GRUNT, p + Vector2(cos(a2), sin(a2)) * 60.0, 0)
+			st.sm_cd = 6.5 if half else 9.0
+		"bell":
+			st.t = 0.05
+		"beam":
+			st.t = 3.5                                   # it channels in place while the beam sweeps
+			st.beam_cd = 9.0
+
+func _tyrant_execute_step(i: int, st: Dictionary, dt: float, half: bool, p: Vector2) -> void:
+	match String(st.atk):
+		"cleave":
+			if float(st.dash_t) > 0.0:
+				st.dash_t -= dt
+				var np := p + (st.dir as Vector2) * float(st.dash_v) * dt
+				if w.arena_r > 0.0 and np.length() > w.arena_r - 40.0: np = np.normalized() * (w.arena_r - 40.0)
+				w.sw.set_pos(i, np)
+		"volley":
+			st.wave_t -= dt
+			if st.wave_t <= 0.0 and int(st.wave) < int(st.waves):
+				st.wave_t += 0.15
+				st.wave += 1
+				var n := 9 if half else 7
+				var base := (st.dir as Vector2).angle()
+				var spd := 170.0 * float(Content.STAGES[w.stage].spd)
+				for k in n:
+					var a := base + lerpf(-0.5, 0.5, float(k) / float(n - 1)) + (0.035 if int(st.wave) % 2 == 0 else 0.0)
+					w.spawn_eshot(p, Vector2(cos(a), sin(a)) * spd, 8.0)
+				Sfx.play("zap")
+
+func _tyrant_recover(i: int, st: Dictionary, half: bool) -> void:
+	st.s = RECOVER
+	match String(st.atk):
+		"cleave":
+			st.t = 1.0
+			st.exposed = true
+		"slam":
+			st.t = 1.4
+			st.exposed = true
+		"volley": st.t = 0.6
+		"beam": st.t = 0.8
+		_: st.t = 0.5
+	if st.exposed:
+		w._text(w.sw.pos[i] + Vector2(0, -40), 0.0, Color("ffd84a"), 3, -1, "Exposed")
 
 # ---------------------------------------------------------------- rift guardian
 func spawn_guardian() -> void:

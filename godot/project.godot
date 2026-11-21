@@ -27,6 +27,7 @@ window/energy_saving/keep_screen_on=true
 [input_devices]
 
 pointing/emulate_touch_from_mouse=true
+pointing/emulate_touch_from_mouse.android=false
 
 [physics]
 
@@ -44,6 +45,7 @@ environment/defaults/default_clear_color=Color(0.04, 0.05, 0.08, 1)
 [debug]
 
 file_logging/enable_file_logging=true
+file_logging/enable_file_logging.android=false
 
 gdscript/warnings/inference_on_variant=1
 gdscript/warnings/untyped_declaration=0
