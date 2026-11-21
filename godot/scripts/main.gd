@@ -516,6 +516,8 @@ func _on_act(what: String, arg) -> void:
 			Save.mark_dirty()
 			start({"mode": "pinnacle"})
 		"stash": screens.show_stash(false)
+		"upgrades": screens.show_upgrades()
+		"endgame": screens.show_endgame()
 		"codex": screens.show_codex()
 		"web": screens.show_web()
 		"prophecy": screens.show_prophecies()

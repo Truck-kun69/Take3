@@ -7,6 +7,7 @@ extends Node3D
 const ORIGIN := Vector3(200000, 0, 0)
 const HERO_AT := Vector2(-45, 30)     # sim-space spot the hero stands on, between the braziers
 var frame_x := 0.62                   # where on screen (0..1) the hero should stand; set by the menu layout
+var frame_y := 0.5                    # and how far down (0 top, 1 bottom): portrait menus raise the hero
 var cam: Camera3D
 var hero: HeroRig
 var hero_id := ""
@@ -204,6 +205,8 @@ func _frame() -> void:
 	var aspect := vs.x / maxf(1.0, vs.y)
 	var half_h := atan(tan(deg_to_rad(cam.fov) * 0.5) * aspect)
 	cam.rotate_y(atan((frame_x - 0.5) * 2.0 * tan(half_h)))
+	# looking down by the angle of a point frame_y down the screen puts the hero there (fov is vertical)
+	cam.rotate_object_local(Vector3.RIGHT, -atan((0.5 - frame_y) * 2.0 * tan(deg_to_rad(cam.fov) * 0.5)))
 
 func show_stage(hero_index: int) -> void:
 	visible = true

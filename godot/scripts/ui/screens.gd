@@ -65,45 +65,183 @@ func _unhandled_key_input(ev: InputEvent) -> void:
 		act.emit("pick", c)
 
 # ================================================================= main menu
-## Character-select layout: the 3D stage (MenuStage3D) fills the screen with the chosen hero on the
-## right; a dark gradient on the left hosts the logo and a scrolling column of tiles. Portrait
-## phones get one full-width column over a stronger scrim.
+## Title screen, phone first. The 3D stage (MenuStage3D) fills the screen with the chosen exile in the
+## middle, under light scrims. Left: the logo, a Gold and Echoes pill, the four exiles and a compact bar
+## (Gear, Upgrades, Modes, Options). Bottom right, under the right thumb: the act to play and one large
+## PLAY button, which starts the campaign with the chosen exile at that act (the highest one unlocked,
+## unless another is picked with the act pill). Fragments, keys, torment, the season and moon and the
+## endgame modes live in Modes; crafting shards in Gear. Narrow windows stack everything in one column.
+const ROMAN := ["I", "II", "III", "IV", "V", "VI"]
+var _act_sel := -1                   # act picked with the act pill this session; -1 (or a sealed one): the highest open
+
+## Campaign acts that can be played (act i opens when act i - 1 is cleared).
+func _open_acts(d: Dictionary) -> Array[int]:
+	var out: Array[int] = []
+	for i in Content.STAGES.size():
+		if i == 0 or (i - 1 < d.cleared.size() and bool(d.cleared[i - 1])): out.append(i)
+	return out
+
+func _act_pick(d: Dictionary) -> int:
+	var open := _open_acts(d)
+	return _act_sel if open.has(_act_sel) else open[open.size() - 1]
+
 func show_menu() -> void:
 	_choices = []
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var d: Dictionary = Save.data
 	var vs := get_viewport_rect().size
+	var m := UIKit.safe_margins(vs)
 	var portrait := vs.x < 820.0
-	var wide := not portrait and vs.x >= 1100.0          # two columns, hero in between
-	var col_w := vs.x - 24.0 if portrait else (clampf(vs.x * 0.38, 440.0, 560.0) if wide else clampf(vs.x * 0.5, 440.0, 620.0))
-	var right_w := clampf(vs.x * 0.27, 320.0, 400.0)
+	var x0 := m.x + (12.0 if portrait else 32.0)
+	var col_w := vs.x - x0 - m.z - 12.0 if portrait else clampf(vs.x * 0.31, 390.0, 470.0)
+	var blk_w := clampf(vs.x * 0.29, 380.0, 440.0)
+	var bx := vs.x - m.z - 32.0 - blk_w                   # the PLAY block's left edge (landscape)
 	if main != null and main.menu_stage != null:
-		main.menu_stage.frame_x = 0.5 if portrait else ((col_w + 36.0 + vs.x - right_w - 36.0) * 0.5 / vs.x if wide else 0.76)
+		main.menu_stage.frame_x = 0.5 if portrait else ((x0 + col_w) + bx) * 0.5 / vs.x
+		main.menu_stage.frame_y = 0.3 if portrait else 0.5          # portrait: the exile above the column
 		main.menu_stage._frame()
-	# scrims: opaque behind the columns, clear over the hero
-	var gr := Gradient.new()
+	# scrims: behind the left column (and lightly behind the PLAY block); clear over the exile
 	var ink := Color(0.02, 0.016, 0.022)
-	gr.set_color(0, Color(ink, 0.94)); gr.set_color(1, Color(ink, 0.9 if wide else (0.55 if portrait else 0.0)))
-	gr.add_point(clampf((col_w + 30.0) / vs.x, 0.1, 0.95), Color(ink, 0.8))
-	gr.add_point(clampf((col_w + 170.0) / vs.x, 0.1, 0.96), Color(ink, 0.55 if portrait else 0.0))
-	if wide:
-		gr.add_point(clampf((vs.x - right_w - 170.0) / vs.x, 0.1, 0.97), Color(ink, 0.0))
-		gr.add_point(clampf((vs.x - right_w - 30.0) / vs.x, 0.1, 0.98), Color(ink, 0.8))
+	var gr := Gradient.new()
+	gr.set_color(0, Color(ink, 0.8)); gr.set_color(1, Color(ink, 0.5 if portrait else 0.3))
+	if not portrait:
+		gr.add_point(clampf((x0 + col_w + 20.0) / vs.x, 0.1, 0.9), Color(ink, 0.55))
+		gr.add_point(clampf((x0 + col_w + 150.0) / vs.x, 0.1, 0.92), Color(ink, 0.0))
+		gr.add_point(clampf((bx - 110.0) / vs.x, 0.15, 0.95), Color(ink, 0.0))
 	add_child(_grad_rect(gr, false))
 	var g2 := Gradient.new()
-	g2.set_color(0, Color(0, 0, 0, 0.55)); g2.set_color(1, Color(0, 0, 0, 0.75))
-	g2.add_point(0.16, Color(0, 0, 0, 0)); g2.add_point(0.78, Color(0, 0, 0, 0))
+	g2.set_color(0, Color(0, 0, 0, 0.35)); g2.set_color(1, Color(0, 0, 0, 0.45))
+	g2.add_point(0.14, Color(0, 0, 0, 0)); g2.add_point(0.8, Color(0, 0, 0, 0))
 	add_child(_grad_rect(g2, true))
-	# left column: identity, exiles, utility
-	var v := _column(Vector2(12.0 if portrait else 36.0, 0), Vector2(col_w, vs.y))
+	var v := _column(Vector2(x0, m.y), Vector2(col_w, vs.y - m.y - m.w))
+	if portrait: v.alignment = BoxContainer.ALIGNMENT_END        # the logo and controls below the exile
 	var logo := TextureRect.new()
 	logo.texture = UIKit.tex("logo")
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(0, (col_w - 14.0) * float(logo.texture.get_height()) / float(logo.texture.get_width()))
+	var lw := minf(col_w - 14.0, 430.0)
+	logo.custom_minimum_size = Vector2(0, lw * float(logo.texture.get_height()) / float(logo.texture.get_width()))
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(logo)
+	v.add_child(_purse(d))
+	v.add_child(_spacer(8))
+	v.add_child(_section("Choose your exile"))
+	var hg := _grid(2, 8)
+	for i in Content.HEROES.size():
+		var h: Dictionary = Content.HEROES[i]
+		var t := UIKit.tile(h.name, "", func(): Save.data.hero = i; Save.mark_dirty(); act.emit("hero", i); show_menu(), Content.col(h.col), i == int(d.hero), 54)
+		t.tooltip_text = "%s Ultimate: %s. %s" % [h.blurb, h.ult, h.ult_d]
+		hg.add_child(t)
+	v.add_child(hg)
+	if portrait:
+		v.add_child(_spacer(6))
+		v.add_child(_play_block(d))
+	v.add_child(_spacer(8))
+	v.add_child(_menu_bar(d))
+	# keyboard help only without a touchscreen (UIKit.is_touch: DisplayServer.is_touchscreen_available())
+	if not UIKit.is_touch():
+		var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
+		help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(help)
+	if not portrait:
+		var blk := _play_block(d)
+		add_child(blk)
+		var bh := blk.get_combined_minimum_size().y
+		blk.position = Vector2(bx, vs.y - m.w - 26.0 - bh)
+		blk.size = Vector2(blk_w, bh)
+		_hero_plate(Content.HEROES[int(d.hero)], x0 + col_w + 24.0, bx - 24.0, vs.y - m.w - 18.0)
+
+## The act pill (previous, the act, next; tapping the act steps through the open ones) over PLAY.
+func _play_block(d: Dictionary) -> VBoxContainer:
+	var b := UIKit.vbox(10)
+	var acts := _open_acts(d)
+	var cur := _act_pick(d)
+	var k := acts.find(cur)
+	var s: Dictionary = Content.STAGES[cur]
+	var ar := UIKit.hbox(6)
+	var prev := _step_btn("\u2039", func(): _act_sel = acts[maxi(0, k - 1)]; show_menu(), 64)
+	prev.disabled = k <= 0
+	var cleared: bool = cur < d.cleared.size() and bool(d.cleared[cur])
+	var at := UIKit.tile(String(s.name), "Act %s of %s%s" % [ROMAN[cur], ROMAN[Content.STAGES.size() - 1], "  \u00b7  cleared" if cleared else ""],
+		func(): _act_sel = acts[(k + 1) % acts.size()]; show_menu(), Content.col(s.acc), false, 64)
+	at.tooltip_text = String(s.blurb)
+	var nxt := _step_btn("\u203a", func(): _act_sel = acts[mini(acts.size() - 1, k + 1)]; show_menu(), 64)
+	nxt.disabled = k >= acts.size() - 1
+	for c in [prev, at, nxt]: ar.add_child(c)
+	b.add_child(ar)
+	var tm := int(d.get("torment", 0))
+	var sub := "%s  \u00b7  Act %s%s" % [Content.HEROES[int(d.hero)].name, ROMAN[cur], ("  \u00b7  " + String(Content.TORMENT[tm].name)) if tm > 0 else ""]
+	var play := UIKit.tile("PLAY", sub, func(): act.emit("campaign", cur), UIKit.GOLD, true, 104)
+	var pt: Label = play.get_meta("title_label")
+	pt.add_theme_font_override("font", UIKit.font("display_heavy"))
+	pt.add_theme_font_size_override("font_size", 46)
+	b.add_child(play)
+	return b
+
+## Gear, Upgrades (Shard Web and Codex), Modes (the endgame) and Options in one compact row.
+func _menu_bar(d: Dictionary) -> HBoxContainer:
+	var row := UIKit.hbox(6)
+	var unspent := int(d.get("echoes", 0)) > 0
+	var prophecy := not (d.prophecy.active as Dictionary).is_empty()
+	for e in [["Gear", "stash"], ["Upgrades", "upgrades"], ["Modes", "endgame"], ["Options", "options"]]:
+		var b := UIKit.button(e[0], func(): act.emit(e[1], null), 50)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 16)
+		if (e[1] == "upgrades" and unspent) or (e[1] == "endgame" and prophecy):
+			b.add_theme_color_override("font_color", Color("ffd27a"))        # something waits in there
+		row.add_child(b)
+	return row
+
+## Gold and unspent Echoes in one small pill.
+func _purse(d: Dictionary) -> CenterContainer:
+	var c := CenterContainer.new()
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.035, 0.03, 0.04, 0.85)
+	sb.border_color = Color(0.62, 0.45, 0.24, 0.75)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(16)
+	sb.content_margin_left = 18; sb.content_margin_right = 18; sb.content_margin_top = 4; sb.content_margin_bottom = 4
+	p.add_theme_stylebox_override("panel", sb)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row := UIKit.hbox(16)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for f in _resources(d, [["Gold", int(d.gold), UIKit.GOLD], ["Echoes", int(d.get("echoes", 0)), Color("9fd8ff")]]).get_children():
+		f.get_parent().remove_child(f)
+		row.add_child(f)
+	p.add_child(row)
+	c.add_child(p)
+	return c
+
+## A square step button (previous / next, minus / plus) with a glyph large enough to read and hit.
+func _step_btn(txt: String, cb: Callable, h: int) -> Button:
+	var b := UIKit.button(txt, cb, h)
+	b.custom_minimum_size.x = 54
+	b.add_theme_font_size_override("font_size", 30)
+	return b
+
+# ================================================================= Upgrades and Modes (from the menu bar)
+func show_upgrades() -> void:
+	var v := _open(820)
+	var d: Dictionary = Save.data
+	_title(v, "Upgrades", "Spend Echoes in the Shard Web; set the legendary powers you have extracted.")
+	var g := _grid(1 if get_viewport_rect().size.x < 820.0 else 2, 10)
+	var e := int(d.get("echoes", 0))
+	g.add_child(UIKit.tile("Shard Web", ("%d Echoes to spend" % e) if e > 0 else "Passive skills, bought with Echoes", func(): act.emit("web", null), Color("9fd8ff"), e > 0, 84))
+	g.add_child(UIKit.tile("Codex", "%d of %d legendary powers active" % [(d.codex_active as Array).size(), Content.CODEX_SLOTS], func(): act.emit("codex", null), Color("ff9a4a"), false, 84))
+	v.add_child(g)
+	_back(v)
+
+## The endgame and everything that feeds it: this season and tonight's moon, your nemesis, fragments and
+## rift keys, the Daily Rift, prophecies, the Atlas, the Shard Herald, Greater Rifts and Torment.
+func show_endgame() -> void:
+	var v := _open(1000)
+	var d: Dictionary = Save.data
+	var portrait := get_viewport_rect().size.x < 820.0
+	var unlocked := bool(d.cleared[0])
+	_title(v, "Modes", "Daily rifts and prophecies are always open. The rest of the endgame opens when Mossglen Hollow falls." if not unlocked else "")
 	var sea := Save.season()
 	var sh := UIKit.hbox(8)
 	sh.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -113,77 +251,18 @@ func show_menu() -> void:
 	sh.add_child(sd)
 	v.add_child(sh)
 	v.add_child(_sky_row())
-	v.add_child(_resources(d))
 	if Save.has_nemesis():
 		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, UIKit.EMBER, true, "italic")
 		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(nl)
-	v.add_child(_section("Choose your exile"))
-	var hg := _grid(2)
-	for i in Content.HEROES.size():
-		var h: Dictionary = Content.HEROES[i]
-		var t := UIKit.tile(h.name, h.blurb, func(): Save.data.hero = i; Save.mark_dirty(); act.emit("hero", i); show_menu(), Content.col(h.col), i == int(d.hero), 68)
-		t.tooltip_text = "Ultimate: %s. %s" % [h.ult, h.ult_d]
-		hg.add_child(t)
-	v.add_child(hg)
-	# the journey: campaign + endgame (its own column on wide screens)
-	var j := v
-	if wide:
-		j = _column(Vector2(vs.x - right_w - 36.0, 0), Vector2(right_w, vs.y))
-	_journey(j, d, wide)
-	if wide:
-		v.add_child(_spacer(4))
-	var row := _grid(3, 8)
-	var unspent := int(d.get("echoes", 0))
+	v.add_child(_resources(d, [["Rupture", int(d.fragments.rupture), Color("ff6a4a")], ["Greed", int(d.fragments.greed), Color("ffd24a")],
+		["Dread", int(d.fragments.dread), Color("b890ff")], ["Rift key", int(d.gr_key), Color("c48aff")]]))
+	var th := 62
+	var eg := _grid(1 if portrait else 2, 8)
 	var act_p: Dictionary = d.prophecy.active
-	for pair in [["Gear & Cube", "stash"], ["Shard Web" + ("  (%d)" % unspent if unspent > 0 else ""), "web"], ["Prophecy" + (" \u2605" if not act_p.is_empty() else ""), "prophecy"],
-			["Daily Rift", "daily"], ["Codex", "codex"], ["Options", "options"]]:
-		var b3 := UIKit.button(pair[0], func(): act.emit(pair[1], null), 50)
-		b3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if pair[1] == "prophecy" and not act_p.is_empty():
-			b3.add_theme_color_override("font_color", Color("ffd27a"))
-			b3.tooltip_text = "%s  Reward: %s" % [Content.PROPHECIES[act_p.id].d, Content.PROPHECY_REWARDS[act_p.reward]]
-		row.add_child(b3)
-	v.add_child(row)
-	var help := UIKit.label("WASD or drag to move  \u00b7  Space roll  \u00b7  R ultimate  \u00b7  1 2 flasks  \u00b7  Esc pause", 14, UIKit.DIM, true, "italic")
-	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(help)
-	v.add_child(_spacer(10))
-	if not portrait:
-		_hero_plate(Content.HEROES[int(d.hero)], vs, col_w, right_w if wide else 0.0)
-
-func _journey(j: VBoxContainer, d: Dictionary, wide: bool) -> void:
-	var th := 64 if wide else 68
-	j.add_child(_section("Campaign"))
-	var sg := _grid(1 if wide else 2, 8)
-	for i in Content.STAGES.size():
-		var s: Dictionary = Content.STAGES[i]
-		var open: bool = i == 0 or (i - 1 < d.cleared.size() and bool(d.cleared[i - 1]))
-		var t2 := UIKit.tile("%s  %s" % [["I", "II", "III", "IV", "V", "VI"][i], s.name], s.blurb if open else "Sealed until the previous act falls", func(): act.emit("campaign", i), Content.col(s.acc), false, th)
-		_lock(t2, not open)
-		if i < d.cleared.size() and bool(d.cleared[i]):
-			_cleared_mark(t2)
-			t2.tooltip_text = "Cleared"
-		sg.add_child(t2)
-	j.add_child(sg)
-	# torment: optional difficulty for the campaign, atlas and pinnacle
-	var tm := int(d.get("torment", 0))
-	var tmax := int(d.get("torment_max", 0))
-	var trow := UIKit.hbox(6)
-	var tdec := UIKit.button("\u2212", func(): Save.data.torment = maxi(0, int(Save.data.torment) - 1); Save.mark_dirty(); show_menu(), 52)
-	tdec.custom_minimum_size.x = 48
-	tdec.disabled = tm <= 0
-	var T: Dictionary = Content.TORMENT[tm]
-	var tsub := ("+%d%% loot  \u00b7  foes x%.1f life" % [int(float(T.loot) * 100), float(T.hp)]) if tm > 0 else ("Win a run to unlock Torment I" if tmax == 0 else "Foes and loot as intended")
-	var tt := UIKit.tile(String(T.name), tsub, func(): pass, Color("b3242c") if tm > 0 else Color(0.7, 0.68, 0.66), tm > 0, 52)
-	var tinc := UIKit.button("+", func(): Save.data.torment = mini(int(Save.data.torment_max), int(Save.data.torment) + 1); Save.mark_dirty(); show_menu(), 52)
-	tinc.custom_minimum_size.x = 48
-	tinc.disabled = tm >= tmax
-	for c in [tdec, tt, tinc]: trow.add_child(c)
-	j.add_child(trow)
-	j.add_child(_section("Endgame"))
-	var unlocked := bool(d.cleared[0])
-	var eg := _grid(1 if wide else 2, 8)
+	eg.add_child(UIKit.tile("Daily Rift", "The same seeded rift for everyone today", func(): act.emit("daily", null), Color("ffd27a"), false, th))
+	var pr := UIKit.tile("Prophecy" + (" \u2605" if not act_p.is_empty() else ""), (String(Content.PROPHECIES[act_p.id].d)) if not act_p.is_empty() else "Take a contract before a run, for a reward you choose", func(): act.emit("prophecy", null), Color("e8b54e"), not act_p.is_empty(), th)
+	eg.add_child(pr)
 	var atl := UIKit.tile("Atlas of Falls", "Chart the shattered maps" if unlocked else "Clear Mossglen Hollow to unlock", func(): show_atlas(), Color("8fd8ff"), false, th)
 	_lock(atl, not unlocked)
 	eg.add_child(atl)
@@ -191,33 +270,46 @@ func _journey(j: VBoxContainer, d: Dictionary, wide: bool) -> void:
 	var pin := UIKit.tile("The Shard Herald", "Offer three fragments" if have else "Needs Rupture, Greed and Dread fragments", func(): act.emit("pinnacle", null), Color("ff5a4a"), false, th)
 	_lock(pin, not have)
 	eg.add_child(pin)
-	j.add_child(eg)
+	v.add_child(eg)
 	var grs := int(d.get("gr_sel", d.gr_key))
 	var grow := UIKit.hbox(6)
-	var dec := UIKit.button("\u2212", func(): Save.data.gr_sel = maxi(1, int(Save.data.get("gr_sel", Save.data.gr_key)) - 1); show_menu(), th)
-	dec.custom_minimum_size.x = 48
+	var dec := _step_btn("\u2212", func(): Save.data.gr_sel = maxi(1, int(Save.data.get("gr_sel", Save.data.gr_key)) - 1); show_endgame(), th)
 	dec.disabled = not unlocked or grs <= 1
-	var grt := UIKit.tile("Greater Rift %d" % grs, "Best %d  \u00b7  keys to %d" % [int(d.gr_best), int(d.gr_key)], func(): act.emit("rift", int(Save.data.get("gr_sel", Save.data.gr_key))), Color("c48aff"), false, th)
+	var grt := UIKit.tile("Greater Rift %d" % grs, ("Best %d  \u00b7  keys to %d" % [int(d.gr_best), int(d.gr_key)]) if unlocked else "Clear Mossglen Hollow to unlock", func(): act.emit("rift", int(Save.data.get("gr_sel", Save.data.gr_key))), Color("c48aff"), false, th)
 	_lock(grt, not unlocked)
-	var inc := UIKit.button("+", func(): Save.data.gr_sel = mini(int(Save.data.gr_key), int(Save.data.get("gr_sel", Save.data.gr_key)) + 1); show_menu(), th)
-	inc.custom_minimum_size.x = 48
+	var inc := _step_btn("+", func(): Save.data.gr_sel = mini(int(Save.data.gr_key), int(Save.data.get("gr_sel", Save.data.gr_key)) + 1); show_endgame(), th)
 	inc.disabled = not unlocked or grs >= int(d.gr_key)
 	for c in [dec, grt, inc]: grow.add_child(c)
-	j.add_child(grow)
+	v.add_child(grow)
+	# torment: the optional difficulty of the campaign, the atlas and the herald (PLAY shows it when on)
+	var tm := int(d.get("torment", 0))
+	var tmax := int(d.get("torment_max", 0))
+	var trow := UIKit.hbox(6)
+	var tdec := _step_btn("\u2212", func(): Save.data.torment = maxi(0, int(Save.data.torment) - 1); Save.mark_dirty(); show_endgame(), th)
+	tdec.disabled = tm <= 0
+	var T: Dictionary = Content.TORMENT[tm]
+	var tsub := ("+%d%% loot  \u00b7  foes x%.1f life" % [int(float(T.loot) * 100), float(T.hp)]) if tm > 0 else ("Win a run to unlock Torment I" if tmax == 0 else "Foes and loot as intended")
+	var tt := UIKit.tile(String(T.name), tsub, func(): pass, Color("b3242c") if tm > 0 else Color(0.7, 0.68, 0.66), tm > 0, th)
+	var tinc := _step_btn("+", func(): Save.data.torment = mini(int(Save.data.torment_max), int(Save.data.torment) + 1); Save.mark_dirty(); show_endgame(), th)
+	tinc.disabled = tm >= tmax
+	for c in [tdec, tt, tinc]: trow.add_child(c)
+	v.add_child(trow)
+	_back(v)
 
-## Hero name, ultimate and element, centred under the hero between the columns.
-func _hero_plate(h: Dictionary, vs: Vector2, left_w: float, right_w: float) -> void:
-	var x0 := left_w + 36.0
-	var x1 := vs.x - (right_w + 36.0 if right_w > 0.0 else 24.0)
+## Hero name, kit, ultimate and element, centred under the hero between the column and the PLAY block.
+func _hero_plate(h: Dictionary, x0: float, x1: float, bottom: float) -> void:
 	var plate := UIKit.vbox(0)
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(plate)
-	plate.position = Vector2(x0, vs.y - 150.0)
-	plate.size = Vector2(x1 - x0, 130.0)
+	plate.position = Vector2(x0, bottom - 150.0)
+	plate.size = Vector2(maxf(120.0, x1 - x0), 150.0)
 	plate.alignment = BoxContainer.ALIGNMENT_END
-	var nm := UIKit.label(String(h.name).to_upper(), 42, Content.col(h.col).lerp(UIKit.TEXT, 0.4), false, "display_heavy")
+	var nm := UIKit.label(String(h.name).to_upper(), 40, Content.col(h.col).lerp(UIKit.TEXT, 0.4), false, "display_heavy")
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	plate.add_child(nm)
+	var bl := UIKit.label(String(h.blurb), 16, Color("cfc5b0"), true, "italic")
+	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	plate.add_child(bl)
 	plate.add_child(UIKit.divider())
 	var ul := UIKit.label("%s  \u00b7  %s" % [String(h.ult).to_upper(), Content.EL_NAME[h.elem].to_upper()], 15, UIKit.GOLD, false, "label")
 	ul.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -293,23 +385,27 @@ func _section(txt: String) -> HBoxContainer:
 			h.add_child(r)
 	return h
 
-## Gold, fragments, keys and crafting shards as a strip of numbers in small slots.
-func _resources(d: Dictionary) -> HFlowContainer:
+## A strip of numbers in small slots: [[name, amount, colour], ...]. With no list: the crafting shards
+## you hold (Gear shows them).
+func _resources(d: Dictionary, items: Array = []) -> HFlowContainer:
 	var f := HFlowContainer.new()
 	f.alignment = FlowContainer.ALIGNMENT_CENTER
 	f.add_theme_constant_override("h_separation", 14)
 	f.add_theme_constant_override("v_separation", 4)
-	var items := [["Gold", int(d.gold), UIKit.GOLD], ["Rupture", int(d.fragments.rupture), Color("ff6a4a")], ["Greed", int(d.fragments.greed), Color("ffd24a")],
-		["Dread", int(d.fragments.dread), Color("b890ff")], ["Rift key", int(d.gr_key), Color("c48aff")]]
-	for c in Content.CURRENCY_IDS:
-		if int(d.currency[c]) > 0: items.append([Content.CURRENCY[c].name, int(d.currency[c]), Content.col(Content.CURRENCY[c].col)])
-	for it in items:
+	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var list := items.duplicate()
+	if list.is_empty():
+		for c in Content.CURRENCY_IDS:
+			if int(d.currency[c]) > 0: list.append([Content.CURRENCY[c].name, int(d.currency[c]), Content.col(Content.CURRENCY[c].col)])
+	for it in list:
 		var h := UIKit.hbox(5)
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var gem := ColorRect.new()
 		gem.color = it[2]
 		gem.custom_minimum_size = Vector2(7, 7)
 		gem.rotation = PI / 4.0
 		gem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		gem.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		h.add_child(gem)
 		h.add_child(UIKit.label(str(it[1]), 17, UIKit.TEXT, false, "num"))
 		h.add_child(UIKit.label(String(it[0]), 15, UIKit.DIM, false, "italic"))
@@ -338,7 +434,7 @@ func show_atlas() -> void:
 		var run := UIKit.button("Run this map", func(): act.emit("atlas", _sel_node), 64)
 		run.disabled = not bool(n.open)
 		v.add_child(run)
-	_back(v)
+	_back(v, "endgame")
 
 # ================================================================= stash / crafting / cube
 func _gear_list() -> Array:
@@ -353,6 +449,7 @@ func _gear_list() -> Array:
 func show_stash(in_run: bool = false) -> void:
 	var v := _open(1200)
 	_title(v, "Gear, Crafting & Cube", "Select an item, then apply a shard. Legendary items dissolve in the Cube and keep their power in the Codex forever.")
+	v.add_child(_resources(Save.data))                     # the crafting shards you hold
 	var list := _gear_list()
 	var portrait := get_viewport_rect().size.x < 820.0
 	var cols: BoxContainer = UIKit.vbox(14) if portrait else UIKit.hbox(18)
@@ -493,7 +590,7 @@ func show_web() -> void:
 		show_web(), 48)
 	reset.disabled = taken.size() <= 1
 	side.add_child(reset)
-	side.add_child(UIKit.button("Back", func(): act.emit("menu", null), 48))
+	side.add_child(UIKit.button("Back", func(): act.emit("upgrades", null), 48))
 
 func show_codex() -> void:
 	var v := _open(1100)
@@ -564,7 +661,7 @@ func show_codex() -> void:
 		row.add_child(dl)
 		ar.add_child(row)
 	tabs.add_child(_scroll(ar, "Arsenal"))
-	_back(v)
+	_back(v, "upgrades")
 
 func _scroll(c: Control, nm: String) -> ScrollContainer:
 	var s := ScrollContainer.new()
@@ -694,7 +791,7 @@ func show_daily(msg: String = "") -> void:
 		var hv := UIKit.label(hl.strip_edges(), 16, UIKit.DIM, true, "body")
 		hv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(hv)
-	v.add_child(UIKit.button("Back", func(): act.emit("menu", null), 50))
+	v.add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
 
 ## Prophecies: three offers, each with three rewards to choose from; the active one can be abandoned.
 func show_prophecies() -> void:
@@ -739,7 +836,7 @@ func show_prophecies() -> void:
 	var dn := UIKit.label("Prophecies fulfilled: %d" % int(P.done), 15, UIKit.DIM, true, "italic")
 	dn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(dn)
-	v.add_child(UIKit.button("Back", func(): act.emit("menu", null), 50))
+	v.add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
 
 ## Shown on launch after a session that ended without closing cleanly: the tail of its breadcrumb
 ## trail and the engine's errors, small enough to fit one screenshot.
