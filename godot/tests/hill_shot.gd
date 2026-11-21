@@ -2,7 +2,7 @@ extends Node
 ## One frame on a hillside from the game camera: foes, crystals, shots of both sides, loot and debris on
 ## the slopes. For checking heights, enemy-shot contrast, foe readability and the hero's x-ray by eye.
 ##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/hill_shot.tscn -- <out.png> [stage]
-## Env: HILL_GLOOM=1 full darkness (eclipse); HILL_XRAY=1 parks the hero behind a tall prop.
+## Env: HILL_GLOOM=1 full darkness (the lantern out); HILL_XRAY=1 stands a pillar between camera and hero.
 var main: Node
 var out := "user://hill.png"
 var stage := 1
@@ -62,12 +62,21 @@ func _process(dt: float) -> void:
 					var es := World.Proj.new()
 					es.pos = w.pp + Vector2.from_angle(k * 0.8 + 0.3) * (120.0 + 20.0 * k); es.vel = (w.pp - es.pos).normalized() * 40.0; es.life = 20.0; es.r = 7.0
 					w.eshots.append(es)
-				if OS.get_environment("HILL_GLOOM") != "": w.set("eclipse_t", 999.0)
+				if OS.get_environment("HILL_XRAY") != "":        # a pillar between the camera and the hero
+					var v: WorldView3D = main.view3d
+					var box := MeshInstance3D.new()
+					var bm := BoxMesh.new(); bm.size = Vector3(70, 220, 34)
+					box.mesh = bm
+					var mat := StandardMaterial3D.new(); mat.albedo_color = Color(0.35, 0.33, 0.32)
+					box.material_override = mat
+					v.add_child(box)
+					box.position = Vector3(w.pp.x, v.ground_y(w.pp) + 110.0, w.pp.y + 60.0)
 				phase = 2
 				t = 0.0
 		2:
 			var w: World = main.world
 			w.in_move = Vector2.ZERO
+			if OS.get_environment("HILL_GLOOM") != "": w.light = 0.0          # the lantern out: full gloom
 			if t > 2.5:
 				phase = 3
 				await RenderingServer.frame_post_draw

@@ -4,7 +4,7 @@ extends Control
 ##  - damage numbers (pop, rise, fade; crits larger and gold; reaction names in their colour)
 ##  - PoE-style loot labels: dark plate, rarity-coloured border and name, for magic and better
 ##  - boss / exile nameplates with health, elite affix tags, event timers and object names
-##  - a constant soft vignette that frames the action (PoE2's look)
+##  - a constant soft vignette that frames the action (PoE2's look), at most VIGNETTE_MAX alpha
 
 var view: WorldView3D
 var font: Font                     # damage numbers (Alegreya Sans black)
@@ -12,6 +12,7 @@ var f_name: Font                   # reactions, boss / exile names (Cinzel)
 var f_tag: Font                    # events, affixes (Marcellus SC)
 var f_loot: Font                   # loot plates (EB Garamond)
 var _vig: ColorRect
+const VIGNETTE_MAX := 0.35
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -25,8 +26,9 @@ func _ready() -> void:
 	_vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sm := ShaderMaterial.new()
 	var sh := Shader.new()
-	# gloom (the lantern running low) pulls the dark ring in toward the hero
-	sh.code = "shader_type canvas_item; uniform float gloom = 0.0; void fragment(){ vec2 d = (UV - 0.5) * vec2(1.2, 1.0); float r = length(d); float a = smoothstep(0.45, 0.85, r) * 0.55; a = max(a, smoothstep(0.46 - 0.18 * gloom, 0.85 - 0.2 * gloom, r) * 0.8 * gloom); COLOR = vec4(0.0, 0.0, 0.03, a); }"
+	# gloom (the lantern running low) pulls the dark ring in toward the hero. Never darker than VIGNETTE_MAX
+	# anywhere (it reached 0.8 in gloom and buried the edges of the screen)
+	sh.code = "shader_type canvas_item; uniform float gloom = 0.0; void fragment(){ vec2 d = (UV - 0.5) * vec2(1.2, 1.0); float r = length(d); float a = smoothstep(0.45, 0.85, r) * 0.3; a = max(a, smoothstep(0.46 - 0.18 * gloom, 0.85 - 0.2 * gloom, r) * %.2f * gloom); COLOR = vec4(0.0, 0.0, 0.03, min(a, %.2f)); }" % [VIGNETTE_MAX, VIGNETTE_MAX]
 	sm.shader = sh
 	_vig.material = sm
 	add_child(_vig)

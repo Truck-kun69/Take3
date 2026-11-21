@@ -40,10 +40,10 @@ var _cape_a := 0.0
 var _prev_pos := Vector3.ZERO
 
 static var _shader: Shader
-static func char_mat(c: Color, kind: int, rough: float = 0.7, metal: float = 0.0, emis: Color = Color.BLACK, ei: float = 0.0) -> ShaderMaterial:
+static func char_mat(c: Color, kind: int, rough: float = 0.7, metal: float = 0.0, emis: Color = Color.BLACK, ei: float = 0.0, sh: Shader = null) -> ShaderMaterial:
 	if _shader == null: _shader = load("res://shaders/3d/char.gdshader")
 	var m := ShaderMaterial.new()
-	m.shader = _shader
+	m.shader = sh if sh != null else _shader
 	m.set_shader_parameter("albedo", c)
 	m.set_shader_parameter("kind", kind)
 	m.set_shader_parameter("roughness", rough)
@@ -51,6 +51,48 @@ static func char_mat(c: Color, kind: int, rough: float = 0.7, metal: float = 0.0
 	m.set_shader_parameter("emission", emis)
 	m.set_shader_parameter("emission_energy", ei)
 	return m
+
+# ---------------------------------------------------------------- x-ray silhouette (the player's hero only)
+## Where anything stands between the camera and the hero (a tree, a pillar, a wall of foes), the hidden
+## parts show as a translucent silhouette in the hero's colour. Every hero material writes XRAY_REF into
+## the stencil buffer where the hero is visible, and carries XRAY_CODE as its next pass: drawn only where
+## the depth test fails (depth_test_inverted, i.e. behind something) and the stencil does not hold
+## XRAY_REF, so the hero's own overlapping parts never tint each other. Attached in _tag_meshes (authored
+## models) and at the end of _build_procedural. Set xray before build(); exiles and the menu hero leave it off.
+const XRAY_REF := 2
+const XRAY_CODE := """shader_type spatial;
+render_mode unshaded, depth_test_inverted, depth_draw_never, cull_back, blend_mix, shadows_disabled, fog_disabled;
+stencil_mode read, write, compare_not_equal, %d;
+uniform vec4 tint : source_color = vec4(1.0, 0.85, 0.6, 0.45);
+void fragment() {
+	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
+	ALBEDO = mix(tint.rgb, vec3(1.0), rim * 0.35);
+	ALPHA = tint.a * (0.6 + 0.4 * rim);
+}"""
+var xray := false
+var _xray_mat: ShaderMaterial
+static var _xray_shader: Shader
+static var _stencil_char: Shader
+
+## The silhouette pass, one material per rig, tinted with the hero's colour (alpha 0.45 at the rim).
+func _xray() -> ShaderMaterial:
+	if _xray_mat == null:
+		if _xray_shader == null:
+			_xray_shader = Shader.new()
+			_xray_shader.code = XRAY_CODE % XRAY_REF
+		_xray_mat = ShaderMaterial.new()
+		_xray_mat.shader = _xray_shader
+		var t := col.lightened(0.3)
+		_xray_mat.set_shader_parameter("tint", Color(t.r, t.g, t.b, 0.45))
+	return _xray_mat
+
+## char.gdshader with a stencil write of XRAY_REF, for the procedural hero's parts.
+static func _char_stencil() -> Shader:
+	if _stencil_char == null:
+		var base: Shader = load("res://shaders/3d/char.gdshader")
+		_stencil_char = Shader.new()
+		_stencil_char.code = base.code.replace("shader_type spatial;", "shader_type spatial;\nstencil_mode write, compare_always, %d;" % XRAY_REF)
+	return _stencil_char
 
 func build(id: String, c: Color) -> void:
 	hero_id = id
@@ -93,10 +135,12 @@ func _tag_meshes(n: Node, fm: ShaderMaterial) -> void:
 			d.rim_enabled = true
 			d.rim = 0.55
 			d.rim_tint = 0.35
-			# seen through anything that stands between the camera and the hero (a stencil-based x-ray in
-			# the hero's colour): props no longer fade themselves out with a per-pixel discard
-			d.stencil_mode = BaseMaterial3D.STENCIL_MODE_XRAY
-			d.stencil_color = Color(col.r, col.g, col.b, 0.55).lightened(0.3)
+			if xray:                       # write XRAY_REF where visible; draw the silhouette pass where hidden
+				d.stencil_mode = BaseMaterial3D.STENCIL_MODE_CUSTOM
+				d.stencil_flags = BaseMaterial3D.STENCIL_FLAG_WRITE
+				d.stencil_compare = BaseMaterial3D.STENCIL_COMPARE_ALWAYS
+				d.stencil_reference = XRAY_REF
+				d.next_pass = _xray()
 			mi.set_surface_override_material(i, d)
 			if String(m.resource_name).begins_with("glow"):
 				_glow_over.append([d, d.emission_energy_multiplier])
@@ -110,7 +154,7 @@ func _find_anim(n: Node) -> AnimationPlayer:
 	return null
 
 func _m(c: Color, kind: int, rough: float = 0.7, metal: float = 0.0, emis: Color = Color.BLACK, ei: float = 0.0) -> ShaderMaterial:
-	var m := char_mat(c, kind, rough, metal, emis, ei)
+	var m := char_mat(c, kind, rough, metal, emis, ei, _char_stencil() if xray else null)
 	_mats.append(m)
 	if kind >= 4: _glow_mats.append(m)
 	return m
@@ -228,6 +272,8 @@ func _build_procedural() -> void:
 		"spark": _spark(cloth, cloth_d, leather, brass, skin)
 		"ember": _ember(cloth, cloth_d, leather, steel_d, skin)
 		_: _storm(cloth, cloth_d, leather, brass, skin)
+	if xray:                               # the silhouette pass on every part (their shader writes XRAY_REF: _m)
+		for m in _mats: m.next_pass = _xray()
 
 # ---------------------------------------------------------------- class kits
 func _warden(steel: Material, steel_d: Material, brass: Material, leather: Material, cloth: Material, rune: Material) -> void:

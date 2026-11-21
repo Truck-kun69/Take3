@@ -309,6 +309,7 @@ func bind(world: World) -> void:
 		_foe_mm[k].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if hq else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if hero != null: hero.queue_free()
 	hero = HeroRig.new()
+	hero.xray = true                  # the silhouette through props and crowds (HeroRig.XRAY_CODE)
 	hero.scale = Vector3.ONE * 1.3
 	add_child(hero)
 	var h: Dictionary = Content.HEROES[w.hero]

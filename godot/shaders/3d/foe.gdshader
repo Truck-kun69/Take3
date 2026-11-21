@@ -105,8 +105,8 @@ void fragment() {
 	vec4 nz = texture(g_noise, (mp.xy + mp.z * vec2(0.71, 0.37)) * 0.2);
 	float n = clamp(0.5 + (nz.r - 0.5) * 1.25, 0.0, 1.0);
 	float vein = smoothstep(0.035, 0.0, abs(nz.b - 0.5));
-	// grim and dark (loop 1: foes read as clean pink plastic)
-	base = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))), 0.35) * 0.55;
+	// grim but readable: 15% desaturated at 85% brightness (35% at 55% sank the swarm into dark floors)
+	base = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))), 0.15) * 0.85;
 	base *= 0.68 + 0.5 * n;
 	base *= mix(0.45, 1.0, smoothstep(0.0, 1.2, v_mpos.y));
 	base = mix(base, base * vec3(0.5, 0.25, 0.22), vein * 0.6);
@@ -145,6 +145,6 @@ void fragment() {
 	ALBEDO = base;
 	ROUGHNESS = rough;
 	EMISSION = em;
-	RIM = 0.6;
+	RIM = 0.8;                                           // a crisp edge light: silhouettes against the ground
 	RIM_TINT = 0.5;
 }

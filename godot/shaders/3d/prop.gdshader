@@ -2,8 +2,8 @@ shader_type spatial;
 render_mode diffuse_burley;
 // Instanced props. Tail channel sways in the wind; glow channel (crystals) emits the stage accent.
 // Fully opaque, no discard: props keep the GPU's early depth rejection. A hero standing behind a tall
-// prop is shown by the hero's own silhouette pass (HeroRig, depth_test_inverted) instead of the old
-// dithered fade, which discarded pixels on every prop.
+// prop is shown by the hero's own silhouette pass (HeroRig.XRAY_CODE: depth_test_inverted, masked by
+// the stencil the hero writes) instead of the old dithered fade, which discarded pixels on every prop.
 uniform float time = 0.0;
 uniform vec3 tint : source_color = vec3(1.0);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
