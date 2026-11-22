@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bignq28qr4eje"
-path.s3tc="res://.godot/imported/runner_texture.png-d91adf17a99ded72cb39f6cf2d6ced46.s3tc.ctex"
-path.etc2="res://.godot/imported/runner_texture.png-d91adf17a99ded72cb39f6cf2d6ced46.etc2.ctex"
+uid="uid://c0wi73wib0mk2"
+path.s3tc="res://.godot/imported/runner_albedo_2048.png-1b89a7f55d3ae6e7f7079bf18f0b9dbe.s3tc.ctex"
+path.etc2="res://.godot/imported/runner_albedo_2048.png-1b89a7f55d3ae6e7f7079bf18f0b9dbe.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -15,8 +15,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://models/foes/runner_texture.png"
-dest_files=["res://.godot/imported/runner_texture.png-d91adf17a99ded72cb39f6cf2d6ced46.s3tc.ctex", "res://.godot/imported/runner_texture.png-d91adf17a99ded72cb39f6cf2d6ced46.etc2.ctex"]
+source_file="res://models/foes/runner_albedo_2048.png"
+dest_files=["res://.godot/imported/runner_albedo_2048.png-1b89a7f55d3ae6e7f7079bf18f0b9dbe.s3tc.ctex", "res://.godot/imported/runner_albedo_2048.png-1b89a7f55d3ae6e7f7079bf18f0b9dbe.etc2.ctex"]
 
 [params]
 

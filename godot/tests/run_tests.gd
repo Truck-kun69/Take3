@@ -42,6 +42,7 @@ func _ready() -> void:
 		_jump_tests()
 		_jump_polish_tests()
 		_look_tests()
+		_remediation_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -719,6 +720,7 @@ func _gate_p01_tests() -> void:
 	var counts: Array[int] = []
 	for dt in [1.0 / 60.0, 1.0 / 30.0]:
 		var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 31})
+		w.terrain.props_on = false                   # the cadence, not the path: sliding round a prop differs by dt
 		w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
 		w.weapons.clear()
 		var i := w.spawn_foe(Content.E.BRUTE, w.pp + Vector2(300, 0), 1, 0, 50.0)
@@ -760,6 +762,7 @@ func _gate_p01_tests() -> void:
 func _tyrant_fsm_tests() -> void:
 	print("== tyrant state machine")
 	var w := _world({"mode": "campaign", "hero": 0, "stage": 4, "seed": 41})
+	w.terrain.props_on = false                       # the state machine alone: the kiting hero is teleported
 	w.stats.set_source("t", [["max_hp", "add", 1e7], ["regen", "add", 1e6]]); w.hp = 1e7
 	w.weapons.clear()
 	w.bosses.spawn_stage_boss(false)
@@ -1131,6 +1134,146 @@ func _anim_tests() -> void:
 	w._contact()
 	ok(is_equal_approx(w.sw.atk_t[w.sw.index_of(uj)], w.t), "touching the hero plays the attack")
 	w.dispose()
+
+## 0.9.9: the hero's locomotion rate has no cliff and a standing cast stops when the hero moves; bosses play
+## idle and die; models with the albedo map on a later surface count as PBR; solid props (PropLayout) block
+## walking (bodies slide round them), a jump clears the low ones and never lands inside any, and every
+## graphics tier lays out the same solids.
+func _remediation_tests() -> void:
+	print("== 0.9.9 remediation")
+	var hr := HeroRig.new()
+	var worst := 0.0
+	var prev := hr.loco_rate(0.0)
+	for sp in range(2, 202, 2):
+		var r := hr.loco_rate(float(sp))
+		worst = maxf(worst, absf(r - prev))
+		prev = r
+	ok(worst < 0.05, "the locomotion rate has no cliff from 0 to 200 units/s (largest step %.3f)" % worst)
+	ok(is_equal_approx(hr.loco_rate(100.0), 1.0) and is_equal_approx(hr.loco_rate(155.0), 1.0), "and plays at the clips' own rate from walk to run speed")
+	hr.free()
+	var h := HeroRig.new()
+	add_child(h)
+	h.build("warden", Color.WHITE)
+	ok(h.tree != null, "the Warden's model builds its animation tree")
+	if h.tree != null:
+		var dt := 1.0 / 60.0
+		var st := {"pos": Vector2.ZERO, "face": Vector2.RIGHT, "cast_dir": Vector2.RIGHT, "cast_age": 9.0, "mv": 0.0, "vel": 0.0,
+			"roll": -1.0, "hit": 0.0, "dead": false, "t": 0.0, "ph": 0.0, "jump": -1.0}
+		for k in 10:
+			h.animate(st, dt); h.tree.advance(dt)
+		st.cast_age = 0.0
+		h.animate(st, dt); h.tree.advance(dt)
+		var full_on := bool(h.tree.get("parameters/cast_full/active"))
+		st.mv = 1.0
+		st.vel = 150.0
+		for k in 24:
+			st.cast_age = float(st.cast_age) + dt
+			h.animate(st, dt); h.tree.advance(dt)
+		var full_after := bool(h.tree.get("parameters/cast_full/active"))
+		var up_after := bool(h.tree.get("parameters/cast_up/active"))
+		ok(full_on and not full_after and not up_after, "a standing cast plays full-body and stops once the hero moves, with no upper-body replay (%s -> %s, upper %s)" % [full_on, full_after, up_after])
+	h.queue_free()
+	var b := BossRig.new()
+	add_child(b)
+	b.build("tyrant", Color.RED, "tyrant")
+	ok(b.anim != null and b.anim.has_animation("idle") and b.anim.has_animation("die"), "the tyrant model has idle and die clips")
+	if b.anim != null:
+		var bs := {"pos": Vector2(500, 500), "face": Vector2.RIGHT, "hp_frac": 1.0, "flash": 0.0, "t": 0.0, "dt": 1.0 / 60.0, "attack": false, "phase": 0}
+		for k in 40:
+			b.animate(bs); b.anim.advance(1.0 / 60.0)
+		var idle := String(b.anim.current_animation)
+		for k in 40:
+			bs.pos = Vector2(500.0 + 2.0 * k, 500.0)
+			b.animate(bs); b.anim.advance(1.0 / 60.0)
+		var walk := String(b.anim.current_animation)
+		bs.dead = true
+		for k in 6:
+			b.animate(bs); b.anim.advance(1.0 / 60.0)
+		var die := String(b.anim.current_animation)
+		ok(idle == "idle", "a boss standing still plays idle (%s)" % idle)
+		ok(walk == "walk", "a boss on the move plays walk (%s)" % walk)
+		ok(die == "die" and b.anim.get_animation("die").loop_mode == Animation.LOOP_NONE and b.death_time() > 0.5, "a fallen boss plays die once (%s, %.2f s)" % [die, b.death_time()])
+	b.queue_free()
+	var am := ArrayMesh.new()
+	for sf in 2:
+		var stl := SurfaceTool.new()
+		stl.begin(Mesh.PRIMITIVE_TRIANGLES)
+		stl.add_vertex(Vector3.ZERO); stl.add_vertex(Vector3.RIGHT); stl.add_vertex(Vector3.UP)
+		stl.commit(am)
+	var tm := StandardMaterial3D.new()
+	tm.albedo_texture = ImageTexture.create_from_image(Image.create(4, 4, false, Image.FORMAT_RGB8))
+	am.surface_set_material(0, StandardMaterial3D.new())
+	am.surface_set_material(1, tm)
+	ok(Models.has_pbr(am), "a mesh with the albedo map on its second surface counts as PBR")
+	# collision against placed props (test circles [x, y, r, low] on the flat ground round the start)
+	var w := _world({"mode": "campaign", "hero": 0, "stage": 0, "seed": 5})
+	var t := w.terrain
+	var br := World.HERO_R
+	var wall := PackedFloat32Array([0.0, 120.0, 14.0, 0.0])
+	for wx in [-36.0, -18.0, 0.0, 18.0, 36.0]:
+		wall.append_array(PackedFloat32Array([wx, -100.0, 18.0, 1.0]))
+	t.set_test_props(wall)
+	var p := Vector2(4.0, 40.0)
+	var into := false
+	for k in 120:
+		p = t.move(p, p + Vector2(0.0, 3.0), br)
+		if p.distance_to(Vector2(0.0, 120.0)) < 14.0 + br - 0.01: into = true
+	ok(not into and p.y > 120.0 + 14.0, "walking into a trunk slides round it, never through (ends at %s)" % p)
+	p = Vector2(20.0, -40.0)
+	into = false
+	var step := Vector2(0.5, -1.0).normalized() * 3.0                 # 27 degrees off straight on
+	for k in 160:
+		p = t.move(p, p + step, br)
+		for cx in [-36.0, -18.0, 0.0, 18.0, 36.0]:
+			if p.distance_to(Vector2(cx, -100.0)) < 18.0 + br - 0.01: into = true
+	ok(not into and p.y < -100.0 - 18.0, "walking into a wall at an angle slides along it and round its end (ends at %s)" % p)
+	p = Vector2(10.0, -40.0)
+	into = false
+	for k in 120:
+		p = t.move(p, p + Vector2(0.0, -3.0), br)
+		for cx in [-36.0, -18.0, 0.0, 18.0, 36.0]:
+			if p.distance_to(Vector2(cx, -100.0)) < 18.0 + br - 0.01: into = true
+	ok(not into and p.y > -100.0, "walking straight at a wall stops at its face, never through (ends at %s)" % p)
+	var land := w.jump_landing(Vector2(0.0, -20.0), Vector2(0.0, -1.0))
+	ok(land.y < -100.0 - 18.0 - br and t.props_clear(land, br), "a jump vaults the low wall and lands past it (%s)" % land)
+	var land2 := w.jump_landing(Vector2(0.0, 0.0), Vector2(0.0, 1.0))
+	ok(land2.y > 0.0 and land2.y <= 120.0 - 14.0 - br and t.props_clear(land2, br), "a jump at a trunk comes down short of it (%s)" % land2)
+	t.set_test_props(PackedFloat32Array([0.0, 140.0, 18.0, 1.0]))
+	var land3 := w.jump_landing(Vector2(0.0, -60.0), Vector2(0.0, 1.0))
+	ok(t.props_clear(land3, br) and land3.y > 140.0, "a jump whose landing falls on a boulder lands past it (%s)" % land3)
+	w.dispose()
+	# the real layout: shapes per kind, the same solids on every tier, the arch opening walkable
+	var w2 := _world({"mode": "campaign", "hero": 0, "stage": 0, "seed": 5})
+	var shapes_ok := true
+	var tiers_ok := true
+	var arches := 0
+	var arch_ok := true
+	for cx in range(-2, 3):
+		for cy in range(-2, 3):
+			var c := Vector2i(cx, cy)
+			var lay := PropLayout.chunk(c, 0, w2.terrain, 1.0)
+			var want := 0
+			var low := 0
+			for it in lay.items:
+				match String(it[0]):
+					"tree", "tree_dead", "pillar": want += 1
+					"rock": want += 1; low += 1
+					"wall": want += 5; low += 5
+					"arch":
+						want += 2
+						arches += 1
+						var mid: Vector2 = it[1]
+						if not w2.terrain.props_clear(mid, br): arch_ok = false
+			var sol: PackedFloat32Array = lay.solids
+			var nlow := 0
+			for j in range(0, sol.size(), 4):
+				if sol[j + 3] > 0.5: nlow += 1
+			if sol.size() / 4 != want or nlow != low: shapes_ok = false
+			if PropLayout.chunk(c, 0, w2.terrain, 0.7).solids != sol or PropLayout.chunk(c, 0, w2.terrain, 1.3).solids != sol: tiers_ok = false
+	ok(shapes_ok, "trunks, pillars and boulders block as one circle, walls as five overlapping ones, arches as two posts; boulders and walls are low")
+	ok(tiers_ok, "every graphics tier lays out the same solid props (25 chunks)")
+	ok(arches > 0 and arch_ok, "the hero fits through an arch's opening (%d arches)" % arches)
+	w2.dispose()
 
 ## The 3D view places foes, effects, smoke and lights at ground_y() + their own height on the CPU (the
 ## instanced shaders do no terrain lookup). Checks that ground_y() is the simulation's height on hilly

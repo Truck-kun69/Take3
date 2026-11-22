@@ -4,12 +4,9 @@
 #                                        checks; signed with SHARDFALL_KEYSTORE* if set, else the shared
 #                                        test key in tools/keys, so it installs over earlier test builds)
 #   tools/build_android.sh debug      -> build/shardfall-debug.apk  (debug template, same key)
-#   tools/build_android.sh lite       -> build/shardfall-lite.apk  ("Shardfall Lite", its own app id: the
-#                                        Compatibility renderer on OpenGL ES 3, for budget phones whose
-#                                        Vulkan drivers crash, e.g. Mali-G52; release template, same key)
 #   tools/build_android.sh aab        -> build/shardfall-release.aab (Gradle build; needs the Android
 #                                        build template and network access to Google Maven + Gradle)
-# Release and Lite APKs are then repacked (tools/apk_repack.py: textures deflated, the engine library
+# The release APK is then repacked (tools/apk_repack.py: textures deflated, the engine library
 # zopfli-compressed when `pip install zopfli` is available), aligned and signed again with the same key.
 # Run tools/provision.sh first. Exits non-zero if the export or the signature check fails.
 set -euo pipefail
@@ -26,7 +23,7 @@ case "$MODE" in
   debug)
     OUT="$ROOT/build/shardfall-debug.apk"
     "$GODOT" --headless --path . --export-debug "Android" "$OUT" ;;
-  release|lite)
+  release)
     if [ -z "${SHARDFALL_KEYSTORE:-}" ]; then
       echo "note: no SHARDFALL_KEYSTORE; signing with the shared test key (fine for sideloading, not for the Play Store)"
       SHARDFALL_KEYSTORE="$ROOT/tools/keys/debug.keystore" SHARDFALL_KEYSTORE_USER=androiddebugkey SHARDFALL_KEYSTORE_PASS=android
@@ -35,18 +32,8 @@ case "$MODE" in
     export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$SHARDFALL_KEYSTORE"
     export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$SHARDFALL_KEYSTORE_USER"
     export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
-    if [ "$MODE" = "lite" ]; then
-      # the phone renderer is a project setting: switch it for this export only, restore it after
-      # restore from a copy, not from git: `git checkout` also threw away any uncommitted edits to the file
-      cp project.godot "$ROOT/build/.project.godot.bak"
-      trap 'cp "$ROOT/build/.project.godot.bak" "$ROOT/godot/project.godot"' EXIT
-      sed -i 's/^renderer\/rendering_method.mobile=.*/renderer\/rendering_method.mobile="gl_compatibility"/' project.godot
-      OUT="$ROOT/build/shardfall-lite.apk"
-      "$GODOT" --headless --path . --export-release "Android Lite" "$OUT"
-    else
-      OUT="$ROOT/build/shardfall.apk"
-      "$GODOT" --headless --path . --export-release "Android" "$OUT"
-    fi ;;
+    OUT="$ROOT/build/shardfall.apk"
+    "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
   aab)
     # Gradle builds need res://android/build (installed from the export templates' android_source.zip).
     if [ ! -d android/build ]; then
@@ -62,9 +49,11 @@ case "$MODE" in
     trap 'cp "$ROOT/build/.export_presets.cfg.bak" "$ROOT/godot/export_presets.cfg"' EXIT
     sed -i 's/^gradle_build\/use_gradle_build=false/gradle_build\/use_gradle_build=true/; s/^gradle_build\/export_format=0/gradle_build\/export_format=1/' export_presets.cfg
     "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
+  *)
+    echo "unknown mode: $MODE (release, debug or aab)" >&2; exit 2 ;;
 esac
 [ -f "$OUT" ] || { echo "export failed: $OUT missing" >&2; exit 1; }
-if [ "$MODE" = "release" ] || [ "$MODE" = "lite" ]; then
+if [ "$MODE" = "release" ]; then
   # Repack (tools/apk_repack.py): deflate the textures Godot stores raw and zopfli-recompress the engine
   # library, contents unchanged; then align and sign again with the same key as the export.
   RAW="$ROOT/build/.repack-raw.apk"

@@ -2,21 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://57rl2qd8ddu7"
-path.s3tc="res://.godot/imported/bush_texture_pbr_20250901.png-88a226cec2c68bf21855e36a0e73ea9d.s3tc.ctex"
-path.etc2="res://.godot/imported/bush_texture_pbr_20250901.png-88a226cec2c68bf21855e36a0e73ea9d.etc2.ctex"
+uid="uid://cgloi38rfldnc"
+path.s3tc="res://.godot/imported/bush_albedo_lifted.png-af0583019291db005af0ce4e075f7e47.s3tc.ctex"
+path.etc2="res://.godot/imported/bush_albedo_lifted.png-af0583019291db005af0ce4e075f7e47.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "3574fa06723da7b44e95738d488f110e"
+"md5": "98c70740681dbafc30046a17f1606950"
 }
 
 [deps]
 
-source_file="res://models/props/bush_texture_pbr_20250901.png"
-dest_files=["res://.godot/imported/bush_texture_pbr_20250901.png-88a226cec2c68bf21855e36a0e73ea9d.s3tc.ctex", "res://.godot/imported/bush_texture_pbr_20250901.png-88a226cec2c68bf21855e36a0e73ea9d.etc2.ctex"]
+source_file="res://models/props/bush_albedo_lifted.png"
+dest_files=["res://.godot/imported/bush_albedo_lifted.png-af0583019291db005af0ce4e075f7e47.s3tc.ctex", "res://.godot/imported/bush_albedo_lifted.png-af0583019291db005af0ce4e075f7e47.etc2.ctex"]
 
 [params]
 
@@ -41,5 +41,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=1024
 detect_3d/compress_to=1

@@ -218,6 +218,14 @@ What changed:
 * **Web build**: hero textures at 1024 (desktop and Android keep 2048). Page 35 → 30 MB; the rest is
   the 13 MB engine and the four hero meshes, which all ship because the pack is downloaded whole.
 
+## Clutter (0.9.9)
+
+Bones, bushes and grass cast no shadow. Grass and bushes are drawn in quarter-chunk MultiMeshes (320
+units) with a visibility range of 950 units at the 600-unit camera, following the camera's distance (the
+boss zoom and portrait screens pull it back), and no fade (no dithering on tile-based GPUs). A whole-chunk
+range would measure to the chunk's centre, up to ~450 units from where the hero stands in it, and its
+own grass would blink out.
+
 ## Graphics tiers (scripts/render3d/quality.gd)
 
 Android and desktop are now the main target. The web artifact is a lighter preview. Tiers change
@@ -227,11 +235,11 @@ only visuals: the simulation, spawns and balance are the same on every tier.
 |---|---|---|---|
 | Sun shadows | off | soft (low), 1 split; atlas 1024 on phones, 2048 desktop | soft (medium); 1 split and a 2048 atlas on phones, 2 splits and 4096 on desktop |
 | MSAA | off | off | 2x, phones too (no FXAA with it) |
-| Model textures | 1024-2048 px | 1024-2048 px | 1024-2048 px (VRAM-compressed at full size on every tier) |
+| Model textures | the texel budget: 2048 px heroes, bosses, landmark and foe albedo; 1024 px prop and foe normal/ORM and clutter albedo (`tools/texture_budget.py`), VRAM-compressed | same | same |
 | Terrain grid (2,200-unit ground) | 16 units | 12 units | 10 units |
 | Ground textures | 1024 albedo + normal, one scale | + a second scale (detail2) | + a second scale (detail2) |
 | Terrain noise octaves | 3 | 5 | 6 |
-| Prop density | 0.7x | 1x | 1.3x |
+| Prop density | 0.7x bushes and grass (116-188 instances a chunk) | 1x (160-262) | 1.3x (213-337); the solid props (trees, boulders, ruins) are the same on every tier: they block movement |
 | Dynamic lights | 4 | 8 | 14 |
 | Prop meshes | models/props | same | the generated props as on Medium; models/props_hi for the crystal and the Act V set pieces (2.5x the triangles) |
 | LOD threshold | 1.5 px | 1.5 px | 1 px |

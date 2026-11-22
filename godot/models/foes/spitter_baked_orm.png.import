@@ -2,21 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dvwxdjcntl6mq"
-path.s3tc="res://.godot/imported/brute_texture.png-247ab911bc92287130eff88eb91eec00.s3tc.ctex"
-path.etc2="res://.godot/imported/brute_texture.png-247ab911bc92287130eff88eb91eec00.etc2.ctex"
+uid="uid://celsredr08dgk"
+path.s3tc="res://.godot/imported/spitter_baked_orm.png-ce2fb1a6c1f70c0d94f9dfa99550d36e.s3tc.ctex"
+path.etc2="res://.godot/imported/spitter_baked_orm.png-ce2fb1a6c1f70c0d94f9dfa99550d36e.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "7262bd9bede921e38fb61445a5b2fed3"
+"md5": "785177aadecbe878e29c462b55b865a9"
 }
 
 [deps]
 
-source_file="res://models/foes/brute_texture.png"
-dest_files=["res://.godot/imported/brute_texture.png-247ab911bc92287130eff88eb91eec00.s3tc.ctex", "res://.godot/imported/brute_texture.png-247ab911bc92287130eff88eb91eec00.etc2.ctex"]
+source_file="res://models/foes/spitter_baked_orm.png"
+dest_files=["res://.godot/imported/spitter_baked_orm.png-ce2fb1a6c1f70c0d94f9dfa99550d36e.s3tc.ctex", "res://.godot/imported/spitter_baked_orm.png-ce2fb1a6c1f70c0d94f9dfa99550d36e.etc2.ctex"]
 
 [params]
 
@@ -41,5 +41,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=1024
 detect_3d/compress_to=1

@@ -48,8 +48,27 @@ Raw downloads stay in `tools/.fal_raw/` (not in git).
 * **Foes and props are drawn through a MultiMesh of the file's first mesh, without node
   transforms**: every mesh node is written at the identity (verify_assets.py checks it).
 * **Textures** stay 1024-2048 px on every tier. Godot extracts a new `.glb`'s maps next to it; set
-  `compress/mode=2` on them (and `compress/normal_map=1` on normal maps) so they ship VRAM-compressed
-  at full size (ETC2/ASTC on phones, S3TC on desktop).
+  `compress/mode=2` on them (and `compress/normal_map=1` on normal maps), then run
+  `python3 tools/texture_budget.py` and re-import: heroes, bosses, landmark (tree, tree_dead, arch) and
+  foe albedo stay 2048 px; prop and foe normal and ORM maps and the clutter albedo (rock, wall, pillar,
+  bones, bush) import at 1024. `--check` verifies the imported sizes and the compression.
+
+### 0.9.9 (no fal calls: everything rebuilt from `tools/.fal_raw/`)
+
+* **Action slots.** Blender 4.4+ evaluates an action only through a slot, and a clip imported on
+  another armature keeps that armature's slot, which assigning the action does not pick. 0.9.8's foe
+  walk cycles were baked frozen that way (0.0 units of travel); `assign()` sets the slot, and the gate
+  now checks every walk moves.
+* **Hero clips trimmed** before the root motion is taken out, then started at frame 0: the jump
+  centred on the hips' apex (takeoff crouch to landing impact, 0.85 s, so half the jump is the apex),
+  the roll over its tumble (0.65 s), the cast over the hands' fastest swing (0.65 s; Stormwright 0.95).
+* **Foe maps baked** (`bake_foe_maps`): the welded 16k-triangle rig mesh, before decimation, is the
+  source; Cycles bakes a tangent normal and ambient occlusion onto the 1,800-triangle mesh at 1024 px
+  (the low mesh hidden from the bake's rays, rays from 3% out to 8% in), packed as ORM (R occlusion,
+  G 0.45 + 0.45 x (1 - AO) plus a little from the albedo's darkness, 0.40-0.92, B 0). The resized
+  albedo is saved to its own file: the exporter embeds an image's file, which was the 4096 px source.
+* **The bush's albedo is lifted** to a 0.05 median linear luminance (`ALBEDO_FLOOR`; Hunyuan baked it
+  at 0.011, near black): 200 bushes read as black balls on the night ground.
 
 ## How a model is built (`tools/blender/build_models.py`)
 

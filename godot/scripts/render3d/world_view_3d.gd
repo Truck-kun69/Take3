@@ -13,11 +13,11 @@ extends Node3D
 ## "sky" / "gnd": the hemisphere the ambient light comes from (ProceduralSkyMaterial, AMBIENT_SOURCE_SKY):
 ## a cool sky above, a dark warm ground below, so tops of things read cool and undersides warm and dim.
 const STAGE_LOOK := [
-	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3), "props": {"tree": 3, "rock": 3, "grass": 34, "crystal": 1, "pillar": 0.3, "bones": 0.5}},
-	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2), "props": {"tree": 0.8, "rock": 5, "grass": 8, "crystal": 2, "pillar": 0.4, "bones": 1.5}},
-	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85), "props": {"tree": 1.2, "rock": 2, "grass": 14, "crystal": 1, "pillar": 2.5, "bones": 4}},
-	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85), "props": {"tree": 0.3, "rock": 3, "grass": 8, "crystal": 6, "pillar": 1.5, "bones": 0.3}},
-	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85), "props": {"tree": 0.9, "rock": 2.5, "grass": 6, "crystal": 0.8, "pillar": 2.2, "bones": 1.5}}
+	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3)},
+	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2)},
+	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85)},
+	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85)},
+	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85)}
 ]
 const CHUNK := 640.0
 ## Godot's omni falloff is distance^-attenuation in world units. This world is ~60 units per hero,
@@ -43,6 +43,8 @@ var prop_mat: ShaderMaterial
 var decal_mat: ShaderMaterial
 var hero: HeroRig
 var boss_rigs := {}            # uid -> BossRig
+var boss_dying: Array = []     # [BossRig, seconds left, Vector2 ground position]: a fallen boss plays its die clip
+const BOSS_SINK := 0.8         # the last seconds of a fallen boss: it sinks into the ground, then goes
 var fx: FX3D
 var env_fx: EnvFX
 var time := 0.0
@@ -343,6 +345,8 @@ func bind(world: World) -> void:
 	hero.build(String(h.id), Content.col(h.col))
 	for u in boss_rigs: boss_rigs[u].queue_free()
 	boss_rigs.clear()
+	for e in boss_dying: (e[0] as BossRig).queue_free()
+	boss_dying.clear()
 	for u in exile_rigs: exile_rigs[u].queue_free()
 	exile_rigs.clear()
 	corpses.clear()
@@ -476,6 +480,7 @@ func _camera(dt: float) -> void:
 	view_scale = 1.0 if aspect >= 1.2 else 1.0 + (1.2 - aspect) * 0.9   # portrait phones see as much ground
 	var boss_on := w.bosses.boss_hp_frac() >= 0.0
 	var dist := 600.0 * view_scale * (1.18 if boss_on else 1.0)
+	_near_range(dist)
 	sun.directional_shadow_max_distance = SHADOW_DIST * dist / 600.0
 	var lead := Vector3(w.face.x, 0, w.face.y) * 40.0 * w.mv
 	_cam_y = lerpf(_cam_y, ground_y(hero_p), minf(1.0, dt * 4.0))        # the camera rides the hills, smoothly
@@ -707,120 +712,89 @@ func ground_y(p: Vector2) -> float:
 	if w == null or w.terrain == null or not Quality.on("terrain"): return 0.0
 	return w.terrain.height(p)
 
-## Whether a prop of this kind may stand here (terrain rules: no trees in water, no props on cliffs).
-func _prop_ok(kind: String, p: Vector2) -> bool:
-	if w == null or w.terrain == null: return true
-	return w.terrain.prop_ok(kind, p)
-
-## Biome dressing, one 640-unit chunk at a time (seeded by chunk and act, so a chunk always dresses alike):
-##   CLUSTERS groves (2-4 trees, living or dead by the act) or outcrops (3-5 boulders, tilted with the slope),
-##   each ringed by 4-6 bushes and 18-28 grass tufts, scale 0.7-1.45 and any yaw;
-##   LANDMARKS ruins: an arch flanked by two wall sections, a pillar beside it and bones at its foot;
-##   loose grass up to the act's GRASS count (150-220 a chunk); the act's crystals and bones as accents.
-## Nothing within SPAWN_CLEAR of the spawn point; trunks, boulders, pillars, walls and arches stay MIN_GAP
-## apart (the hero never threads between two of them); nothing in deep water or on cliffs (Terrain.prop_ok);
-## every prop sinks 1 unit into the ground so slopes never show a gap under it.
-const CLUSTERS := Vector2i(4, 6)
-const LANDMARKS := Vector2i(1, 2)
-const SPAWN_CLEAR := 160.0
-const MIN_GAP := 48.0
-const SOLID := ["tree", "tree_dead", "rock", "pillar", "wall", "arch"]
-const DEAD_SHARE := [0.25, 0.85, 0.7, 0.9, 0.5]       # per act: how many grove trees are dead
-const GRASS := [220, 150, 175, 150, 160]              # per act: grass tufts a chunk
+## Biome dressing, one 640-unit chunk at a time: the layout is PropLayout's (shared with Terrain, which
+## blocks movement at its solid props); this turns it into transforms on the drawn ground. Bushes and
+## grass scale with the tier's prop density; the solid props never do. Every prop sinks 1 unit into the
+## ground so slopes never show a gap under it; boulders lean with the slope.
+const CLUTTER := ["bones", "bush", "grass"]          # small: they cast no shadow
+const NEAR_ONLY := ["grass", "bush"]                  # drawn in quarter-chunk batches, only near the camera
+const NEAR_END := 950.0                               # their visibility range at the 600-unit camera
 
 func _build_cell(c: Vector2i) -> Node3D:
 	var cell := Node3D.new()
 	add_child(cell)
 	if not Quality.on("props"): return cell
 	var lists := dress_chunk(c)
-	var lo := Vector3(c.x * CHUNK, -200.0, c.y * CHUNK)
 	for kind in lists:
 		var list: Array = lists[kind]
 		if list.is_empty(): continue
 		var mesh := Models.prop_mesh(kind, w.stage)
 		if mesh == null: continue
-		var pmi := MultiMeshInstance3D.new()
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = mesh
-		mm.instance_count = list.size()
-		for i in list.size(): mm.set_instance_transform(i, list[i])
-		mm.custom_aabb = AABB(lo, Vector3(CHUNK, 600.0, CHUNK)).grow(160.0)
-		pmi.multimesh = mm
-		# imported PBR props draw their own materials (albedo, normal, roughness maps); the procedural and
-		# vertex-coloured ones (grass, crystals, the act variants) keep the shared prop shader (sway, tint)
-		if not Models.has_pbr(mesh): pmi.material_override = prop_mat
-		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if (kind == "grass" or kind == "bush") else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		cell.add_child(pmi)
+		var parts := [list]
+		var boxes := [AABB(Vector3(c.x * CHUNK, -200.0, c.y * CHUNK), Vector3(CHUNK, 600.0, CHUNK))]
+		if NEAR_ONLY.has(kind):
+			# quarters: a range test on a whole chunk measures to its centre, up to ~450 units from where the
+			# hero stands in it, so its own grass could blink out; a quarter's centre is never far
+			parts = [[], [], [], []]
+			boxes = []
+			var half := CHUNK * 0.5
+			for q in 4:
+				boxes.append(AABB(Vector3(c.x * CHUNK + (q % 2) * half, -200.0, c.y * CHUNK + (q / 2) * half), Vector3(half, 600.0, half)))
+			for t in list:
+				var o: Vector3 = (t as Transform3D).origin
+				var qx := 1 if o.x - c.x * CHUNK >= half else 0
+				var qz := 1 if o.z - c.y * CHUNK >= half else 0
+				parts[qz * 2 + qx].append(t)
+		for pi in parts.size():
+			var part: Array = parts[pi]
+			if part.is_empty(): continue
+			var pmi := MultiMeshInstance3D.new()
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = mesh
+			mm.instance_count = part.size()
+			for i in part.size(): mm.set_instance_transform(i, part[i])
+			mm.custom_aabb = (boxes[pi] as AABB).grow(160.0)
+			pmi.multimesh = mm
+			# imported PBR props draw their own materials (albedo, normal, roughness maps); the procedural and
+			# vertex-coloured ones (grass, crystals, the act variants) keep the shared prop shader (sway, tint)
+			if not Models.has_pbr(mesh): pmi.material_override = prop_mat
+			pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if CLUTTER.has(kind) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if NEAR_ONLY.has(kind):
+				pmi.visibility_range_end = _near_end
+				pmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+				pmi.add_to_group("near_only")
+			cell.add_child(pmi)
 	return cell
+
+## Grass and bushes stop at NEAR_END from the camera at its 600-unit distance; the boss zoom and portrait
+## screens pull the camera back, and the range follows it (else their near ground would go bare).
+var _near_end := NEAR_END
+func _near_range(dist: float) -> void:
+	var e := NEAR_END * dist / 600.0
+	if absf(e - _near_end) < 1.0: return
+	_near_end = e
+	for n in get_tree().get_nodes_in_group("near_only"):
+		(n as GeometryInstance3D).visibility_range_end = e
 
 ## kind -> Array of Transform3D for one chunk (no nodes: _build_cell instances them; tests count them).
 func dress_chunk(c: Vector2i) -> Dictionary:
-	var dens: Dictionary = _look.props
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(Vector3i(c.x, c.y, w.stage))
-	var st := clampi(w.stage, 0, 4)
+	var lay := PropLayout.chunk(c, w.stage, w.terrain, Quality.prop_density())
 	var lists := {}
-	var solid: Array[Vector2] = []
-	var origin := Vector2(c.x * CHUNK, c.y * CHUNK)
-	var tree_w := float(dens.get("tree", 1.0)) * (w.terrain.density("tree", c) if w.terrain != null else 1.0)
-	var rock_w := float(dens.get("rock", 1.0))
-	for k in rng.randi_range(CLUSTERS.x, CLUSTERS.y):
-		var cp := origin + Vector2(rng.randf_range(70.0, CHUNK - 70.0), rng.randf_range(70.0, CHUNK - 70.0))
-		if rng.randf() < tree_w / maxf(0.01, tree_w + rock_w):
-			for i in rng.randi_range(2, 4):
-				_put(lists, solid, "tree_dead" if rng.randf() < DEAD_SHARE[st] else "tree", cp + _disc(rng, 75.0), rng, false)
-		else:
-			for i in rng.randi_range(3, 5):
-				_put(lists, solid, "rock", cp + _disc(rng, 60.0), rng, true)
-		for i in rng.randi_range(4, 6):
-			_put(lists, solid, "bush", cp + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(45.0, 115.0), rng, false)
-		for i in rng.randi_range(18, 28):
-			_put(lists, solid, "grass", cp + _disc(rng, 150.0), rng, false)
-	for k in rng.randi_range(LANDMARKS.x, LANDMARKS.y):
-		var lp := origin + Vector2(rng.randf_range(110.0, CHUNK - 110.0), rng.randf_range(110.0, CHUNK - 110.0))
-		var yaw := rng.randf() * TAU
-		var side := Vector2(cos(yaw), -sin(yaw))                       # the arch spans along this
-		if not _put(lists, solid, "arch", lp, rng, false, yaw, 1.0): continue
-		_put(lists, solid, "wall", lp + side * 95.0, rng, false, yaw + rng.randf_range(-0.15, 0.15), rng.randf_range(0.9, 1.1))
-		_put(lists, solid, "wall", lp - side * 95.0, rng, false, yaw + rng.randf_range(-0.15, 0.15), rng.randf_range(0.9, 1.1))
-		var pp := lp + side.orthogonal() * rng.randf_range(70.0, 100.0) * (1.0 if rng.randf() < 0.5 else -1.0)
-		_put(lists, solid, "pillar", pp, rng, false)
-		for i in rng.randi_range(2, 3):
-			_put(lists, solid, "bones", pp + _disc(rng, 40.0), rng, false)
-	var want: int = GRASS[st]
-	var tries := 0
-	while (lists.get("grass", []) as Array).size() < want and tries < want * 4:
-		tries += 1
-		_put(lists, solid, "grass", origin + Vector2(rng.randf() * CHUNK, rng.randf() * CHUNK), rng, false)
-	for kind in ["crystal", "bones"]:                                 # the act's accents
-		var n := float(dens.get(kind, 0.0))
-		for i in int(n) + (1 if rng.randf() < n - floorf(n) else 0):
-			_put(lists, solid, kind, origin + Vector2(rng.randf() * CHUNK, rng.randf() * CHUNK), rng, false)
+	for it in lay.items:
+		var kind: String = it[0]
+		var p: Vector2 = it[1]
+		var s: float = it[3]
+		var b := Basis(Vector3.UP, float(it[2])).scaled(Vector3(s, s * float(it[4]), s))
+		if it[5]:                                                      # boulders lean with the slope
+			var e := 12.0
+			var n := Vector3(ground_y(p - Vector2(e, 0)) - ground_y(p + Vector2(e, 0)), 2.0 * e,
+				ground_y(p - Vector2(0, e)) - ground_y(p + Vector2(0, e))).normalized()
+			var ax := Vector3.UP.cross(n)
+			if ax.length() > 1e-4: b = Basis(ax.normalized(), Vector3.UP.angle_to(n) * 0.6) * b
+		if not lists.has(kind): lists[kind] = []
+		lists[kind].append(Transform3D(b, Vector3(p.x, ground_y(p) - 1.0, p.y)))
 	return lists
-
-func _disc(rng: RandomNumberGenerator, r: float) -> Vector2:
-	return Vector2.from_angle(rng.randf() * TAU) * sqrt(rng.randf()) * r
-
-## One prop at p if the spot allows it; yaw < -100 = a random one, scale 0 = the cluster range 0.7-1.45.
-func _put(lists: Dictionary, solid: Array[Vector2], kind: String, p: Vector2, rng: RandomNumberGenerator, tilt: bool,
-		yaw: float = -1000.0, sc: float = 0.0) -> bool:
-	if p.length() < SPAWN_CLEAR or not _prop_ok(kind, p): return false
-	if SOLID.has(kind):
-		for q in solid:
-			if q.distance_squared_to(p) < MIN_GAP * MIN_GAP: return false
-		solid.append(p)
-	var s := sc if sc > 0.0 else rng.randf_range(0.7, 1.45)
-	var b := Basis(Vector3.UP, yaw if yaw > -100.0 else rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.92, 1.08), s))
-	if tilt:                                                           # boulders lean with the slope
-		var e := 12.0
-		var n := Vector3(ground_y(p - Vector2(e, 0)) - ground_y(p + Vector2(e, 0)), 2.0 * e,
-			ground_y(p - Vector2(0, e)) - ground_y(p + Vector2(0, e))).normalized()
-		var ax := Vector3.UP.cross(n)
-		if ax.length() > 1e-4: b = Basis(ax.normalized(), Vector3.UP.angle_to(n) * 0.6) * b
-	if not lists.has(kind): lists[kind] = []
-	lists[kind].append(Transform3D(b, Vector3(p.x, ground_y(p) - 1.0, p.y)))
-	return true
 
 # ================================================================= foes
 ## Each kind has its own buffer, exactly as long as its MultiMesh (a grow-only power-of-two instance
@@ -1211,8 +1185,26 @@ func _bosses(dt: float) -> void:
 		if not alive.has(u):
 			var rig2: BossRig = boss_rigs[u]
 			fx.boss_death(rig2.global_position, rig2.col)
-			rig2.queue_free()
 			boss_rigs.erase(u)
+			var hold := rig2.death_time()
+			if hold > 0.0:                                     # an authored boss falls with its die clip
+				boss_dying.append([rig2, hold + BOSS_SINK, Vector2(rig2.position.x, rig2.position.z)])
+			else:
+				rig2.queue_free()
+	for i in range(boss_dying.size() - 1, -1, -1):
+		var e: Array = boss_dying[i]
+		var r3: BossRig = e[0]
+		e[1] = float(e[1]) - dt
+		if float(e[1]) <= 0.0:
+			r3.queue_free()
+			boss_dying.remove_at(i)
+			continue
+		var bp: Vector2 = e[2]
+		var yaw := r3.rotation.y
+		r3.animate({"pos": bp, "face": Vector2(cos(yaw), -sin(yaw)), "hp_frac": 0.0, "flash": 0.0, "t": time, "dt": dt,
+			"attack": false, "phase": 0, "dead": true})
+		var sink := clampf((BOSS_SINK - float(e[1])) / BOSS_SINK, 0.0, 1.0)
+		r3.position.y += ground_y(bp) - sink * sink * 100.0 * r3.scale.y
 
 # ================================================================= dynamic light pool
 func _assign_lights() -> void:

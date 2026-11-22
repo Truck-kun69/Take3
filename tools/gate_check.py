@@ -1,26 +1,36 @@
-"""The asset overhaul's gate: every check must pass for exit code 0.
+"""The release gate: every check must pass for exit code 0.
 
     python3 tools/gate_check.py              # all checks, then the release APK build
     python3 tools/gate_check.py --no-apk     # all checks without the build
 
-1. tools/fal_cache.json exists, total spend <= $20.00; every hero, boss, foe and prop .glb exists, > 100 KB
-2. every .glb parsed (struct + json): heroes have a skin and the 7 clips (idle, walk, run, cast/attack,
-   roll/dodge, jump, die/death) longer than 0.2 s; every material of a prop, foe or boss has a
-   baseColorTexture; bounding-box height and min_y printed for each, inside its range, feet at 0
-3. code: no JumpTuck in scripts/; no "pal * 4.0" in the terrain shader; prop_mat never on a PBR prop
-   (every "material_override = prop_mat" guarded by Models.has_pbr); High-tier phones at 3D scale 1.0
-4. textures: the imported .ctex headers of every terrain and hero texture: none 256 px or smaller
-5. godot --headless --quit: no ERROR / SCRIPT ERROR / WARNING line; tests/gate_chunk.tscn: every dressed
-   640 x 640 chunk (5 acts x 3 chunks) holds >= 150 prop instances, PBR props unshaded by prop_mat
-6. the release APK: built by tools/build_android.sh, path and size printed
+1. tools/fal_cache.json: the total spend is exactly the $18.904 of the asset overhaul (0.9.9 calls nothing);
+   every hero, boss, foe and prop .glb exists, > 100 KB
+2. every .glb parsed (struct + json), its height and min_y printed and in range (feet at 0):
+   heroes: a skin with joints and the 7 clips (idle, walk, run, cast/attack, roll/dodge, jump, die/death),
+   each > 0.2 s, and the trimmed ones short: cast <= 1.10 s, roll <= 0.80 s, jump <= 1.00 s;
+   bosses: a skin with joints and the 5 clips (idle, walk, attack, slam, die/death), each > 0.2 s;
+   foes: albedo, normal and ORM maps, the baked normal and ORM images not blank (each of their R and G
+   channels' pixel standard deviation >= 3.0), and a walk cycle that moves (its .vat: > 2 units of travel);
+   props: a baseColorTexture on every material
+3. code: no JumpTuck in scripts/; no "pal * 4.0" in the terrain shader; prop_mat never on a PBR prop; High
+   and Medium phones at 3D scale 1.0
+4. textures: the imported .ctex headers of everything under textures/terrain and models/{heroes, bosses,
+   foes, props}: none 256 px or smaller; and the texel budget (tools/texture_budget.py --check)
+5. engine: godot --headless --quit with no ERROR / WARNING line; tests/gate_chunk.tscn (models as the game
+   resolves them, chunk dressing on Low, Medium and High, solids the same on every tier); the unit tests
+   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation group printed
+6. the single Android APK: export_presets.cfg holds one Android preset (com.shardfall.riftsurvivors, no
+   Lite), tools/build_android.sh has no lite mode; built, its size and the .ctex bytes inside printed
 """
 import glob
+import io
 import json
 import os
 import re
 import struct
 import subprocess
 import sys
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -29,8 +39,12 @@ GODOT = os.path.expanduser(os.environ.get("GODOT", "/root/toolchains/godot/godot
 if not os.path.exists(GODOT): GODOT = os.path.expanduser("~/toolchains/godot/godot")
 sys.path.insert(0, HERE)
 import gltf_info  # noqa: E402
+import texture_budget  # noqa: E402
+import vat_pack  # noqa: E402
 import verify_assets  # noqa: E402
 
+EXPECTED_SPEND = 18.904
+HERO_MAX = {"cast": 1.10, "roll": 0.80, "jump": 1.00}
 FAILS = []
 
 
@@ -43,7 +57,25 @@ def section(t):
     print(f"\n== {t}", flush=True)
 
 
+def _image(js, binchunk, tex_index):
+    from PIL import Image
+    img = js["images"][js["textures"][tex_index]["source"]]
+    bv = js["bufferViews"][img["bufferView"]]
+    data = binchunk[bv.get("byteOffset", 0): bv.get("byteOffset", 0) + bv["byteLength"]]
+    return img.get("name", "?"), Image.open(io.BytesIO(data)).convert("RGB")
+
+
+def _clips(aid, s, alts_list):
+    names = {n.lower(): d for n, d in s["animations"]}
+    check(s["skins"] > 0 and s["joints"] > 0, f"{aid}: skin with {s['joints']} joints")
+    for alts in alts_list:
+        hit = next((a for a in alts if a in names), None)
+        check(hit is not None and names[hit] > 0.2, f"{aid}: clip {'/'.join(alts)} " + (f"{names[hit]:.2f} s" if hit else "missing"))
+    return names
+
+
 def main(build_apk=True):
+    import numpy as np
     # 1 ----------------------------------------------------------------
     section("1. fal cache and asset files")
     cpath = os.path.join(HERE, "fal_cache.json")
@@ -52,7 +84,7 @@ def main(build_apk=True):
         c = json.load(open(cpath))
         total = sum(x["cost_usd"] for x in c["calls"])
         calls = len([x for x in c["calls"] if x["status"] == "done"])
-        check(total <= 20.00, f"total fal spend ${total:.3f} (<= $20.00) over {calls} completed calls")
+        check(abs(total - EXPECTED_SPEND) < 1e-6, f"total fal spend ${total:.3f} over {calls} completed calls: unchanged from ${EXPECTED_SPEND:.3f} (no new calls)")
     for aid, kind in verify_assets.KIND.items():
         p = verify_assets.path_of(aid)
         ok = os.path.exists(p) and os.path.getsize(p) > 100_000
@@ -68,15 +100,34 @@ def main(build_apk=True):
               f"skins {s['skins']} joints {s['joints']}  clips {[n for n, d in s['animations']]}")
         check(lo <= s["height"] <= hi and abs(s["min_y"]) <= 0.5, f"{aid}: height {s['height']:.2f} in {lo:g}-{hi:g}, min_y {s['min_y']:.3f}")
         if kind == "hero":
-            names = {n.lower(): d for n, d in s["animations"]}
-            check(s["skins"] > 0 and s["joints"] > 0, f"{aid}: skin with {s['joints']} joints")
-            for alts in verify_assets.CLIPS["hero"]:
-                hit = next((a for a in alts if a in names), None)
-                check(hit is not None and names[hit] > 0.2, f"{aid}: clip {'/'.join(alts)} " + (f"{names[hit]:.2f} s" if hit else "missing"))
+            names = _clips(aid, s, verify_assets.CLIPS["hero"])
+            for clip, mx in HERO_MAX.items():
+                d = names.get(clip, 99.0)
+                check(d <= mx, f"{aid}: {clip} trimmed to {d:.2f} s (<= {mx:.2f})")
+        elif kind == "boss":
+            _clips(aid, s, verify_assets.CLIPS["boss"])
+            mats = s["materials"]
+            check(len(mats) > 0 and all("baseColor" in sl for _, sl in mats), f"{aid}: baseColorTexture on every material")
+        elif kind == "foe":
+            js, binchunk = gltf_info.load(p)
+            m = js["materials"][0]
+            pbr = m.get("pbrMetallicRoughness", {})
+            have = {"albedo": "baseColorTexture" in pbr, "normal": "normalTexture" in m, "orm": "metallicRoughnessTexture" in pbr}
+            check(all(have.values()), f"{aid}: albedo, normal and ORM maps ({', '.join(k for k, v in have.items() if v)})")
+            for slot, ref in (("normal", m.get("normalTexture")), ("orm", pbr.get("metallicRoughnessTexture"))):
+                if ref is None: continue
+                name, im = _image(js, binchunk, ref["index"])
+                px = np.asarray(im, dtype=np.float32).reshape(-1, 3)
+                sd = px.std(0)
+                check(min(sd[0], sd[1]) >= 3.0, f"{aid}: baked {slot} '{name}' {im.size[0]}x{im.size[1]} not blank: pixel std R {sd[0]:.1f} G {sd[1]:.1f} B {sd[2]:.1f} (RGB {px.std():.1f})")
+            nv, clips, P, N = vat_pack.read_sva3(open(p[:-4] + ".vat", "rb").read())
+            walk = next(cl for cl in clips if cl[0] == "walk")
+            seg = P[walk[1]: walk[1] + walk[2]]
+            travel = float(np.abs(seg - seg[0]).max())
+            check(travel > 2.0, f"{aid}: walk cycle moves ({travel:.2f} units of vertex travel over {walk[2]} frames)")
         else:
             mats = s["materials"]
-            ok = len(mats) > 0 and all("baseColor" in sl for _, sl in mats)
-            check(ok, f"{aid}: baseColorTexture on every material ({[sorted(sl) for _, sl in mats]})")
+            check(len(mats) > 0 and all("baseColor" in sl for _, sl in mats), f"{aid}: baseColorTexture on every material ({[sorted(sl) for _, sl in mats]})")
     # 3 ----------------------------------------------------------------
     section("3. code")
     tuck = subprocess.run(["grep", "-rn", "JumpTuck", os.path.join(GD, "scripts")], capture_output=True, text=True).stdout.strip()
@@ -85,53 +136,95 @@ def main(build_apk=True):
     check("pal * 4.0" not in terr, "'pal * 4.0': 0 matches in shaders/3d/terrain.gdshader")
     wv = open(os.path.join(GD, "scripts", "render3d", "world_view_3d.gd")).read().splitlines()
     uses = [(i + 1, l.strip()) for i, l in enumerate(wv) if "material_override = prop_mat" in l]
-    guarded = all("not Models.has_pbr(" in l for _, l in uses)
-    check(len(uses) > 0 and guarded, f"prop_mat only on props without PBR: {uses}")
+    check(len(uses) > 0 and all("not Models.has_pbr(" in l for _, l in uses), f"prop_mat only on props without PBR: {uses}")
     mg = open(os.path.join(GD, "scripts", "main.gd")).read()
     m = re.search(r"if mobile: return \[([0-9.]+), ([0-9.]+), ([0-9.]+)\]", mg)
     check(m is not None and float(m.group(3)) == 1.0 and float(m.group(2)) == 1.0,
           "main.gd auto_render_scale: phones Low/Medium/High = " + (", ".join(m.groups()) if m else "?") + " (High and Medium 1.0)")
     # 4 ----------------------------------------------------------------
     section("4. imported texture sizes (.ctex headers)")
+    dirs = ["textures/terrain", "models/heroes", "models/bosses", "models/foes", "models/props"]
     small = 0
     count = 0
-    for imp in sorted(glob.glob(os.path.join(GD, "textures", "terrain", "*.import")) + glob.glob(os.path.join(GD, "models", "heroes", "**", "*.import"), recursive=True)):
-        txt = open(imp).read()
-        if 'importer="texture"' not in txt: continue
-        for dest in sorted(set(re.findall(r'"res://(\.godot/imported/[^"]+\.ctex)"', txt))):   # [remap] and dest_files name each
-            f = os.path.join(GD, dest)
-            if not os.path.exists(f):
-                check(False, f"{dest} missing (run the import)"); continue
-            b = open(f, "rb").read(16)
-            w, h = struct.unpack_from("<II", b, 8)
-            count += 1
-            if min(w, h) <= 256:
-                small += 1
-                print(f"      {os.path.relpath(imp, GD)[:-7]} -> {w}x{h}  <= 256")
-            else:
-                print(f"      {os.path.relpath(imp, GD)[:-7]} -> {w}x{h}  ({os.path.basename(dest).split('.')[-2]})")
-    check(count > 0 and small == 0, f"{count} imported terrain and hero texture files (each map once per GPU format), {small} at 256 px or less")
+    for d in dirs:
+        sizes = []
+        for imp in sorted(glob.glob(os.path.join(GD, d, "**", "*.import"), recursive=True)):
+            txt = open(imp).read()
+            if 'importer="texture"' not in txt: continue
+            for dest in sorted(set(re.findall(r'"res://(\.godot/imported/[^"]+\.ctex)"', txt))):
+                f = os.path.join(GD, dest)
+                if not os.path.exists(f):
+                    check(False, f"{dest} missing (run the import)"); continue
+                w, h = struct.unpack_from("<II", open(f, "rb").read(16), 8)
+                sizes.append(min(w, h))
+                if min(w, h) <= 256:
+                    small += 1
+                    print(f"      {os.path.relpath(imp, GD)[:-7]} -> {w}x{h}  <= 256")
+        count += len(sizes)
+        print(f"      {d + '/':17s} {len(sizes):3d} imported files, {min(sizes) if sizes else 0}-{max(sizes) if sizes else 0} px")
+    check(count > 0 and small == 0, f"{count} imported texture files across terrain, heroes, bosses, foes and props; {small} at 256 px or less")
+    rows = 0
+    off = 0
+    for imp, rel, txt, (limit, why) in texture_budget.imports():
+        want = limit if limit else 2048
+        if "compress/mode=2" not in txt:
+            off += 1
+            print(f"      not VRAM-compressed: {rel}")
+        for fmt, w, h in texture_budget.ctex_sizes(txt):
+            rows += 1
+            if max(w, h) != want:
+                off += 1
+                print(f"      off budget: {rel} ({fmt}) {w}x{h}, wanted {want} ({why})")
+    check(rows > 0 and off == 0, f"texel budget: {rows} imported files, all VRAM-compressed, {off} off it (2048: heroes, bosses, landmark and foe albedo; 1024: prop and foe normal/ORM, clutter albedo)")
     # 5 ----------------------------------------------------------------
-    section("5. engine: headless boot and the chunk dressing count")
+    section("5. engine: headless boot, chunk dressing, unit tests")
     r = subprocess.run([GODOT, "--headless", "--path", GD, "--quit"], capture_output=True, text=True, timeout=600)
     errs = [l for l in (r.stdout + r.stderr).splitlines() if re.match(r"^(ERROR|SCRIPT ERROR|WARNING|USER ERROR)", l)]
     for l in errs[:10]: print("      " + l)
     check(r.returncode == 0 and not errs, f"godot --headless --quit: exit {r.returncode}, {len(errs)} error or warning lines")
-    r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/gate_chunk.tscn"], capture_output=True, text=True, timeout=900)
+    r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/gate_chunk.tscn"], capture_output=True, text=True, timeout=1800)
     out = r.stdout + r.stderr
     for l in out.splitlines():
         if l.startswith("GATE") or "SCRIPT ERROR" in l: print("      " + l)
     script_errs = [l for l in out.splitlines() if l.startswith("SCRIPT ERROR") or "Parse Error" in l]
     check(r.returncode == 0 and "GATE engine checks: PASS" in out and not script_errs,
-          f"tests/gate_chunk.tscn: exit {r.returncode}, every chunk >= 150 instances, {len(script_errs)} script errors")
+          f"tests/gate_chunk.tscn: exit {r.returncode}, {len(script_errs)} script errors")
+    env = dict(os.environ, TESTS_VERBOSE="1")
+    r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
+    out = r.stdout + r.stderr
+    lines = out.splitlines()
+    if "== 0.9.9 remediation" in lines:
+        i = lines.index("== 0.9.9 remediation")
+        for l in lines[i:]:
+            if l.startswith("==") and l != "== 0.9.9 remediation": break
+            if l.strip(): print("      " + l)
+    fails = [l for l in lines if l.strip().startswith("FAIL:")]
+    for l in fails[:10]: print("      " + l)
+    tot = next((l for l in lines if re.match(r"^== \d+ passed, \d+ failed ==$", l)), "no totals line")
+    print("      " + tot)
+    check(r.returncode == 0 and ", 0 failed ==" in tot and not fails, f"unit tests: {tot.strip('= ')}")
     # 6 ----------------------------------------------------------------
     if build_apk:
-        section("6. Android APK")
+        section("6. Android APK (one build)")
+        pre = open(os.path.join(GD, "export_presets.cfg")).read()
+        blocks = re.split(r"^\[preset\.\d+\]$", pre, flags=re.M)[1:]
+        android = [re.search(r'^name="([^"]*)"', b, re.M).group(1) for b in blocks if 'platform="Android"' in b]
+        ids = re.findall(r'^package/unique_name="([^"]*)"', pre, re.M)
+        check(android == ["Android"] and ids == ["com.shardfall.riftsurvivors"] and "Lite" not in pre,
+              f"export_presets.cfg: Android presets {android}, app ids {ids} (no Shardfall Lite)")
+        bs = open(os.path.join(HERE, "build_android.sh")).read()
+        check(re.search(r"\blite\b", bs, re.I) is None, "tools/build_android.sh: no lite mode")
         r = subprocess.run(["bash", os.path.join(HERE, "build_android.sh")], capture_output=True, text=True, timeout=3600)
         apk = os.path.join(ROOT, "build", "shardfall.apk")
         tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if not l.startswith("Picked up JAVA_TOOL_OPTIONS")][-4:]
         for l in tail: print("      " + l)
         ok = r.returncode == 0 and os.path.exists(apk)
+        if ok:
+            z = zipfile.ZipFile(apk)
+            ct = [i for i in z.infolist() if i.filename.endswith(".ctex")]
+            packed = sum(i.compress_size for i in ct)
+            raw = sum(i.file_size for i in ct)
+            print(f"      .ctex inside the APK: {len(ct)} files, {packed / 1e6:.2f} MB as stored ({raw / 1e6:.2f} MB unpacked)")
         check(ok, f"APK {apk}: " + (f"{os.path.getsize(apk)} bytes = {os.path.getsize(apk) / 1e6:.2f} MB" if os.path.exists(apk) else "missing"))
     print(f"\ngate_check: {len(FAILS)} failed check(s)")
     return 1 if FAILS else 0

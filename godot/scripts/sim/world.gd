@@ -131,6 +131,7 @@ var roll_buffer := 0.0
 ## JUMP_DIST ahead, or just past it when that is a cliff face or deep water, or else the farthest solid
 ## ground short of it.
 const JUMP_TIME := 0.55
+const HERO_R := 14.0             # the hero's body against solid props (walking, rolling, where a jump lands)
 const JUMP_DIST := 200.0
 const JUMP_CD := 2.0
 var jump_t := 0.0               # seconds left in the air (0: on the ground)
@@ -492,7 +493,7 @@ func _step_player(dt: float) -> void:
 		vel = vel.move_toward(want, spd / (DECEL_T if stopping else ACCEL_T) * dt)
 		np += vel * dt
 	var before := pp
-	if not flying: pp = terrain.move(pp, np)
+	if not flying: pp = terrain.move(pp, np, HERO_R)
 	if not rolling and not flying and dt > 0.0:
 		var moved := (pp - before) / dt                   # a wall or cliff stopped us: keep no stored speed
 		if moved.length_squared() < vel.length_squared(): vel = moved
@@ -599,10 +600,13 @@ func _jump(mvv: Vector2) -> void:
 ## Where a jump from `from` toward `dir` comes down. Exactly JUMP_DIST ahead when that is solid ground;
 ## past a cliff face or deep water, up to 5 cells further; otherwise the farthest solid ground short of
 ## it (a jump at a wall it cannot clear lands at its foot). Inside the pinnacle arena, never outside it.
+## Props: the flight clears boulders and walls (low) but not trunks, pillars or arch posts (high), so the
+## path must pass those; the landing is never inside any of them (the hero vaults a boulder and lands
+## past it, or comes down short of a tree).
 func jump_landing(from: Vector2, dir: Vector2) -> Vector2:
 	var ok := func(q: Vector2) -> bool:
 		if arena_r > 0.0 and q.length() > arena_r - 14.0: return false
-		return terrain.passable(q)
+		return terrain.passable(q) and terrain.props_clear(q, HERO_R) and terrain.props_path_clear(from, q, HERO_R)
 	var to := from + dir * JUMP_DIST
 	if ok.call(to): return to
 	for k in range(1, 6):

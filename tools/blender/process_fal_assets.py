@@ -12,7 +12,8 @@ hero, boss: rigged.glb (Meshy's rig on the Meshy model: Mixamo skeleton, PBR tex
 foe: rigged.glb, clip_walk.glb, clip_run.glb (Meshy's basic rig on the Hunyuan mesh, sent as
   tools/blender/obj_to_glb.py's rig_input.glb) and texture.png (Rapid's base colour map, full size)
   -> godot/models/foes/<id>.glb: the mesh welded, smooth, decimated to FOE_TRIS, at its height, feet at 0,
-     facing +X, the full base colour map (resized to 2048 px) on its UVs, UV2.x = the vertex's column in the
+     facing +X, the full base colour map (resized to 2048 px) on its UVs, a normal map and an ORM map baked
+     at 1024 px from the 16k-triangle rig mesh (bake_foe_maps), UV2.x = the vertex's column in the
      animation texture; and godot/models/foes/<id>.vat:
      SVA3 (tools/vat_pack.py) with the walk cycle (the run cycle for runner and charger) baked from the rig.
 prop: model.glb (Hunyuan Pro) -> godot/models/props/<id>.glb, welded (edges over 45 degrees kept sharp),
@@ -284,16 +285,103 @@ def load_rig(aid, clips):
     return objs, arm, got
 
 
+def assign(arm, act):
+    """Put `act` on the armature through its slot. Blender 4.4+ evaluates an action only through a slot, and a
+    clip imported on another armature carries that armature's slot ("OBArmature.001"), which assigning the
+    action does not pick: without this the clip never moves the rig (0.9.8's foe walk cycles were baked
+    frozen that way)."""
+    arm.animation_data.action = act
+    if act is not None and arm.animation_data.action_slot is None and len(act.slots):
+        arm.animation_data.action_slot = act.slots[0]
+
+
+# hero clips trimmed to their action before the root motion is taken out (seconds: shortest, longest)
+TRIM = {"jump": (0.55, 0.85), "roll": (0.45, 0.65), "cast": (0.65, 0.95)}
+
+
+def _track(arm, act, ends, step=1.0):
+    """World positions of the pose bones whose names end with each of `ends`, at every `step` frame."""
+    assign(arm, act)
+    f0, f1 = act.frame_range
+    frames = list(np.arange(f0, f1 + 1e-6, step))
+    bones = {e: next(b for b in arm.pose.bones if b.name.lower().endswith(e)) for e in ends}
+    out = {e: [] for e in ends}
+    scn = bpy.context.scene
+    for f in frames:
+        scn.frame_set(int(f), subframe=float(f) - int(f))
+        for e, b in bones.items(): out[e].append(np.array(arm.matrix_world @ b.head))
+    return np.array(frames), {e: np.array(v) for e, v in out.items()}
+
+
+def trim_window(arm, act, name, fps):
+    """(first, last) frame of the clip's action: the jump centred on the hips' apex, reaching back to the
+    takeoff crouch and on to the landing impact; the roll over its tumble (hips down or the torso pitched);
+    the cast centred on the hands' fastest frame, over the swing around it. Each within TRIM's range."""
+    lo, hi = TRIM[name]
+    fr, t = _track(arm, act, ["hips", "head", "lefthand", "righthand"])
+    hz = t["hips"][:, 2]
+    if name == "jump":
+        apex = int(np.argmax(hz))
+        pre = int(np.argmin(hz[:apex + 1]))                          # the takeoff crouch
+        post = apex + int(np.argmin(hz[apex:]))                      # the landing impact
+        mid = fr[apex]
+        half = max(fr[apex] - fr[pre], fr[post] - fr[apex])
+    elif name == "roll":
+        up = t["head"] - t["hips"]
+        pitch = np.degrees(np.arccos(np.clip(up[:, 2] / np.linalg.norm(up, axis=1), -1.0, 1.0)))
+        z0, p0 = float(np.median(hz[:5])), float(np.median(pitch[:5]))
+        active = np.where((hz < z0 * 0.8) | (pitch > p0 + 25.0))[0]
+        if len(active) == 0: active = np.arange(len(fr))
+        mid = 0.5 * (fr[active[0]] + fr[active[-1]])
+        half = 0.5 * (fr[active[-1]] - fr[active[0]])
+    else:                                                            # cast
+        sp = np.maximum(np.linalg.norm(np.diff(t["lefthand"], axis=0), axis=1), np.linalg.norm(np.diff(t["righthand"], axis=0), axis=1))
+        peak = int(np.argmax(sp))
+        a = peak
+        while a > 0 and sp[a - 1] > 0.35 * sp[peak]: a -= 1
+        b = peak
+        while b < len(sp) - 1 and sp[b + 1] > 0.35 * sp[peak]: b += 1
+        mid = 0.5 * (fr[peak] + fr[peak + 1])
+        half = max(mid - fr[a], fr[b + 1] - mid)
+    half = float(np.clip(half, lo * fps / 2.0, hi * fps / 2.0))
+    half = min(half, mid - fr[0], fr[-1] - mid) if mid - half < fr[0] or mid + half > fr[-1] else half
+    half = max(half, lo * fps / 2.0) if mid - lo * fps / 2.0 >= fr[0] and mid + lo * fps / 2.0 <= fr[-1] else half
+    return float(mid - half), float(mid + half)
+
+
+def trim_action(act, f0, f1):
+    """Keep [f0, f1] of every channel (its exact poses at both ends) and move it to start at frame 0."""
+    for fc in act.fcurves:
+        v0, v1 = fc.evaluate(f0), fc.evaluate(f1)
+        kp = fc.keyframe_points
+        for k in reversed(list(kp)):
+            if k.co.x < f0 - 1e-3 or k.co.x > f1 + 1e-3: kp.remove(k, fast=True)
+        kp.insert(f0, v0, options={"REPLACE"})
+        kp.insert(f1, v1, options={"REPLACE"})
+        for k in kp:
+            k.co.x -= f0
+            k.handle_left.x -= f0
+            k.handle_right.x -= f0
+        fc.update()
+
+
 def process_character(aid):
     kind = KIND[aid]
     clips = HERO_CLIPS if kind == "hero" else BOSS_CLIPS
     reset()
     objs, arm, acts = load_rig(aid, clips)
     arm.animation_data_create()
+    fps = bpy.context.scene.render.fps
+    trims = {}
     for name, act in acts.items():
-        arm.animation_data.action = act
+        assign(arm, act)
+        if kind == "hero" and name in TRIM:                         # trimmed first: the drift is the kept range's
+            f0, f1 = trim_window(arm, act, name, fps)
+            raw = (act.frame_range[1] - act.frame_range[0]) / fps
+            trim_action(act, f0, f1)
+            trims[name] = f"{raw:.2f}->{(f1 - f0) / fps:.2f}s"
         strip_root_motion(arm, act, name)
-    arm.animation_data.action = acts["idle"]
+    assign(arm, acts["idle"])
     arm.data.pose_position = "REST"
     tris = decimate(meshes(objs), TRIS[kind])
     texs = cap_textures(objs)
@@ -307,7 +395,7 @@ def process_character(aid):
     out = os.path.join(MODELS, "heroes" if kind == "hero" else "bosses", aid + ".glb")
     export(out, root, True)
     ranges = {n: round((a.frame_range[1] - a.frame_range[0]) / bpy.context.scene.render.fps, 2) for n, a in acts.items()}
-    print(f"PROCESSED {aid}: {out} height {h:.2f} min_z {min_z:.3f} tris {tris} clips {ranges} textures {texs} "
+    print(f"PROCESSED {aid}: {out} height {h:.2f} min_z {min_z:.3f} tris {tris} clips {ranges} trimmed {trims} textures {texs} "
           f"facing was {tuple(round(x, 2) for x in fwd)}", flush=True)
 
 
@@ -380,7 +468,7 @@ def author_foe_clips(arm):
     for name, (last, keys) in AUTHORED.items():
         act = bpy.data.actions.new(name)
         act.use_fake_user = True
-        arm.animation_data.action = act
+        assign(arm, act)
         used = sorted({b for k in keys.values() for b in k if b != "hips"})
         for fr, k in sorted(keys.items()):
             for bn in used:
@@ -414,6 +502,103 @@ def author_foe_clips(arm):
     return out
 
 
+FOE_BAKE = 1024                                                     # px: the foes' baked normal and ORM maps
+
+
+def _gltf_output_group():
+    """The node group the glTF exporter reads an occlusion map from ("glTF Material Output", Occlusion)."""
+    ng = bpy.data.node_groups.get("glTF Material Output")
+    if ng is None:
+        ng = bpy.data.node_groups.new("glTF Material Output", "ShaderNodeTree")
+        ng.interface.new_socket("Occlusion", in_out="INPUT", socket_type="NodeSocketFloat")
+    return ng
+
+
+def bake_foe_maps(aid, hi, lo, albedo):
+    """Tangent-space normal and ambient occlusion baked from `hi` (the welded 16k-triangle rigged mesh, in the
+    same rest pose, orientation and UVs) onto `lo` (its 1,800-triangle decimation): Cycles, selected to
+    active, FOE_BAKE px. Packed as ORM: R the occlusion; G a roughness that rises in the creases,
+    0.45 + 0.45 x (1 - AO), plus up to +-0.1 from the albedo's darkness (darker leather and cloth rougher),
+    clamped to 0.40-0.92; B no metal. Both go on lo's own material: the normal map through a Normal Map node,
+    the ORM through Separate Color into roughness, metallic and the glTF occlusion socket, so the export
+    carries albedo, normal and ORM. -> {map: (w, h)}"""
+    scn = bpy.context.scene
+    co = np.array([v.co for v in hi.data.vertices])
+    span = float((co.max(0) - co.min(0)).max())
+    mat = lo.data.materials[0].copy()                               # hi keeps the original
+    lo.data.materials[0] = mat
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    size = FOE_BAKE * FOE_BAKE
+
+    def blank(name, rgb):
+        img = bpy.data.images.new(f"{aid}_{name}", FOE_BAKE, FOE_BAKE, alpha=False)
+        img.colorspace_settings.name = "Non-Color"
+        img.pixels.foreach_set(np.tile(np.array(rgb + (1.0,), np.float32), size))
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = img
+        return img, node
+    nimg, nnode = blank("normal", (0.5, 0.5, 1.0))                  # flat where no chart is
+    aimg, anode = blank("ao", (1.0, 1.0, 1.0))
+    scn.render.engine = "CYCLES"
+    scn.cycles.device = "CPU"
+    scn.cycles.samples = 32
+    scn.render.bake.use_clear = False                                # keep the fills (white AO, flat normal) off the charts
+    if scn.world is None: scn.world = bpy.data.worlds.new("bake")
+    scn.world.light_settings.distance = 0.12 * span                 # creases, not the whole body
+    for o in bpy.context.selected_objects: o.select_set(False)
+    hi.select_set(True)
+    lo.select_set(True)
+    bpy.context.view_layer.objects.active = lo
+    # lo sits a hair outside hi: hidden from every secondary ray, or it occludes hi's AO and catches its rays
+    for flag in ("visible_diffuse", "visible_glossy", "visible_transmission", "visible_volume_scatter", "visible_shadow"):
+        setattr(lo, flag, False)
+    # rays start 3% of the body out (a 9x decimation strays that far from the surface it came from) and
+    # reach 8% back in, so none starts inside a bulge of hi and hits its far side
+    reach = dict(use_selected_to_active=True, cage_extrusion=0.03 * span, max_ray_distance=0.08 * span, margin=8)
+    nt.nodes.active = nnode
+    bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", **reach)
+    nt.nodes.active = anode
+    bpy.ops.object.bake(type="AO", **reach)
+    ao = np.empty(size * 4, np.float32)
+    aimg.pixels.foreach_get(ao)
+    ao = ao.reshape(-1, 4)[:, 0]
+    alb = albedo.copy()
+    alb.scale(FOE_BAKE, FOE_BAKE)
+    px = np.empty(size * 4, np.float32)
+    alb.pixels.foreach_get(px)
+    px = px.reshape(-1, 4)
+    lum = 0.3 * px[:, 0] + 0.59 * px[:, 1] + 0.11 * px[:, 2]
+    rough = np.clip(0.45 + 0.45 * (1.0 - ao) + (0.5 - lum) * 0.2, 0.40, 0.92)
+    orm = np.stack([ao, rough, np.zeros(size, np.float32), np.ones(size, np.float32)], 1).astype(np.float32)
+    oimg = bpy.data.images.new(f"{aid}_orm", FOE_BAKE, FOE_BAKE, alpha=False)
+    oimg.colorspace_settings.name = "Non-Color"
+    oimg.pixels.foreach_set(orm.ravel())
+    for img, fn in ((nimg, "baked_normal"), (oimg, "baked_orm")):
+        img.filepath_raw = os.path.join(RAW, aid, fn + ".png")
+        img.file_format = "PNG"
+        img.save()
+    nt.nodes.remove(anode)
+    bpy.data.images.remove(aimg)
+    bpy.data.images.remove(alb)
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nt.links.new(nnode.outputs["Color"], nm.inputs["Color"])
+    nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    onode = nt.nodes.new("ShaderNodeTexImage")
+    onode.image = oimg
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(onode.outputs["Color"], sep.inputs["Color"])
+    nt.links.new(sep.outputs["Green"], bsdf.inputs["Roughness"])
+    nt.links.new(sep.outputs["Blue"], bsdf.inputs["Metallic"])
+    gout = nt.nodes.new("ShaderNodeGroup")
+    gout.node_tree = _gltf_output_group()
+    nt.links.new(sep.outputs["Red"], gout.inputs["Occlusion"])
+    for flag in ("visible_diffuse", "visible_glossy", "visible_transmission", "visible_volume_scatter", "visible_shadow"):
+        setattr(lo, flag, True)
+    scn.render.engine = "BLENDER_WORKBENCH"
+    return {"normal": tuple(nimg.size), "orm": tuple(oimg.size)}
+
+
 def process_foe(aid):
     import vat_pack
     reset()
@@ -421,7 +606,7 @@ def process_foe(aid):
     objs, arm, acts = load_rig(aid, [loco])
     act = acts[loco]
     arm.animation_data_create()
-    arm.animation_data.action = act
+    assign(arm, act)
     strip_root_motion(arm, act, loco)
     arm.data.pose_position = "REST"
     ms = meshes(objs)
@@ -433,6 +618,12 @@ def process_foe(aid):
         ms = [ms[0]]
     ob = ms[0]
     welded = weld(ob)
+    # the welded 16k-triangle rigged mesh, kept as the bake source: the same rest pose, orientation and UVs as
+    # the mesh about to be decimated (the raw OBJ is not: Meshy re-posed and rescaled it)
+    hi_src = ob.copy()
+    hi_src.data = ob.data.copy()
+    hi_src.name = aid + "_hi"
+    bpy.context.scene.collection.objects.link(hi_src)
     tris = decimate([ob], TRIS["foe"])
     # the rig call carried a 1024 px copy of the base colour map (tools/blender/obj_to_glb.py); the mesh keeps
     # its UVs, so Rapid's own map goes back on, resized to MAX_TEX
@@ -445,6 +636,13 @@ def process_foe(aid):
             for n in slot.material.node_tree.nodes:
                 if n.type == "TEX_IMAGE": n.image = img
     texs = cap_textures([ob])
+    # the resized map written to its own file: the exporter embeds an image's file when it has one, and
+    # this one's is the 4096 px original
+    img.filepath_raw = os.path.join(RAW, aid, "albedo_2048.png")
+    img.file_format = "PNG"
+    img.save()
+    baked = bake_foe_maps(aid, hi_src, ob, img)
+    bpy.data.objects.remove(hi_src, do_unlink=True)
     fwd = forward_from_rig(arm)
     root = make_root(aid, objs, -math.atan2(fwd.y, fwd.x))
     h, min_z = place(root, [ob], HEIGHT[aid])
@@ -459,7 +657,7 @@ def process_foe(aid):
     dg = bpy.context.evaluated_depsgraph_get()
     for name in FOE_CLIPS:
         a = acts_all[name]
-        arm.animation_data.action = a
+        assign(arm, a)
         f0, f1 = int(a.frame_range[0]), int(a.frame_range[1])
         frames = list(range(f0, f1)) if name == "walk" else list(range(f0, f1 + 1))   # looped: the last is the first
         first = len(rows_p)
@@ -478,7 +676,7 @@ def process_foe(aid):
             rows_n.append(np.stack([no[:, 0], no[:, 2], -no[:, 1]], 1))
             ev.to_mesh_clear()
         table.append([name, first, len(frames), fps, 1 if name == "walk" else 0])
-    arm.animation_data.action = act
+    assign(arm, act)
     f0 = int(act.frame_range[0])
     frames = rows_p
     P = np.array(rows_p, dtype=np.float32); N = np.array(rows_n, dtype=np.float32)
@@ -510,7 +708,7 @@ def process_foe(aid):
                               export_skins=False, export_image_format="AUTO", export_materials="EXPORT", export_texcoords=True,
                               export_normals=True, export_tangents=False)
     print(f"PROCESSED {aid}: {out} height {h:.2f} min_z {min_z:.3f} welded {welded[0]} -> {welded[1]} verts, tris {tris} verts {nv} vat {vat_path} "
-          f"({len(frames)} frames at {fps:.0f} fps, {desc}, position error <= {100 * perr:.3f}%) textures {texs}", flush=True)
+          f"({len(frames)} frames at {fps:.0f} fps, {desc}, position error <= {100 * perr:.3f}%) textures {texs} baked {baked}", flush=True)
 
 
 # ---------------------------------------------------------------- props
@@ -585,12 +783,51 @@ def rebake(aid, hi, budget):
     return lo
 
 
+# props whose generated albedo is darker than the material it shows: lifted to this median linear
+# luminance. Hunyuan baked the bush near black (median ~0.015, where dark foliage is ~0.05), and on the
+# game's night ground 200 of them read as black balls. R, G and B scale together (hue and saturation stay).
+ALBEDO_FLOOR = {"bush": 0.05}
+
+
+def lift_albedo(aid, objs, floor):
+    """Scale every base colour map on these meshes so its median linear luminance is at least `floor`."""
+    done = {}
+    for o in meshes(objs):
+        for slot in o.material_slots:
+            m = slot.material
+            if m is None or not m.use_nodes: continue
+            bsdf = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if bsdf is None or not bsdf.inputs["Base Color"].is_linked: continue
+            node = bsdf.inputs["Base Color"].links[0].from_node
+            if node.type != "TEX_IMAGE" or node.image is None or node.image.name in done: continue
+            img = node.image
+            px = np.empty(len(img.pixels), np.float32)
+            img.pixels.foreach_get(px)
+            px = px.reshape(-1, 4)
+            lin = np.where(px[:, :3] <= 0.04045, px[:, :3] / 12.92, ((px[:, :3] + 0.055) / 1.055) ** 2.4)
+            lum = lin @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+            med = float(np.median(lum[lum > 0.002])) if np.any(lum > 0.002) else 0.0
+            k = min(4.0, floor / med) if 0.0 < med < floor else 1.0
+            lin = np.clip(lin * k, 0.0, 1.0)
+            px[:, :3] = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * lin ** (1.0 / 2.4) - 0.055)
+            # a new image on its own file: the exporter would otherwise embed the source image's bytes
+            out = bpy.data.images.new(img.name + "_lifted", img.size[0], img.size[1], alpha=False)
+            out.pixels.foreach_set(px.ravel())
+            out.filepath_raw = os.path.join(RAW, aid, "albedo_lifted.png")
+            out.file_format = "PNG"
+            out.save()
+            node.image = out
+            done[img.name] = (round(med, 4), round(k, 2))
+    return done
+
+
 def process_prop(aid):
     reset()
     objs, acts = import_glb(os.path.join(RAW, aid, "model.glb"))
     for a in acts: bpy.data.actions.remove(a)
     ms = meshes(objs)
     welded = [weld(o, 45.0) for o in ms]
+    lifted = lift_albedo(aid, objs, ALBEDO_FLOOR[aid]) if aid in ALBEDO_FLOOR else {}
     if len(ms) > 1:
         for o in bpy.context.selected_objects: o.select_set(False)
         for o in ms: o.select_set(True)
@@ -637,7 +874,8 @@ def process_prop(aid):
                               export_skins=False, export_morph=False, export_image_format="AUTO", export_materials="EXPORT",
                               export_texcoords=True, export_normals=True, export_tangents=False, export_apply=False)
     print(f"PROCESSED {aid}: {out} height {h:.2f} min_z {min_z:.3f} welded {sum(a for a, b in welded)} -> {sum(b for a, b in welded)} verts, "
-          f"tris {tris}{' (remeshed, maps baked from the full surface)' if baked else ''} textures {texs}", flush=True)
+          f"tris {tris}{' (remeshed, maps baked from the full surface)' if baked else ''} textures {texs}"
+          f"{f' albedo lifted {lifted}' if lifted else ''}", flush=True)
 
 
 if __name__ == "__main__":

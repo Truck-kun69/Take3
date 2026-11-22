@@ -103,7 +103,7 @@ critique it against the last milestone, fix. Device numbers are part of every cr
 
 ### M0. Measure first
 
-1. Benchmark screenshots from the S22 (main APK) and the A05 (Lite), with Show FPS on.
+1. Benchmark screenshots from the S22 and the A05 (both on the one APK; Shardfall Lite was retired in 0.9.9), with Show FPS on.
 2. Add two automated checks to the test suite:
    - a shimmer metric: render two frames one pixel apart and compare them;
    - an animation filmstrip per character.

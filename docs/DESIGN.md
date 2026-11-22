@@ -177,8 +177,13 @@ rose between GR1 and GR8.
 * **Late-rift spikes**: GR15 peaked at 14 ms worst frame with 1,500+ reactions and 44 damage numbers
   per second. Next steps: spread the reaction budget across frames instead of dropping jobs, and move
   `Swarm` (statuses, separation, movement) to a C++ GDExtension for the CPU path.
-* **APK size**: 157.84 MB for 0.9.8 (docs/RELEASE.md, "APK size"): model textures ship at their full
-  1024-2048 px, so the 50 MB budget of 0.9.7 is retired. Installing over mobile data is the cost.
+* **APK size**: 139.01 MB for 0.9.9 (docs/RELEASE.md, "APK size"): model textures ship at 1024-2048 px
+  under the texel budget, so the 50 MB budget of 0.9.7 is retired. Installing over mobile data is the cost.
+* **Solid props (0.9.9)**: trees, dead trees, pillars and arch posts (high) and boulders and walls (low)
+  block walking, rolling and the swarm (`scripts/sim/prop_layout.gd`, shared by the renderer and
+  Terrain): bodies are pushed out along each circle's normal and slide round; a jump clears the low ones,
+  never lands inside any, and comes down short of a high one in its path. Bosses ignore props, as they
+  ignore terrain. 400 foes: +0.16 ms a tick on a desktop CPU.
 * **No art pipeline**: everything is procedural (SDF bodies, canvas-drawn props). A sprite atlas would
   plug into the same MultiMesh batches via a texture and UV rect in `INSTANCE_CUSTOM`.
 * **Bot ≠ human**: all balance numbers come from a deliberately mediocre bot. Touch feel (dead

@@ -274,11 +274,12 @@ func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float, te
 				v += sep[i]
 		var np := p + (v + kb[i]) * dt
 		if terr != null and (flags[i] & (F_BOSS | F_HERALD | F_RIFTG)) == 0:
-			# terrain: shallows slow, cliffs and deep water stop; a blocked foe sidesteps along the edge
-			var q := terr.foe_move(p, np)
+			# terrain: shallows slow, cliffs and deep water stop, solid props push out (the foe slides round
+			# them); a blocked foe sidesteps along the edge
+			var q := terr.foe_move(p, np, rad[i])
 			if q == p and np != p:
 				var side := Vector2(-v.y, v.x) * (1.0 if (uid[i] & 1) == 0 else -1.0)
-				q = terr.move(p, p + side * dt)
+				q = terr.move(p, p + side * dt, rad[i])
 				kb[i] = Vector2.ZERO
 			np = q
 		pos[i] = np

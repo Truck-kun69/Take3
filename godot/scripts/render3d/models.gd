@@ -27,12 +27,14 @@ static func pbr_maps(m: Mesh) -> Dictionary:
 	if mat.roughness_texture != null: out["orm"] = mat.roughness_texture
 	return out
 
-## Whether a mesh brings its own PBR material (an albedo texture on its first surface): those draw as
+## Whether a mesh brings its own PBR material (an albedo texture on any of its surfaces): those draw as
 ## imported; the rest take the shared prop shader.
 static func has_pbr(m: Mesh) -> bool:
-	if m == null or m.get_surface_count() == 0: return false
-	var mat := m.surface_get_material(0)
-	return mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null
+	if m == null: return false
+	for i in m.get_surface_count():
+		var mat := m.surface_get_material(i)
+		if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null: return true
+	return false
 
 static var _cache := {}
 

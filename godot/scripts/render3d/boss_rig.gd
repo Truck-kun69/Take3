@@ -4,7 +4,8 @@ extends Node3D
 ## glowing ribcage furnace, wings or cloak, swinging weapon arms and a slam wind-up.
 ## kind "herald": the pinnacle, a floating crystal star with orbiting shards and a pulsing core.
 ## Override: res://models/bosses/<tyrant|herald|guardian>.(tscn|glb), AnimationPlayer clips
-## idle / walk / attack / hit / die.
+## idle / walk / attack / slam / hit / die: idle while it stands (under IDLE_SPEED), walk while it moves,
+## attack and slam in turn, die once when it falls (WorldView3D keeps the rig until the clip ends).
 
 var kind := "tyrant"
 var col := Color.WHITE
@@ -21,6 +22,7 @@ var core_cmat: ShaderMaterial
 var light: OmniLight3D
 var override: Node3D
 const WALK_SPEED := 69.0          # retargeted walk: 111.9 units per 1.62 s cycle
+const IDLE_SPEED := 5.0           # world units per second: slower than this (and not attacking) it idles
 var _prev_pos := Vector3.ZERO
 var _gs := 0.0
 var _has_stride := false
@@ -28,6 +30,7 @@ var anim: AnimationPlayer
 var _yaw := 0.0
 var _ph := 0.0
 var _atk := 0.0
+var _died := false
 
 ## The boss's own light, x LIGHT_GAIN: LIGHT_E steady plus up to LIGHT_PULSE with its heartbeat
 ## (was 2.0 + 2.5: with the sun at 1.2 and the glow threshold at 1.25 it washed out the boss and the
@@ -68,7 +71,10 @@ func _prepare_override(n: Node) -> void:
 	if anim != null:
 		for nm in ["idle", "walk"]:
 			if anim.has_animation(nm): anim.get_animation(nm).loop_mode = Animation.LOOP_LINEAR
-		if anim.has_animation("walk"): anim.play("walk")
+		for nm in ["attack", "slam", "hit", "die"]:                  # played once; die holds its last pose
+			if anim.has_animation(nm): anim.get_animation(nm).loop_mode = Animation.LOOP_NONE
+		if anim.has_animation("idle"): anim.play("idle")
+		elif anim.has_animation("walk"): anim.play("walk")
 	if _flash_sh == null:
 		_flash_sh = Shader.new()
 		_flash_sh.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform vec3 tint = vec3(1.0); uniform float flash = 0.0; void fragment(){ ALBEDO = tint * flash; }"
@@ -205,7 +211,24 @@ func _build_herald() -> void:
 	light.light_energy = 4.0
 	light.omni_range = 360.0
 
-## st: {pos, face, hp_frac, flash, t, dt, attack (bool, set on telegraph/burst), phase}
+## The clip an authored boss should play: die once dead; a new attack alternates attack and slam (an attack
+## plays to its end); a hard hit flinches when nothing else runs; a running attack or flinch continues;
+## otherwise idle under IDLE_SPEED world units per second, walk above it.
+func pick_clip(dead: bool, attack: bool, busy: bool, flinch: bool, speed: float) -> String:
+	if anim == null: return ""
+	if dead: return "die" if anim.has_animation("die") else ("idle" if anim.has_animation("idle") else "walk")
+	if attack and not busy:
+		_atk_flip = 1 - _atk_flip
+		return "slam" if (_atk_flip == 1 and anim.has_animation("slam")) else "attack"
+	if flinch and not busy and anim.current_animation != "hit" and anim.has_animation("hit"): return "hit"
+	if busy or (anim.current_animation == "hit" and anim.is_playing()): return anim.current_animation
+	return "idle" if speed < IDLE_SPEED and anim.has_animation("idle") else "walk"
+
+## Seconds the death clip runs (0 when this boss has none): how long the view keeps a fallen boss.
+func death_time() -> float:
+	return anim.get_animation("die").length if anim != null and anim.has_animation("die") else 0.0
+
+## st: {pos, face, hp_frac, flash, t, dt, attack (bool, set on telegraph/burst), phase, dead (optional)}
 func animate(st: Dictionary) -> void:
 	var p: Vector2 = st.pos
 	var dt: float = st.dt
@@ -224,23 +247,22 @@ func animate(st: Dictionary) -> void:
 			(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * (0.7 + 0.6 * pulse0 + _atk * 1.2)
 		light.light_energy = (LIGHT_E + pulse0 * LIGHT_PULSE) * WorldView3D.LIGHT_GAIN
 		if anim != null:
-			# an attack plays to the end (wind-up, strike, recover); attacks alternate between the "attack" and
-			# "slam" clips where the model has both; a hit flinch never interrupts one
-			var busy := (anim.current_animation == "attack" or anim.current_animation == "slam") and anim.is_playing()
-			var want := "walk"
-			if st.attack and not busy:
-				_atk_flip = 1 - _atk_flip
-				want = "slam" if (_atk_flip == 1 and anim.has_animation("slam")) else "attack"
-			elif fl0 > 0.85 and not busy and anim.current_animation != "hit" and anim.has_animation("hit"): want = "hit"
-			elif busy or (anim.current_animation == "hit" and anim.is_playing()): want = anim.current_animation
-			# the walk cadence follows the boss's real ground speed (stride measured by the retarget); it idles when held
+			# ground speed in world units per second, from the rig's own movement (smoothed)
 			var sc := maxf(0.01, global_transform.basis.get_scale().x)
-			var gs := (position - _prev_pos).length() / maxf(dt, 0.001) / sc
+			var gs := (position - _prev_pos).length() / maxf(dt, 0.001)
 			_prev_pos = position
 			_gs = lerpf(_gs, gs if gs < 900.0 else 0.0, minf(1.0, dt * 6.0))
-			if want == "walk" and _gs < 6.0 and anim.has_animation("idle"): want = "idle"
+			var busy := (anim.current_animation == "attack" or anim.current_animation == "slam") and anim.is_playing()
+			var want := pick_clip(bool(st.get("dead", false)), bool(st.attack), busy, fl0 > 0.85, _gs)
+			if want == "die":
+				if not _died:                                        # once; LOOP_NONE holds the last pose
+					_died = true
+					anim.play("die", 0.15)
+				anim.speed_scale = 1.0
+				return
 			if anim.has_animation(want) and (anim.current_animation != want or not anim.is_playing()): anim.play(want, 0.2)
-			anim.speed_scale = clampf(_gs / WALK_SPEED, 0.6, 1.8) if want == "walk" and _has_stride else 1.0
+			# the walk cadence follows the ground speed where the stride was measured (retargeted clips)
+			anim.speed_scale = clampf(_gs / sc / WALK_SPEED, 0.6, 1.8) if want == "walk" and _has_stride else 1.0
 		return
 	var fl := clampf(float(st.flash) * 10.0, 0.0, 1.0)
 	for m in char_mats:

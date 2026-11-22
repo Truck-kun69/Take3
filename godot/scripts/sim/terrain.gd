@@ -157,6 +157,13 @@ func trim(p: Vector2, keep: int = 6) -> void:
 	for c in _chunks.keys():
 		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > keep:
 			_chunks.erase(c)
+	for c in _prop_chunks.keys():
+		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > keep:
+			_prop_chunks.erase(c)
+	var per := int(CHUNK / PCELL)
+	for cell in _prop_cells.keys():
+		if maxi(absi(floori(float(cell.x) / per) - cc.x), absi(floori(float(cell.y) / per) - cc.y)) > keep:
+			_prop_cells.erase(cell)
 
 # ---------------------------------------------------------------- queries
 func cell_of(p: Vector2) -> Vector2i:
@@ -212,7 +219,16 @@ func passable(p: Vector2) -> bool:
 	return false
 
 ## Moves from `a` toward `b`, sliding along walls; anything already stuck may always move (escape).
-func move(a: Vector2, b: Vector2) -> Vector2:
+## With a body radius, solid props push the body out as well (props_resolve); a push that would put it
+## on a cliff or in deep water keeps it where it was.
+func move(a: Vector2, b: Vector2, body_r: float = 0.0) -> Vector2:
+	var q := _move_cells(a, b)
+	if body_r <= 0.0 or not props_on: return q
+	var r := props_resolve(q, body_r)
+	if r != q and not passable(r) and passable(q): return a
+	return r
+
+func _move_cells(a: Vector2, b: Vector2) -> Vector2:
 	if passable(b) or not passable(a):
 		return b
 	var sx := Vector2(b.x, a.y)
@@ -222,15 +238,112 @@ func move(a: Vector2, b: Vector2) -> Vector2:
 	return a
 
 ## Swarm fast path: one cell lookup when the foe stays in its cell (the common case at 16-unit cells).
-## Shallows scale the whole step (knockback included) by 0.65.
-func foe_move(p: Vector2, np: Vector2) -> Vector2:
+## Shallows scale the whole step (knockback included) by 0.65. A body radius adds the solid props.
+func foe_move(p: Vector2, np: Vector2, body_r: float = 0.0) -> Vector2:
 	var cp := cell_of(p)
 	var t := cell_type(cp.x, cp.y)
 	if t == SHALLOW and not frozen.has(cp):
 		np = p + (np - p) * 0.65
-	if cell_of(np) == cp:
-		return np
-	return move(p, np)
+	var q := np if cell_of(np) == cp else _move_cells(p, np)
+	if body_r > 0.0 and props_on: q = props_resolve(q, body_r)
+	return q
+
+# ---------------------------------------------------------------- solid props (PropLayout)
+## Trees, boulders and ruins block walking, rolling and the swarm. Each chunk's obstacle circles come
+## from PropLayout (the same layout the renderer draws) on first use, and are filed in PCELL cells: a cell
+## holds every circle within PROP_REACH of it, so a body of up to that radius looks at its own cell only.
+## Low circles (boulders, walls) a jump clears; a landing inside any circle is refused (World.jump_landing).
+const PCELL := 64.0
+const INV_PCELL := 1.0 / PCELL
+const PROP_REACH := 48.0          # the largest body radius that collides with props (swarm foes reach ~34)
+var props_on := true              # off: nothing blocks (menus, some tests)
+var _prop_chunks := {}            # Vector2i chunk -> PackedFloat32Array of its circles [x, y, r, low] x n
+var _prop_cells := {}             # Vector2i PCELL cell -> PackedFloat32Array of the circles reaching it
+var _prop_test := PackedFloat32Array()
+var _prop_test_on := false
+
+func _prop_chunk(c: Vector2i) -> PackedFloat32Array:
+	if not _prop_chunks.has(c): _prop_chunks[c] = PropLayout.solids(c, stage, self)
+	return _prop_chunks[c]
+
+## The circles [x, y, r, low] x n that a body of radius <= PROP_REACH anywhere in p's cell can touch.
+func props_near(p: Vector2) -> PackedFloat32Array:
+	if _prop_test_on: return _prop_test
+	var cell := Vector2i(floori(p.x * INV_PCELL), floori(p.y * INV_PCELL))
+	var hit = _prop_cells.get(cell)                 # one lookup: every foe asks every tick
+	if hit != null: return hit
+	var x0 := cell.x * PCELL
+	var y0 := cell.y * PCELL
+	var m := PROP_REACH + PropLayout.MAX_R
+	var out := PackedFloat32Array()
+	for cx in range(floori((x0 - m) / CHUNK), floori((x0 + PCELL + m) / CHUNK) + 1):
+		for cy in range(floori((y0 - m) / CHUNK), floori((y0 + PCELL + m) / CHUNK) + 1):
+			var a := _prop_chunk(Vector2i(cx, cy))
+			for j in range(0, a.size(), 4):
+				var reach := a[j + 2] + PROP_REACH
+				if a[j] + reach < x0 or a[j] - reach > x0 + PCELL or a[j + 1] + reach < y0 or a[j + 1] - reach > y0 + PCELL: continue
+				out.append(a[j]); out.append(a[j + 1]); out.append(a[j + 2]); out.append(a[j + 3])
+	_prop_cells[cell] = out
+	return out
+
+## A body of radius br at p pushed out of the prop circles around it, along each circle's normal to its
+## edge (centre + direction * (r + br)); two passes, so a body wedged between two circles settles against
+## both. A body moving into a circle off its centre keeps the sideways part of its step: it slides round.
+## skip_low: boulders and walls do not count.
+func props_resolve(p: Vector2, br: float, skip_low: bool = false) -> Vector2:
+	if not props_on: return p
+	var a := props_near(p)
+	var n := a.size()
+	if n == 0: return p
+	for it in 2:
+		var moved := false
+		for j in range(0, n, 4):
+			if skip_low and a[j + 3] > 0.5: continue
+			var dx := p.x - a[j]
+			var dy := p.y - a[j + 1]
+			var rr := a[j + 2] + br
+			var d2 := dx * dx + dy * dy
+			if d2 >= rr * rr: continue
+			var d := sqrt(d2)
+			if d < 1e-4: p = Vector2(a[j] + rr, a[j + 1])
+			else: p = Vector2(a[j] + dx / d * rr, a[j + 1] + dy / d * rr)
+			moved = true
+		if not moved: break
+	return p
+
+## Whether a body of radius br at p is clear of every prop circle (low ones too).
+func props_clear(p: Vector2, br: float) -> bool:
+	if not props_on: return true
+	var a := props_near(p)
+	for j in range(0, a.size(), 4):
+		var dx := p.x - a[j]
+		var dy := p.y - a[j + 1]
+		var rr := a[j + 2] + br
+		if dx * dx + dy * dy < rr * rr: return false
+	return true
+
+## Whether a body of radius br can fly straight from a to b: no high circle (trunk, pillar, arch post)
+## within reach of the segment. Boulders and walls are low: a jump clears them. Sampled every half cell,
+## which PROP_REACH's margin over br covers.
+func props_path_clear(a: Vector2, b: Vector2, br: float) -> bool:
+	if not props_on: return true
+	var ab := b - a
+	var l2 := maxf(1e-6, ab.length_squared())
+	var steps := maxi(1, ceili(sqrt(l2) / (PCELL * 0.5)))
+	for k in steps + 1:
+		var arr := props_near(a + ab * (float(k) / steps))
+		for j in range(0, arr.size(), 4):
+			if arr[j + 3] > 0.5: continue
+			var c := Vector2(arr[j], arr[j + 1])
+			var t := clampf((c - a).dot(ab) / l2, 0.0, 1.0)
+			var rr := arr[j + 2] + br
+			if c.distance_squared_to(a + ab * t) < rr * rr: return false
+	return true
+
+## Tests: exactly these circles [x, y, r, low] x n block, instead of the layout.
+func set_test_props(circles: PackedFloat32Array) -> void:
+	_prop_test = circles
+	_prop_test_on = true
 
 func speed_mul(p: Vector2) -> float:
 	var c := cell_of(p)

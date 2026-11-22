@@ -96,8 +96,10 @@ func _ready() -> void:
 				# bound as WorldView3D.bind does: the model's own maps, the animation texture and its box
 				var pbr := Models.pbr_maps(fmesh)
 				fm2.set_shader_parameter("has_albedo", pbr.has("albedo"))
-				fm2.set_shader_parameter("has_normal", pbr.has("normal"))
-				fm2.set_shader_parameter("has_orm", pbr.has("orm"))
+				# FOE_MAPS=albedo / =normal: compare the baked maps against fewer of them
+				var only := OS.get_environment("FOE_MAPS")
+				fm2.set_shader_parameter("has_normal", pbr.has("normal") and only != "albedo")
+				fm2.set_shader_parameter("has_orm", pbr.has("orm") and only != "albedo" and only != "normal")
 				for key in pbr: fm2.set_shader_parameter(key + "_tex", pbr[key])
 				fm2.set_shader_parameter("has_vat", not vat.is_empty())
 				if not vat.is_empty():

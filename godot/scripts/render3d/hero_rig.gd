@@ -459,6 +459,7 @@ const CAST_RATE := 1.25
 const CAST_VIS_CD := 0.45           # at most one visible cast per 0.45 s: auto-weapons fire faster than that
 const V_WALK := 75.0                # world units per second at which the walk clip plays at its own rate
 const V_RUN := 155.0                # and the run clip
+const CAST_MOVE_K := 0.35           # above this share of the walk speed the hero counts as moving (casts)
 var tree: AnimationTree
 var _clips := {}                    # role -> the clip's name in this model
 var _v_walk := V_WALK
@@ -491,9 +492,13 @@ func _build_tree() -> void:
 	if anim == null:
 		push_error("HeroRig %s: the model has no AnimationPlayer" % hero_id)
 		return
+	var list := anim.get_animation_list()
+	if list.is_empty():
+		push_error("HeroRig %s: the model's AnimationPlayer has no clips" % hero_id)
+		return
 	_clips = _map_clips()
 	for role in REQUIRED:
-		if not _clips.has(role): _clips[role] = _clips.get("idle", String(anim.get_animation_list()[0]))
+		if not _clips.has(role): _clips[role] = _clips.get("idle", String(list[0]))
 	for role in ["idle", "walk", "run"]:
 		anim.get_animation(_clips[role]).loop_mode = Animation.LOOP_LINEAR
 	var bt := AnimationNodeBlendTree.new()
@@ -564,6 +569,13 @@ func _build_tree() -> void:
 	tree.active = true
 	for layer in ["up", "full"]: tree.set("parameters/crate_%s/scale" % layer, CAST_RATE)
 
+## The locomotion clips' playback rate at ground speed `spd`: 1.0 across [walk, run] (the blend space
+## covers that span), speed over the nearest end outside it, clamped to 0.85-1.30. Continuous: no step
+## anywhere, so the stride never jumps as the hero speeds up or slows down.
+func loco_rate(spd: float) -> float:
+	var ref := clampf(spd, _v_walk, _v_run)
+	return clampf(spd / ref, 0.85, 1.30)
+
 func _clip(role: String) -> AnimationNodeAnimation:
 	var n := AnimationNodeAnimation.new()
 	n.animation = _clips.get(role, role)
@@ -584,12 +596,15 @@ func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 		_spd = lerpf(_spd, raw, minf(1.0, dt * 12.0))
 		tree.set("parameters/loco/blend_amount", clampf(_spd / (_v_walk * 0.6), 0.0, 1.0))
 		tree.set("parameters/moving/blend_position", clampf(_spd, _v_walk, _v_run))
-		var ref := _v_walk if _spd < (_v_walk + _v_run) * 0.5 else _v_run
-		tree.set("parameters/rate/scale", clampf(_spd / ref, 0.85, 1.30))
+		tree.set("parameters/rate/scale", loco_rate(_spd))
 		_cast_vis_cd = maxf(0.0, _cast_vis_cd - dt)
 		var age := float(st.cast_age)
+		# a full-body cast freezes the legs: once the hero moves it fades out (and the same cast is not
+		# replayed on the upper body); a cast that starts while moving takes the upper-body layer
+		if _spd > _v_walk * CAST_MOVE_K and bool(tree.get("parameters/cast_full/active")):
+			tree.set("parameters/cast_full/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FADE_OUT)
 		if age < _last_cast_age and age < 0.3 and roll < 0.0 and not st.dead and _cast_vis_cd <= 0.0:
-			var layer := "up" if _spd > _v_walk * 0.5 else "full"
+			var layer := "up" if _spd > _v_walk * CAST_MOVE_K else "full"
 			if not bool(tree.get("parameters/cast_up/active")) and not bool(tree.get("parameters/cast_full/active")):
 				_cast_flip = 1 - _cast_flip
 				tree.set("parameters/pick_%s/transition_request" % layer, "a" if _cast_flip == 0 else "b")

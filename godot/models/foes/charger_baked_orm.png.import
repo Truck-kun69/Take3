@@ -2,21 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b54t0nrypp3n8"
-path.s3tc="res://.godot/imported/charger_texture.png-115bfafbdd4b93044d4242e97e61afdc.s3tc.ctex"
-path.etc2="res://.godot/imported/charger_texture.png-115bfafbdd4b93044d4242e97e61afdc.etc2.ctex"
+uid="uid://d2mtw735m8mbe"
+path.s3tc="res://.godot/imported/charger_baked_orm.png-5673048474720b4c622c0620b1ff0b59.s3tc.ctex"
+path.etc2="res://.godot/imported/charger_baked_orm.png-5673048474720b4c622c0620b1ff0b59.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "2f5cf95c0ceff5b46ab6e173879f7e7f"
+"md5": "f88540a467b68e46f47dc26ac6656245"
 }
 
 [deps]
 
-source_file="res://models/foes/charger_texture.png"
-dest_files=["res://.godot/imported/charger_texture.png-115bfafbdd4b93044d4242e97e61afdc.s3tc.ctex", "res://.godot/imported/charger_texture.png-115bfafbdd4b93044d4242e97e61afdc.etc2.ctex"]
+source_file="res://models/foes/charger_baked_orm.png"
+dest_files=["res://.godot/imported/charger_baked_orm.png-5673048474720b4c622c0620b1ff0b59.s3tc.ctex", "res://.godot/imported/charger_baked_orm.png-5673048474720b4c622c0620b1ff0b59.etc2.ctex"]
 
 [params]
 
@@ -41,5 +41,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=1024
 detect_3d/compress_to=1

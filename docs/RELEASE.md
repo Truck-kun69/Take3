@@ -8,15 +8,19 @@ builds:
 
 | File | What it is |
 |---|---|
-| `shardfall.apk` | The main build (Vulkan Mobile renderer). |
-| `shardfall-lite.apk` | "Shardfall Lite" (OpenGL ES 3), for budget phones. Installs beside the main app. |
+| `shardfall.apk` | The one Android build (`com.shardfall.riftsurvivors`, Vulkan Mobile renderer). Shardfall Lite was retired in 0.9.9. |
 | `shardfall-release.aab` | The Play Store bundle. Built only when the release key is configured. |
 
 The files are attached to the workflow run as the `shardfall-android` artifact for 30 days.
 
 ## APK size
 
-0.9.8: 157.84 MB (157,837,190 bytes), both APKs. From 0.9.8 every model and ground texture ships at
+0.9.9: 139.01 MB (139,010,339 bytes), the one APK. The texel budget (`tools/texture_budget.py`) imports
+the normal and ORM maps of props and foes and the albedo of small clutter at 1024 px and keeps the rest
+at 2048: textures 97.5 MB of it (97 files), the engine library 23.75 MB, scenes and meshes 10.1 MB, audio
+2.1 MB, foe animation (`.vat`) 1.9 MB, `classes.dex` 1.7 MB.
+
+0.9.8: 157.84 MB (157,837,190 bytes). From 0.9.8 every model and ground texture ships at
 its full 1024-2048 px, VRAM-compressed and never downscaled, so the 50 MB budget of 0.9.7 is retired.
 The largest parts, compressed: textures 116.4 MB (87 files; the generated heroes, bosses, foes and
 props carry 2048 px maps), the engine library 23.75 MB, scenes and meshes 10.3 MB, audio 2.1 MB,
@@ -24,7 +28,7 @@ props carry 2048 px maps), the engine library 23.75 MB, scenes and meshes 10.3 M
 
 0.9.7: 49.90 MB, under that budget, with the hero and boss textures at 256-512 px.
 
-After Godot exports a release or Lite APK, `tools/build_android.sh` repacks it (`tools/apk_repack.py`):
+After Godot exports the release APK, `tools/build_android.sh` repacks it (`tools/apk_repack.py`):
 the `.ctex` textures Godot stores uncompressed are deflated (13.5 -> 11.3 MB) and the engine library
 and `classes.dex` are recompressed with zopfli (26.3 -> 25.5 MB, needs `pip install zopfli`; cached by
 content hash). Every entry's content is checked to be byte-identical (CRC and size). The APK is then
@@ -76,10 +80,6 @@ bash tools/provision.sh
 
 ```bash
 bash tools/build_android.sh
-```
-
-```bash
-bash tools/build_android.sh lite
 ```
 
 With a release key: set `SHARDFALL_KEYSTORE`, `SHARDFALL_KEYSTORE_USER` and `SHARDFALL_KEYSTORE_PASS`

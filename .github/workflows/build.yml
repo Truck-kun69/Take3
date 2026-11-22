@@ -63,11 +63,6 @@ jobs:
           SHARDFALL_KEYSTORE_USER: ${{ secrets.SHARDFALL_KEYSTORE_USER }}
           SHARDFALL_KEYSTORE_PASS: ${{ secrets.SHARDFALL_KEYSTORE_PASS }}
         run: bash tools/build_android.sh
-      - name: Build Lite APK
-        env:
-          SHARDFALL_KEYSTORE_USER: ${{ secrets.SHARDFALL_KEYSTORE_USER }}
-          SHARDFALL_KEYSTORE_PASS: ${{ secrets.SHARDFALL_KEYSTORE_PASS }}
-        run: bash tools/build_android.sh lite
       - name: Build Play bundle (release key only)
         if: env.SHARDFALL_KEYSTORE != ''
         env:

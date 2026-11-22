@@ -5,8 +5,8 @@
 
 For each asset, the processed file in godot/models (tools/blender/process_fal_assets.py output):
   - exists and is over 100 KB
-  - every material has a baseColor texture; heroes, bosses and props also a normal map; each texture's
-    image is 1024-2048 px
+  - every material has a baseColor texture and a normal map (foes also a metallicRoughness map: the baked
+    ORM); each texture's image is 1024-2048 px
   - heroes and bosses: a skin with joints; every clip present, longer than 0.2 s
     (heroes idle, walk, run, cast or attack, roll or dodge, jump, die or death; bosses idle, walk, attack,
     slam, die or death)
@@ -60,7 +60,7 @@ def check(aid):
     mats = s["materials"]
     res.append((len(mats) > 0, f"{aid}: {len(mats)} material(s)"))
     for name, sizes in mats:
-        need = ["baseColor"] + (["normal"] if k != "foe" else [])
+        need = ["baseColor", "normal"] + (["metallicRoughness"] if k == "foe" else [])
         missing = [n for n in need if n not in sizes]
         res.append((not missing, f"{aid}: material {name!r} has {sorted(sizes)}" + (f", missing {missing}" if missing else "")))
         for slot, wh in sizes.items():

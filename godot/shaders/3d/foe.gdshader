@@ -156,7 +156,9 @@ void fragment() {
 		vec3 tint = COLOR.rgb / max(0.001, max(COLOR.r, max(COLOR.g, COLOR.b)));
 		base = texture(albedo_tex, UV).rgb * mix(vec3(1.0), tint, 0.1);
 		if (has_normal) NORMAL_MAP = texture(normal_tex, UV).rgb;
-		if (has_orm) { vec3 orm = texture(orm_tex, UV).rgb; rough = orm.g; metal = orm.b; }
+		// ORM baked from the 16k-triangle mesh (process_fal_assets.py): R ambient occlusion darkens the
+		// sculpted creases the 1,800-triangle mesh lost, G roughness, B metal
+		if (has_orm) { vec3 orm = texture(orm_tex, UV).rgb; base *= mix(0.65, 1.0, orm.r); rough = orm.g; metal = orm.b; }
 		else rough = 0.75;
 	} else {
 	// the same noise as a bump: screen-space surface gradient (Mikkelsen 2010), no extra texture taps.
