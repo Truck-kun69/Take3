@@ -14,6 +14,7 @@ config/icon="res://icon.png"
 Diag="*res://scripts/autoload/diag.gd"
 Save="*res://scripts/autoload/save.gd"
 Sfx="*res://scripts/autoload/sfx.gd"
+Voice="*res://scripts/audio/voice_bank.gd"
 
 [display]
 

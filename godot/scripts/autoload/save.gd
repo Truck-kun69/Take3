@@ -10,7 +10,7 @@ var _dirty := false
 var _t := 0.0
 
 const DEFAULT_OPTIONS := {
-	"sound": true, "volume": 0.8, "shake": 1.0, "dmg_numbers": 2,   # 0 off, 1 crits/reactions only, 2 all
+	"sound": true, "volume": 0.8, "voice_volume": 1.0, "shake": 1.0, "dmg_numbers": 2,   # 0 off, 1 crits/reactions only, 2 all
 	"colorblind": false, "reduce_flash": false, "haptics": true, "aim": 0,   # 0 nearest, 1 strongest, 2 facing
 	"joy_mode": 0, "left_handed": false, "auto_equip": true, "loot_filter": 0,   # 0 all, 1 hide normal, 2 rare+
 	"show_fps": false, "quality": 1, "gfx": 0, "gpu_crowd": 0, "ambient": true, "sfx_safe": false, "frame_cap": 0, "gfx_off": [], "ui_scale": 1.0, "force_touch_ui": false, "renderer": 0, "render_scale": 0,
@@ -18,6 +18,7 @@ const DEFAULT_OPTIONS := {
 
 func _ready() -> void:
 	load_profile()
+	apply_voice_volume()
 
 func defaults() -> Dictionary:
 	var cur := {}
@@ -29,7 +30,7 @@ func defaults() -> Dictionary:
 	for s in Content.SLOTS:
 		eq[s] = {}
 	return {
-		"version": VERSION, "gold": 0, "hero": 0, "cleared": [false, false, false, false, false],
+		"version": VERSION, "gold": 0, "hero": 0, "intro_seen": false, "cleared": [false, false, false, false, false],
 		"options": DEFAULT_OPTIONS.duplicate(), "stash": [], "equipped": eq, "currency": cur,
 		"codex": [], "codex_active": [], "bestiary": {}, "lore": [],
 		"fragments": {"rupture": 0, "greed": 0, "dread": 0}, "splinters": 0,
@@ -160,6 +161,16 @@ func opt(k: String):
 func set_opt(k: String, v) -> void:
 	data.options[k] = v
 	mark_dirty()
+	if k == "voice_volume": apply_voice_volume()
+
+## Options > Voice volume sets the Voice bus (VoiceBank's lines play on VoiceHero, VoiceNarrator and VoiceBoss,
+## which all feed it); 0 mutes it.
+func apply_voice_volume() -> void:
+	var i := AudioServer.get_bus_index("Voice")
+	if i < 0: return
+	var v := clampf(float(opt("voice_volume")), 0.0, 1.0)
+	AudioServer.set_bus_mute(i, v <= 0.001)
+	AudioServer.set_bus_volume_db(i, linear_to_db(maxf(v, 0.001)))
 
 func add_currency(id: String, n: int = 1) -> void:
 	data.currency[id] = int(data.currency.get(id, 0)) + n

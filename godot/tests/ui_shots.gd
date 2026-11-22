@@ -5,7 +5,7 @@ var main: Node
 var out := "user://ui_shots"
 var pre := ""
 var t := 0.0
-var step := 0
+var step := -2                     # -2, -1: the first-launch intro, then picking an exile (their intro line subtitled)
 
 func _ready() -> void:
 	var a := OS.get_cmdline_user_args()
@@ -44,6 +44,8 @@ func _process(dt: float) -> void:
 	if t < 0.8: return
 	t = 0.0
 	match step:
+		-2: main.show_intro()
+		-1: await _snap("u0_intro"); main.intro.skip(); main._on_act("hero", int(Save.data.hero))
 		0: await _snap("u1_menu"); main.screens.show_codex()
 		1: await _snap("u2_codex"); main.screens.show_options("menu")
 		2: await _snap("u3_options"); main.screens._sel_item = 2; main.screens.show_stash(false)

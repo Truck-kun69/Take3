@@ -15,6 +15,9 @@ var ui: Control
 var state := "menu"
 var last_cfg := {}
 var crowd: CrowdCompute
+var subtitles: Subtitles          # voice lines' subtitle banner, on its own layer over everything
+var voice_dir: VoiceDirector       # which voice line a run says when (VoiceBank decides what is heard)
+var intro: IntroScreen             # the narrated cold open, while it is up
 var bot_drive := false          # tests/screenshots: input comes from a Bot instead of devices
 
 func _ready() -> void:
@@ -39,6 +42,13 @@ func _ready() -> void:
 	screens.main = self
 	ui.add_child(screens)
 	screens.act.connect(_on_act)
+	var sub_layer := CanvasLayer.new()
+	sub_layer.layer = 20
+	add_child(sub_layer)
+	subtitles = Subtitles.new()
+	sub_layer.add_child(subtitles)
+	voice_dir = VoiceDirector.new()
+	add_child(voice_dir)
 	hud.pause_pressed.connect(_pause)
 	touch.roll.connect(func(): if world: world.in_roll = true)
 	touch.jump.connect(func(): if world: world.in_jump = true)
@@ -63,6 +73,19 @@ func _ready() -> void:
 		screens.show_selftest_resume(st, Diag.crashed_last)
 	elif Diag.crashed_last:
 		screens.show_crash(Diag.report)
+	elif not bool(Save.data.get("intro_seen", false)) and not bot_drive:
+		show_intro()
+
+## The narrated cold open (IntroScreen) over the title menu: on first launch, and from Options > Replay intro.
+func show_intro() -> void:
+	if intro != null: return
+	intro = IntroScreen.new()
+	intro.finished.connect(_on_intro_done)
+	ui.add_child(intro)
+
+func _on_intro_done() -> void:
+	if intro != null: intro.queue_free()
+	intro = null
 
 ## GPU crowd separation (a compute shader on a local RenderingDevice). Option "gpu_crowd":
 ## 0 Auto = off on phones (first S21 test crashed seconds into a run; CPU separation is cheap), on
@@ -170,6 +193,9 @@ func _input_map() -> void:
 func _menu() -> void:
 	state = "menu"
 	Sfx.stop_ambience()
+	VoiceBank.stop_all(0.15)
+	if voice_dir != null: voice_dir.unbind()
+	if subtitles != null: subtitles.in_run = false
 	_free_world()
 	hud.visible = false
 	touch.visible = false
@@ -177,6 +203,7 @@ func _menu() -> void:
 	screens.show_menu()
 
 func _free_world() -> void:
+	if voice_dir != null: voice_dir.unbind()
 	if world != null:
 		world.dispose()
 	world = null
@@ -187,6 +214,7 @@ func _free_world() -> void:
 
 func start(cfg: Dictionary) -> void:
 	_free_world()
+	VoiceBank.stop_all(0.1)
 	menu_stage.hide_stage()
 	last_cfg = cfg.duplicate()
 	cfg["hero"] = int(cfg.get("hero", Save.data.hero)) if cfg.get("daily", false) else int(Save.data.hero)
@@ -211,6 +239,8 @@ func start(cfg: Dictionary) -> void:
 	screens.close()
 	state = "play"
 	Sfx.start_ambience(world.stage)
+	subtitles.in_run = true
+	voice_dir.bind(world)
 
 func use_3d() -> bool:
 	return int(Save.opt("renderer")) == 0
@@ -312,6 +342,7 @@ var _bench_acc := {}
 
 func start_bench() -> void:
 	start({"mode": "rift", "gr": 3, "seed": 7, "moon": -1.0})
+	voice_dir.unbind()                     # the benchmark runs silent of voices
 	state = "bench"
 	_bench_t = 0.0
 	_bench_ms = PackedFloat32Array()
@@ -494,6 +525,7 @@ func _dyn_res(dt: float) -> void:
 		Diag.mark("dyn res %.2f (avg %.1f ms)" % [_base_scale * _dyn, avg * 1000.0])
 
 func _process(dt: float) -> void:
+	if subtitles != null: subtitles.in_run = state == "play"     # modal screens and menus: subtitles along the top
 	if world == null:
 		return
 	if state in ["play", "bench", "selftest"]: _firsts()
@@ -534,7 +566,11 @@ func _notification(what: int) -> void:
 func _on_act(what: String, arg) -> void:
 	match what:
 		"menu": _menu()
-		"hero": menu_stage.show_stage(int(arg))
+		"hero":
+			menu_stage.show_stage(int(arg))
+			menu_stage.showcase()
+			if VoiceBank.current != null: VoiceBank.current.preview_hero(String(Content.HEROES[int(arg)].id))
+		"intro": show_intro()
 		"campaign": start({"mode": "campaign", "stage": int(arg)})
 		"rift": start({"mode": "rift", "gr": int(arg)})
 		"atlas":

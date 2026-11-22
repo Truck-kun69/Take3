@@ -13,6 +13,7 @@ func _ready() -> void:
 	var sv := get_node("/root/Save")
 	sv.path = "user://bench_profile.json"
 	sv.data = sv.defaults()
+	sv.data.intro_seen = true
 	sv.data.options.sound = false
 	sv.data.options.show_fps = true
 	if a.size() > 1: sv.data.options.gfx = int(a[1])

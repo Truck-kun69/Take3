@@ -15,6 +15,9 @@ The files are attached to the workflow run as the `shardfall-android` artifact f
 
 ## APK size
 
+0.10.0: 139.04 MB (139,039,754 bytes). The voice layer (manifest, VoiceBank, subtitles, intro) adds 29 KB; the
+ElevenLabs voice pack, once generated, adds about 2 MB (the gate allows 2.5). See docs/VOICES.md.
+
 0.9.9: 139.01 MB (139,010,339 bytes), the one APK. The texel budget (`tools/texture_budget.py`) imports
 the normal and ORM maps of props and foes and the albedo of small clutter at 1024 px and keeps the rest
 at 2048: textures 97.5 MB of it (97 files), the engine library 23.75 MB, scenes and meshes 10.1 MB, audio

@@ -18,20 +18,29 @@
    foes, props}: none 256 px or smaller; and the texel budget (tools/texture_budget.py --check)
 5. engine: godot --headless --quit with no ERROR / WARNING line; tests/gate_chunk.tscn (models as the game
    resolves them, chunk dressing on Low, Medium and High, solids the same on every tier); the unit tests
-   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation group printed
-6. the single Android APK, the only build: export_presets.cfg holds one preset, Android
+   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation and 0.10.0 voice groups printed
+6. voice (godot/data/voice_manifest.json, tools/gen_voices.py; nothing calls ElevenLabs or fal): the dry run exits 0
+   with the network shut off; 61 lines, a valid schema, the 4 exiles on distinct voices and distinct
+   stability/style; the validator refuses six broken copies of the manifest; no line's text is repeated in a
+   script; the ffmpeg chain's selftest; and the drop-in end to end: a clip encoded at narrator/act_0_0.ogg,
+   imported by Godot, plays instead of the chime at its own length (removed again before the APK is built); the
+   clips present add up to at most 2.5 MB
+7. the single Android APK, the only build: export_presets.cfg holds one preset, Android
    (com.shardfall.riftsurvivors: no Web, no Lite); no web build tools (tools/build_web.sh, pack_web.py) and
    no web renderer override in project.godot; tools/build_android.sh has no lite mode; built, its size and
-   the .ctex bytes inside printed
+   the .ctex bytes inside printed, the voice manifest inside it
 """
 import glob
 import io
 import json
 import os
 import re
+import copy
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +53,7 @@ import gltf_info  # noqa: E402
 import texture_budget  # noqa: E402
 import vat_pack  # noqa: E402
 import verify_assets  # noqa: E402
+import gen_voices  # noqa: E402
 
 EXPECTED_SPEND = 18.904
 HERO_MAX = {"cast": 1.10, "roll": 0.80, "jump": 1.00}
@@ -197,19 +207,85 @@ def main(build_apk=True):
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
     lines = out.splitlines()
-    if "== 0.9.9 remediation" in lines:
-        i = lines.index("== 0.9.9 remediation")
-        for l in lines[i:]:
-            if l.startswith("==") and l != "== 0.9.9 remediation": break
-            if l.strip(): print("      " + l)
+    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice"):
+        if grp in lines:
+            i = lines.index(grp)
+            for l in lines[i:]:
+                if l.startswith("==") and l != grp: break
+                if l.strip(): print("      " + l)
     fails = [l for l in lines if l.strip().startswith("FAIL:")]
     for l in fails[:10]: print("      " + l)
     tot = next((l for l in lines if re.match(r"^== \d+ passed, \d+ failed ==$", l)), "no totals line")
     print("      " + tot)
     check(r.returncode == 0 and ", 0 failed ==" in tot and not fails, f"unit tests: {tot.strip('= ')}")
     # 6 ----------------------------------------------------------------
+    section("6. voice: manifest, generator, drop-in (no ElevenLabs or fal calls)")
+    dead = "http://127.0.0.1:9"                       # the dry run gets no way out: a network call would fail it
+    env = dict(os.environ, ELEVENLABS_API_KEY="", FAL_KEY="", HTTPS_PROXY=dead, HTTP_PROXY=dead, https_proxy=dead, http_proxy=dead)
+    r = subprocess.run([sys.executable, os.path.join(HERE, "gen_voices.py"), "--dry-run"], capture_output=True, text=True, timeout=120, env=env)
+    for l in (r.stdout + r.stderr).rstrip().splitlines(): print("      " + l)
+    check(r.returncode == 0 and "ERROR" not in r.stdout, f"gen_voices.py --dry-run: exit {r.returncode} with the network shut off and no keys")
+    man = gen_voices.load_manifest()
+    err, _ = gen_voices.validate(man)
+    check(len(man.get("lines", [])) == 61 and not err, f"voice_manifest.json: {len(man.get('lines', []))} lines (61), schema valid ({len(err)} errors)")
+    heroes = [man["casting"][h] for h in gen_voices.HEROES]
+    envs = [c["voice_id_env"] for c in heroes]
+    profs = [(c["stability"], c["style"]) for c in heroes]
+    check(len(set(envs)) == 4 and len(set(profs)) == 4, f"the 4 exiles: distinct voices {envs}, distinct stability/style {profs}")
+    # the validator is not vacuous: each broken copy of the manifest must be refused
+    def broken(fn):
+        m = copy.deepcopy(man)
+        fn(m)
+        return len(gen_voices.validate(m)[0])
+    muts = {
+        "a line missing": lambda m: m["lines"].pop(),
+        "Sparkcaller cast like the Warden": lambda m: m["casting"]["spark"].update(stability=m["casting"]["warden"]["stability"], style=m["casting"]["warden"]["style"]),
+        "two speakers on one voice": lambda m: m["casting"]["herald"].update(voice_id_env=m["casting"]["tyrant"]["voice_id_env"]),
+        "a cast bark at priority 2": lambda m: next(l for l in m["lines"] if l["cue"] == "cast").update(priority=2),
+        "a 12-word bark": lambda m: next(l for l in m["lines"] if l["cue"] == "cast").update(text="one two three four five six seven eight nine ten eleven twelve"),
+        "a clip off its canonical path": lambda m: m["lines"][0].update(file="res://audio/voices/elsewhere.ogg"),
+    }
+    caught = {k: broken(f) for k, f in muts.items()}
+    check(all(n > 0 for n in caught.values()), "the validator refuses every broken copy: " + ", ".join(f"{k} ({n})" for k, n in caught.items()))
+    # every line's words live in the manifest only: none is repeated in a script
+    src = ""
+    for f in glob.glob(os.path.join(GD, "scripts", "**", "*.gd"), recursive=True): src += open(f).read()
+    dup = [l["id"] for l in man["lines"] if l["text"][:32] in src]
+    check(not dup, f"no voice line's text is written into a script ({len(dup)} found{': ' + ', '.join(dup[:5]) if dup else ''})")
+    r = subprocess.run([sys.executable, os.path.join(HERE, "gen_voices.py"), "--selftest"], capture_output=True, text=True, timeout=300, env=env)
+    for l in (r.stdout + r.stderr).rstrip().splitlines(): print("      " + l)
+    check(r.returncode == 0, "gen_voices.py --selftest: ffmpeg trims, normalises to -16 LUFS / -1 dBTP and encodes 44.1 kHz mono Vorbis")
+    # drop-in, end to end: a clip at a real line's path is imported by Godot and played at its own length
+    target = os.path.join(GD, "audio", "voices", "narrator", "act_0_0.ogg")
+    made = not os.path.exists(target)
+    try:
+        if made:
+            with tempfile.TemporaryDirectory() as d:
+                wav = os.path.join(d, "probe.wav")
+                gen_voices._ffmpeg(["-loglevel", "error", "-y", "-f", "lavfi", "-i", "aevalsrc='0.05*sin(2*PI*120*t)*(1+0.5*sin(2*PI*3*t))':s=44100:d=2.2", wav])
+                gen_voices.encode(wav, target)
+        subprocess.run([GODOT, "--headless", "--path", GD, "--import"], capture_output=True, text=True, timeout=900)
+        r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "voice_dropin"], capture_output=True, text=True, timeout=300,
+                           env=dict(os.environ, TESTS_VERBOSE="1"))
+        out = r.stdout + r.stderr
+        for l in out.splitlines():
+            if l.strip().startswith(("ok:", "FAIL:")): print("      " + l.strip())
+        check(r.returncode == 0 and ", 0 failed ==" in out, "drop-in: a clip from gen_voices.py at narrator/act_0_0.ogg, imported by Godot, plays instead of the chime at its own length")
+    finally:
+        if made:
+            for f in (target, target + ".import"):
+                if os.path.exists(f): os.remove(f)
+            for dd in (os.path.dirname(target), os.path.dirname(os.path.dirname(target))):
+                if os.path.isdir(dd) and not os.listdir(dd): os.rmdir(dd)
+            subprocess.run([GODOT, "--headless", "--path", GD, "--import"], capture_output=True, text=True, timeout=900)
+    present = [gen_voices.ogg_path(l) for l in man["lines"] if os.path.exists(gen_voices.ogg_path(l))]
+    size = sum(os.path.getsize(p) for p in present)
+    check(size <= 2.5e6, f"voice pack: {len(present)} of {len(man['lines'])} clips in godot/audio/voices, {size / 1e6:.2f} MB (at most 2.5 MB)")
+    vc = gen_voices.load_cache()
+    check(True, f"voice spend ${gen_voices.spend(vc):.3f} over {len(vc.get('calls', {}))} calls (tools/voice_cache.json); fal's ledger is section 1")
+    # 7 ----------------------------------------------------------------
     if build_apk:
-        section("6. Android APK (one build)")
+        section("7. Android APK (one build)")
         pre = open(os.path.join(GD, "export_presets.cfg")).read()
         blocks = re.split(r"^\[preset\.\d+\]$", pre, flags=re.M)[1:]
         names = [re.search(r'^name="([^"]*)"', b, re.M).group(1) for b in blocks]
@@ -235,6 +311,10 @@ def main(build_apk=True):
             packed = sum(i.compress_size for i in ct)
             raw = sum(i.file_size for i in ct)
             print(f"      .ctex inside the APK: {len(ct)} files, {packed / 1e6:.2f} MB as stored ({raw / 1e6:.2f} MB unpacked)")
+            names = z.namelist()
+            vo = [n for n in names if "/audio/voices/" in n and not n.endswith(".import")]
+            check(any(n.endswith("data/voice_manifest.json") for n in names) and not any("/tests/" in n for n in names),
+                  f"the APK carries data/voice_manifest.json ({len(vo)} voice clip files) and none of tests/")
         check(ok, f"APK {apk}: " + (f"{os.path.getsize(apk)} bytes = {os.path.getsize(apk) / 1e6:.2f} MB" if os.path.exists(apk) else "missing"))
     print(f"\ngate_check: {len(FAILS)} failed check(s)")
     return 1 if FAILS else 0

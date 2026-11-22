@@ -49,6 +49,7 @@ func spawn_stage_boss(twin: bool) -> void:
 		w.boss_max += w.sw.mhp[i]
 	w.boss_uids = stage_uids
 	w.banner.emit(s.boss + (" x2" if twin else ""), "The tyrant of " + s.name, Content.col(s.boss_col))
+	w.moment.emit("boss_spawn", {"boss": "tyrant", "name": String(s.boss)})
 	w.shake = 0.8
 	Sfx.play("boss")
 
@@ -234,6 +235,7 @@ func spawn_guardian() -> void:
 	w.boss_uids = [guardian_uid]
 	w.boss_max = w.sw.mhp[i]
 	w.banner.emit("Rift Guardian", "Greater Rift %d" % w.gr_level, Color("ff4fd8"))
+	w.moment.emit("boss_spawn", {"boss": "tyrant", "name": "Rift Guardian"})
 	Sfx.play("boss")
 
 # ---------------------------------------------------------------- rogue exile / nemesis
@@ -301,6 +303,7 @@ func _do_spawn_herald() -> void:
 	w.boss_uids = [herald_uid]
 	w.boss_max = w.sw.mhp[i]
 	w.banner.emit("The Shard Herald", "It sings the next shardfall.", Color("c48aff"))
+	w.moment.emit("boss_spawn", {"boss": "herald", "name": "The Shard Herald"})
 	w.shake = 1.0
 	Sfx.play("boss")
 
@@ -414,6 +417,7 @@ func on_kill(i: int, at: Vector2) -> void:
 			if su != u and w.sw.index_of(su) >= 0 and w.sw.hp[w.sw.index_of(su)] > 0.0: alive += 1
 		w.loot_shower(at, 2, 2, 10, Content.Rarity.RARE)
 		if alive == 0:
+			w.moment.emit("boss_die", {"boss": "tyrant", "name": String(Content.STAGES[w.stage].boss)})
 			_victory(at, "The tyrant falls")
 			if w.mode == "atlas" and w.node.get("kind", "") == "citadel":
 				w.add_pick(at, "fragment", 0.0, ["rupture", "greed", "dread"][w.rng.randi_range(0, 2)])
@@ -425,6 +429,7 @@ func on_kill(i: int, at: Vector2) -> void:
 		Save.data.gr_key = maxi(int(Save.data.gr_key), w.gr_level + up)
 		Save.mark_dirty()
 		w.loot_shower(at, 3, 4, 20, Content.Rarity.RARE)
+		w.moment.emit("boss_die", {"boss": "tyrant", "name": "Rift Guardian"})
 		if w.rng.randf() < 0.15 + 0.01 * w.gr_level: w.drop_item(at, Content.Rarity.LEGENDARY)
 		_victory(at, "Rift complete: key upgraded +%d" % up if up > 0 else "Rift complete (out of time)")
 	elif (f & Swarm.F_EXILE) != 0:
@@ -437,6 +442,7 @@ func on_kill(i: int, at: Vector2) -> void:
 		exile_uid = -1
 	elif (f & Swarm.F_HERALD) != 0:
 		herald_dead = true
+		w.moment.emit("boss_die", {"boss": "herald", "name": "The Shard Herald"})
 		Save.data.herald_kills = int(Save.data.herald_kills) + 1
 		Save.mark_dirty()
 		w.loot_shower(at, 4, 6, 40, Content.Rarity.RARE)

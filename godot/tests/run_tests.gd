@@ -43,6 +43,10 @@ func _ready() -> void:
 		_jump_polish_tests()
 		_look_tests()
 		_remediation_tests()
+		_voice_tests()
+	elif "voice" in args:
+		_voice_tests()
+	if "voice_dropin" in args: _voice_dropin_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
@@ -1278,6 +1282,313 @@ func _remediation_tests() -> void:
 ## The 3D view places foes, effects, smoke and lights at ground_y() + their own height on the CPU (the
 ## instanced shaders do no terrain lookup). Checks that ground_y() is the simulation's height on hilly
 ## ground and that what the view writes for foes, shots, crystals, debris, sparks and lights sits on it.
+## 0.10.0: the voice layer. data/voice_manifest.json holds every line once. VoiceBank plays a line's .ogg when
+## the file exists, timed (subtitle, ducking, the next intro beat) to its real length, and otherwise a chime of
+## the speaker's own for the manifest's estimate; priorities, cooldowns, the voice buses, the intro screen and
+## the run's voice cues are checked here, all on a stepped clock.
+func _voice_bank() -> VoiceBank:
+	var vb := VoiceBank.new()
+	vb.manual_clock = true
+	add_child(vb)
+	return vb
+
+func _voice_tests() -> void:
+	print("== 0.10.0 voice")
+	var vb := _voice_bank()
+	ok(vb.errors.is_empty(), "the voice manifest loads with 0 errors%s" % ("" if vb.errors.is_empty() else ": " + "; ".join(vb.errors)))
+	ok(vb.entries.size() == 61, "it holds 61 lines (%d)" % vb.entries.size())
+	var hero_cues := {"intro": 1, "cast": 3, "ult": 2, "kill_streak": 2, "low_hp": 2, "boss_spawn": 1, "death": 1}
+	var miss: Array = []
+	for h in ["warden", "spark", "ember", "storm"]:
+		for c in hero_cues:
+			if vb.variants(h, c) != int(hero_cues[c]): miss.append("%s/%s" % [h, c])
+	if vb.variants("narrator", "intro") != 4: miss.append("narrator/intro")
+	for k in 5:
+		if vb.variants("narrator", "act_%d" % k) != 1: miss.append("narrator/act_%d" % k)
+	for b in ["tyrant", "herald"]:
+		for c in ["spawn", "die"]:
+			if vb.variants(b, c) != 1: miss.append("%s/%s" % [b, c])
+	ok(miss.is_empty(), "each exile resolves its 7 cues (12 lines), the narrator 4 intro beats and 5 act openings, both bosses spawn and die%s" % ("" if miss.is_empty() else ": missing " + str(miss)))
+	var rules := {"cast": [0, 7.0], "kill_streak": [1, 10.0], "low_hp": [2, 15.0], "ult": [2, 4.0], "boss_spawn": [3, 0.0], "death": [3, 0.0], "spawn": [3, 0.0], "die": [3, 0.0], "intro": [4, 0.0]}
+	var off: Array = []
+	for id in vb.entries:
+		var e: Dictionary = vb.entries[id]
+		var cue := String(e.cue)
+		var want: Array = rules.get(cue, [3, 0.0]) if not cue.begins_with("act_") else [3, 0.0]
+		if int(e.priority) != int(want[0]) or not is_equal_approx(float(e.cooldown_s), float(want[1])): off.append(id)
+		if String(e.file) != "res://audio/voices/%s/%s_%d.ogg" % [e.speaker, cue, int(e.variant)] or String(id) != "%s_%s_%d" % [e.speaker, cue, int(e.variant)]: off.append(id + " (path)")
+	ok(off.is_empty(), "priorities, cooldowns, ids and .ogg paths follow the cue table%s" % ("" if off.is_empty() else ": " + str(off)))
+	# no .ogg (the line pointed at a missing file, so this holds once the real pack is in): the speaker's chime,
+	# held for the manifest's estimate
+	var e0: Dictionary = vb.entries["warden_cast_0"]
+	e0.file = "res://tests/fixtures/no_such_line.ogg"
+	var r := vb.say("warden", "cast", 0)
+	ok(bool(r.played) and not bool(r.using_pack) and is_equal_approx(float(r.duration), float(e0.duration_fallback_s)) and String(r.text) == String(e0.text) and String(r.speaker) == "warden",
+		"with no .ogg a line plays the speaker's chime for the manifest's estimate (%.1f s) and returns its text" % float(r.get("duration", 0.0)))
+	var ap := vb.active_player()
+	ok(ap != null and ap.stream is AudioStreamWAV and ap.bus == &"VoiceHero", "the chime is a generated AudioStreamWAV on the VoiceHero bus")
+	var sigs := {}
+	var fresh := VoiceBank.new()
+	var c_us := Time.get_ticks_usec()
+	var c_len := 0.0
+	for s in ["warden", "spark", "ember", "storm", "narrator", "tyrant", "herald"]:
+		var ch: AudioStreamWAV = fresh.chime(s)
+		if ch != null and ch.data.size() > 0:
+			sigs[hash(ch.data)] = s
+			c_len = maxf(c_len, ch.data.size() / 2.0 / VoiceBank.CHIME_RATE)
+	var c_ms := (Time.get_ticks_usec() - c_us) / 1000.0
+	fresh.free()
+	ok(sigs.size() == 7, "all 7 speakers have a chime of their own (%d distinct, the longest %.2f s)" % [sigs.size(), c_len])
+	ok(c_ms < 250.0, "the 7 chimes are made in %.0f ms on this machine (one a frame at startup on a phone)" % c_ms)
+	vb.queue_free()
+	# priority: a higher line cuts in, an equal or lower one waits its turn
+	var pb := _voice_bank()
+	var a := pb.say("warden", "cast", 0)
+	var b2 := pb.say("warden", "boss_spawn")
+	ok(bool(a.played) and bool(b2.played) and pb.active_id() == "warden_boss_spawn_0", "a boss_spawn line (priority 3) cuts off a cast bark (priority 0)")
+	var c2 := pb.say("warden", "cast", 1)
+	ok(not bool(c2.played) and String(c2.reason) == "busy", "a bark is refused while a higher-priority line plays (%s)" % c2.get("reason", ""))
+	pb.queue_free()
+	var ub := _voice_bank()
+	var u := ub.say("ember", "ult", 0)
+	var c3 := ub.say("ember", "cast", 0)
+	ok(bool(u.played) and not bool(c3.played) and ub.active_cue() == "ult", "a cast bark is refused while an ult line (priority 2) plays")
+	ub.queue_free()
+	# cooldowns: per cue, and a 2.8 s gap after any line before the next priority 0-1 bark
+	var cb := _voice_bank()
+	var fired := 0
+	for k in 20:
+		if bool(cb.say("storm", "cast").played): fired += 1
+		cb.step(0.3)
+	ok(fired == 1, "rapid casts fire once and are held back through the 7 s cooldown (%d fired in 6 s)" % fired)
+	cb.step(1.2)
+	ok(bool(cb.say("storm", "cast").played), "and fire again once it has passed")
+	cb.queue_free()
+	var gb := _voice_bank()
+	var g0 := gb.say("spark", "cast", 0)
+	gb.step(float(g0.duration) + 1.0)
+	var g1 := gb.say("spark", "kill_streak", 0)
+	gb.step(2.0)
+	var g2 := gb.say("spark", "kill_streak", 0)
+	ok(bool(g0.played) and not bool(g1.played) and String(g1.reason) == "gap" and bool(g2.played), "a priority 0-1 bark waits 2.8 s after the last line ends (%s)" % g1.get("reason", ""))
+	gb.step(float(g2.duration) + 0.5)
+	ok(bool(gb.say("spark", "low_hp", 0).played), "a low-health line (priority 2) does not wait for that gap")
+	gb.queue_free()
+	# drop-in: a real .ogg at the line's path replaces the chime, timed to its own length
+	var db := _voice_bank()
+	db.entries["warden_cast_0"].file = "res://tests/fixtures/voice_probe.ogg"
+	var real := db.say("warden", "cast", 0)
+	var rp := db.active_player()
+	var st: AudioStream = rp.stream if rp != null else null
+	ok(bool(real.played) and bool(real.using_pack) and st is AudioStreamOggVorbis and absf(float(real.duration) - st.get_length()) < 0.001 and absf(float(real.duration) - 1.25) < 0.05,
+		"a dropped-in .ogg plays instead of the chime, timed to its real length (%.2f s, estimate %.1f s)" % [float(real.get("duration", 0.0)), float(db.entries["warden_cast_0"].duration_fallback_s)])
+	ok(st is AudioStreamOggVorbis and not (st as AudioStreamOggVorbis).loop, "and never loops")
+	db.step(1.3)
+	ok(not db.is_speaking(), "the line ends when the clip does, not at the estimate")
+	db.entries["warden_low_hp_0"].file = "res://tests/fixtures/no_such_line.ogg"
+	var absent := db.say("warden", "low_hp", 0)
+	ok(bool(absent.played) and not bool(absent.using_pack) and is_equal_approx(float(absent.duration), float(db.entries["warden_low_hp_0"].duration_fallback_s)), "a line whose .ogg is missing falls back to the chime")
+	db.queue_free()
+	# buses
+	var bi := ["Voice", "VoiceHero", "VoiceNarrator", "VoiceBoss"].map(func(n): return AudioServer.get_bus_index(n))
+	ok(not bi.has(-1), "Voice, VoiceHero, VoiceNarrator and VoiceBoss buses exist (%s)" % str(bi))
+	if not bi.has(-1):
+		ok(AudioServer.get_bus_send(bi[0]) == &"Master" and AudioServer.get_bus_send(bi[1]) == &"Voice" and AudioServer.get_bus_send(bi[2]) == &"Voice" and AudioServer.get_bus_send(bi[3]) == &"Voice",
+			"the three voice buses feed Voice, and Voice feeds Master")
+		var comp := false
+		for k in AudioServer.get_bus_effect_count(bi[1]):
+			if AudioServer.get_bus_effect(bi[1], k) is AudioEffectCompressor: comp = true
+		var ps: AudioEffectPitchShift = null
+		var rv := false
+		for k in AudioServer.get_bus_effect_count(bi[3]):
+			var fx := AudioServer.get_bus_effect(bi[3], k)
+			if fx is AudioEffectPitchShift: ps = fx
+			if fx is AudioEffectReverb: rv = true
+		ok(comp and rv and ps != null and is_equal_approx(ps.pitch_scale, 0.9), "VoiceHero has a compressor; VoiceBoss a reverb and a 0.90 pitch shift")
+	var rb := _voice_bank()
+	rb.say("narrator", "act_0")
+	var nb: StringName = rb.active_player().bus if rb.active_player() != null else &""
+	rb.stop(0.0)
+	rb.say("tyrant", "spawn")
+	var tb: StringName = rb.active_player().bus if rb.active_player() != null else &""
+	ok(nb == &"VoiceNarrator" and tb == &"VoiceBoss", "narrator lines play on VoiceNarrator, boss lines on VoiceBoss (%s, %s)" % [nb, tb])
+	rb.queue_free()
+	# ducking: Music -6 dB and SFX -3 dB over 0.12 s while a voice plays, back over 0.25 s when it ends
+	var mi := AudioServer.get_bus_index("Music")
+	var si := AudioServer.get_bus_index("SFX")
+	var m0 := AudioServer.get_bus_volume_db(mi)
+	var s0 := AudioServer.get_bus_volume_db(si)
+	var kb := _voice_bank()
+	var kl := kb.say("spark", "ult", 0)
+	kb.step(0.06)
+	var m_half := AudioServer.get_bus_volume_db(mi)
+	kb.step(0.07)
+	var m_d := AudioServer.get_bus_volume_db(mi)
+	var s_d := AudioServer.get_bus_volume_db(si)
+	ok(m_half < m0 - 1.0 and m_half > m0 - 5.0 and is_equal_approx(m_d, m0 - 6.0) and is_equal_approx(s_d, s0 - 3.0),
+		"while a voice plays, Music ducks 6 dB and SFX 3 dB, smoothly over 0.12 s (%.1f halfway; %.1f / %.1f dB)" % [m_half - m0, m_d - m0, s_d - s0])
+	kb.step(float(kl.duration) - 0.13)
+	kb.step(0.13)
+	var m_mid := AudioServer.get_bus_volume_db(mi)
+	kb.step(0.13)
+	ok(not kb.is_speaking() and m_mid < m0 - 0.5 and m_mid > m0 - 5.5 and is_equal_approx(AudioServer.get_bus_volume_db(mi), m0) and is_equal_approx(AudioServer.get_bus_volume_db(si), s0),
+		"and both buses return exactly to their levels over 0.25 s once it ends (%.1f dB halfway)" % (m_mid - m0))
+	kb.queue_free()
+	# Options > Voice volume drives the Voice bus
+	var vi := AudioServer.get_bus_index("Voice")
+	var vv0 = Save.opt("voice_volume")
+	Save.set_opt("voice_volume", 0.5)
+	var half_db := AudioServer.get_bus_volume_db(vi) if vi >= 0 else 99.0
+	Save.set_opt("voice_volume", 0.0)
+	var muted := vi >= 0 and AudioServer.is_bus_mute(vi)
+	Save.set_opt("voice_volume", 1.0 if vv0 == null else vv0)
+	ok(vv0 != null and absf(half_db - linear_to_db(0.5)) < 0.01 and muted and vi >= 0 and not AudioServer.is_bus_mute(vi), "Options > Voice volume sets the Voice bus (50%% = %.1f dB; 0 mutes it)" % half_db)
+	# subtitles: up for max(2.0, duration + 0.35) s
+	ok(is_equal_approx(VoiceBank.subtitle_seconds(1.0), 2.0) and is_equal_approx(VoiceBank.subtitle_seconds(4.0), 4.35), "a subtitle stays up for max(2.0, duration + 0.35) s")
+	var sb := _voice_bank()
+	var subs := Subtitles.new()
+	subs.manual_clock = true
+	add_child(subs)
+	subs.bind(sb)
+	var sl := sb.say("warden", "boss_spawn")
+	var hold := VoiceBank.subtitle_seconds(float(sl.duration))
+	subs.step(hold - 0.05)
+	var shown := subs.is_showing() and subs.shown_text() == String(sl.text)
+	subs.step(0.1)
+	ok(shown and not subs.is_showing(), "the subtitle banner shows the line and clears after %.2f s" % hold)
+	subs.queue_free()
+	sb.queue_free()
+	# the stream cache keeps at most 16 voice clips in memory
+	var lb := _voice_bank()
+	for k in 17: lb.cache_put("res://fake/%d.ogg" % k, AudioStreamWAV.new())
+	ok(lb.cache_size() == VoiceBank.LRU_MAX and not lb.cache_has("res://fake/0.ogg") and lb.cache_has("res://fake/16.ogg"), "at most 16 voice streams stay in memory, the least recently used dropped first")
+	lb.cache_get("res://fake/1.ogg")
+	lb.cache_put("res://fake/17.ogg", AudioStreamWAV.new())
+	ok(lb.cache_has("res://fake/1.ogg") and not lb.cache_has("res://fake/2.ogg"), "a stream just played is kept over an older one")
+	lb.queue_free()
+	# hero select: a new exile's intro replaces the last one's at once
+	var hb := _voice_bank()
+	var p1 := hb.preview_hero("warden")
+	hb.step(0.5)
+	var p2 := hb.preview_hero("ember")
+	ok(bool(p1.played) and bool(p2.played) and hb.active_id() == "ember_intro_0", "picking another exile stops the last intro and plays the new one's (%s)" % hb.active_id())
+	hb.queue_free()
+	# the cold open: four narrator beats, each held for its line + 0.6 s; a tap moves on, Skip ends it
+	var ib := _voice_bank()
+	var intro := IntroScreen.new()
+	intro.bank = ib
+	intro.manual_clock = true
+	add_child(intro)
+	var b0 := ib.active_id()
+	var d0 := ib.remaining()                         # the clip's length once the pack is in, the estimate until then
+	var adv := func(x: float) -> void:
+		ib.step(x)
+		intro.step(x)
+	adv.call(d0 + 0.6 - 0.05)
+	var still0 := intro.beat == 0
+	adv.call(0.1)
+	ok(b0 == "narrator_intro_0" and still0 and intro.beat == 1 and ib.active_id() == "narrator_intro_1", "the intro holds each beat for its line + 0.6 s, then plays the next")
+	intro.tap()
+	ok(intro.beat == 2 and ib.active_id() == "narrator_intro_2" and intro.shown_text() == String(ib.entries["narrator_intro_2"].text), "a tap moves to the next beat at once, cutting the narrator off; the text is the manifest's")
+	intro.skip()
+	ok(intro.done and not ib.is_speaking(), "Skip ends the intro and stops the narrator")
+	intro.queue_free()
+	ib.queue_free()
+	# in a run: the act opening, a boss and the exile's reply, the ultimate, low life, a streak, a cast, death
+	var vw := World.new()
+	vw.setup({"mode": "campaign", "stage": 1, "hero": 2, "seed": 3, "headless": true, "season": ""})
+	var dbk := _voice_bank()
+	var dir := VoiceDirector.new()
+	dir.bank = dbk
+	dir.manual_clock = true
+	dir.cast_chance = 1.0
+	dir.cast_min_foes = 0
+	add_child(dir)
+	dir.bind(vw)
+	var go := func(x: float) -> void:
+		dbk.step(x)
+		dir.step(x)
+	ok(dbk.active_id() == "narrator_act_1_0", "a campaign run opens with the narrator's line for its act (%s)" % dbk.active_id())
+	go.call(dbk.remaining() + 0.01)
+	vw.moment.emit("boss_spawn", {"boss": "tyrant", "name": "Cindermaw"})
+	var boss_line := dbk.active_id()
+	go.call(dbk.remaining() + VoiceDirector.REPLY_GAP_S + 0.01)
+	ok(boss_line == "tyrant_spawn_0" and dbk.active_id() == "ember_boss_spawn_0", "a boss arrives with its spawn line, then the exile replies (%s, %s)" % [boss_line, dbk.active_id()])
+	go.call(dbk.remaining() + 0.01)
+	vw.moment.emit("ult", {})
+	ok(dbk.active_speaker() == "ember" and dbk.active_cue() == "ult", "the ultimate plays an ult line")
+	go.call(dbk.remaining() + 3.0)
+	vw.hp = vw.max_hp * 0.2
+	go.call(0.1)
+	ok(dbk.active_cue() == "low_hp", "dropping under 30%% life plays a low-health line (%s)" % dbk.active_cue())
+	go.call(dbk.remaining() + 3.0)
+	vw.combo = 30
+	go.call(0.1)
+	ok(dbk.active_cue() == "kill_streak", "a 25-kill streak plays a kill-streak line (%s)" % dbk.active_cue())
+	go.call(dbk.remaining() + 3.0)
+	vw.cast_t = vw.t + 1.0
+	go.call(0.1)
+	ok(dbk.active_cue() == "cast", "a weapon cast in a fight can bark (%s)" % dbk.active_cue())
+	go.call(dbk.remaining() + 0.5)
+	vw.moment.emit("boss_die", {"boss": "herald"})
+	ok(dbk.active_id() == "herald_die_0", "a boss's fall plays its die line")
+	go.call(dbk.remaining() + 0.5)
+	vw.ended.emit(false)
+	ok(dbk.active_speaker() == "ember" and dbk.active_cue() == "death", "falling plays the exile's death line")
+	dir.unbind()
+	dir.queue_free()
+	dbk.queue_free()
+	vw.dispose()
+	# the World raises the moments the director listens for
+	var mw := World.new()
+	mw.setup({"mode": "campaign", "stage": 2, "hero": 0, "seed": 5, "headless": true, "season": ""})
+	var seen: Array = []
+	mw.moment.connect(func(k: String, info: Dictionary) -> void: seen.append([k, String(info.get("boss", "")), String(info.get("name", ""))]))
+	mw.ult = 100.0
+	mw.use_ult()
+	mw.bosses.spawn_stage_boss(false)
+	var bix := -1
+	for i in mw.sw.n:
+		if (mw.sw.flags[i] & Swarm.F_BOSS) != 0: bix = i
+	if bix >= 0: mw.bosses.on_kill(bix, mw.sw.pos[bix])
+	mw.bosses._do_spawn_herald()
+	var pale := String(Content.STAGES[2].boss)
+	ok(seen.has(["ult", "", ""]) and seen.has(["boss_spawn", "tyrant", pale]) and seen.has(["boss_die", "tyrant", pale]) and seen.has(["boss_spawn", "herald", "The Shard Herald"]),
+		"the World raises ult, boss_spawn and boss_die moments with the boss's voice and name (%s)" % str(seen))
+	mw.dispose()
+	# the game itself: a first launch opens on the intro over the menu; picking an exile plays their intro line
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var intro_up: bool = mn.get("intro") != null and int(mn.intro.beat) == 0 and VoiceBank.current != null and VoiceBank.current.active_id() == "narrator_intro_0"
+	if mn.get("intro") != null: mn.intro.skip()
+	var intro_gone: bool = mn.get("intro") == null and bool(sv.data.intro_seen) and mn.state == "menu"
+	ok(intro_up and intro_gone, "a first launch opens on the narrated intro over the menu, and Skip leaves the menu (%s, %s)" % [intro_up, intro_gone])
+	mn._on_act("hero", 3)
+	var vid := VoiceBank.current.active_id() if VoiceBank.current != null else ""
+	ok(vid == "storm_intro_0", "picking an exile on the title screen plays their intro line (%s)" % vid)
+	mn.queue_free()
+	VoiceBank.stop_all(0.0)
+	sv.data = keep
+
+## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
+## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.
+func _voice_dropin_tests() -> void:
+	print("== voice drop-in")
+	var vb := _voice_bank()
+	var ln := vb.line("narrator", "act_0", 0)
+	var r := vb.say("narrator", "act_0", 0)
+	var st: AudioStream = vb.active_player().stream if vb.active_player() != null else null
+	ok(bool(r.using_pack) and st is AudioStreamOggVorbis and absf(float(r.duration) - st.get_length()) < 0.001 and not (st as AudioStreamOggVorbis).loop,
+		"%s plays instead of the chime at its real length (%.2f s; the estimate is %.1f s), never looping" % [ln.get("file", "?"), float(r.duration), float(ln.get("duration_fallback_s", 0.0))])
+	vb.step(float(r.duration) + 0.01)
+	ok(not vb.is_speaking(), "and the line ends when the clip does")
+	vb.queue_free()
+
 func _height_tests() -> void:
 	print("== heights in the 3D view")
 	var w := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 41})

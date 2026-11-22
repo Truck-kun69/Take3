@@ -240,6 +240,10 @@ func show_stage(hero_index: int) -> void:
 		hero.scale = Vector3.ONE * 1.5
 		_cast_t = 0.6                                    # greet with a cast flourish
 
+## Hero select: the exile casts at once, then settles back to idle (alongside their intro line).
+func showcase() -> void:
+	_cast_t = 0.0
+
 func hide_stage() -> void:
 	visible = false
 

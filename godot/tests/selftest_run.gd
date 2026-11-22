@@ -18,6 +18,7 @@ func _ready() -> void:
 	sv.path = "user://selftest_profile.json"
 	if mode == "start":
 		sv.data = sv.defaults()
+		sv.data.intro_seen = true
 		sv.data.options.sound = false
 		sv.flush()
 	else:

@@ -9,5 +9,9 @@ name (`Sfx` loads `sfx/<name>.wav` and `music/<act>.ogg` when they exist).
   the head so the loop has no seam, loudness-normalised, Vorbis quality 2 (about 90 kbps stereo;
   quality 4, about 130 kbps, until 0.9.7). Imported with `loop=true`.
 
+- `voices/<speaker>/<cue>_<n>.ogg`: the ElevenLabs voice pack (not generated yet). Every line is in
+  `godot/data/voice_manifest.json`; `python3 tools/gen_voices.py --generate` makes the clips (44.1 kHz mono
+  Vorbis, -16 LUFS, `loop=false`) and the game plays any that exist, a chime for the rest. See docs/VOICES.md.
+
 Regenerate with `python3 tools/fal/audio.py sfx <work dir> [names]` and `... music <work dir> [acts]`;
 the prompts are in that file. Delete a file to fall back to the synthesiser.

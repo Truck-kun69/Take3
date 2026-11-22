@@ -13,6 +13,7 @@ signal ended(win: bool)
 signal merchant_open
 signal whisper_open          # the hero touched the Whisperer: whisper_offer holds two bargain ids
 signal item_found(item: Dictionary, upgrade: bool)
+signal moment(kind: String, info: Dictionary)   # voice cues: boss_spawn, boss_die, ult (VoiceDirector)
 
 class Proj:
 	var pos := Vector2.ZERO
@@ -733,6 +734,7 @@ func use_ult() -> bool:
 	flash = 0.25
 	Sfx.play("ult")
 	banner.emit(Content.HEROES[hero].ult, "", Content.col(Content.HEROES[hero].col))
+	moment.emit("ult", {"hero": h})
 	match h:
 		"warden": buffs.add("cyclone")
 		"spark":

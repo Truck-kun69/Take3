@@ -694,6 +694,7 @@ func show_options(back: String = "menu") -> void:
 			_toggle(v, "Sound", "sound", back)
 			_toggle(v, "Sound engine: Safe (fewer voices, no ambience)", "sfx_safe", back)
 			_slider(v, "Volume", "volume", 0.0, 1.0, back)
+			_slider(v, "Voice volume", "voice_volume", 0.0, 1.0, back)
 			_slider(v, "Screen shake", "shake", 0.0, 1.5, back)
 			_cycle(v, "Damage numbers", "dmg_numbers", ["Off", "Crits & reactions", "All"], back)
 			_cycle(v, "Auto-aim", "aim", ["Nearest", "Strongest", "Facing"], back)
@@ -705,6 +706,7 @@ func show_options(back: String = "menu") -> void:
 			_toggle(v, "Auto-equip upgrades", "auto_equip", back)
 			_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
 			_toggle(v, "Always show touch buttons", "force_touch_ui", back)
+			if back == "menu": v.add_child(UIKit.button("Replay intro", func(): act.emit("intro", null), 46))
 		1:
 			_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
 			_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)

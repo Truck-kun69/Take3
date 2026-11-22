@@ -4,3 +4,4 @@ build/
 godot/.godot/
 godot/android/
 tools/.fal_raw/
+tools/.voice_raw/
