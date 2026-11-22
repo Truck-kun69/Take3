@@ -26,7 +26,7 @@ func _ready() -> void:
 	save.data.options.gfx = 3                               # the High tier (phones' default on a flagship)
 	var bad := 0
 	var M: Script = load("res://scripts/main.gd")
-	var hi_scale: float = M.auto_render_scale(2, true, false)
+	var hi_scale: float = M.auto_render_scale(2, true)
 	print("GATE render scale on High phones: %.2f" % hi_scale)
 	if hi_scale != 1.0: bad += 1
 	for k in GEN_PROPS:

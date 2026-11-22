@@ -117,8 +117,8 @@ Raw downloads stay in `tools/.fal_raw/` (not in git).
   the green, ember, pale and neon bosses)
 * let a boss attack play out in full (wind-up, slam, recover), so hits don't cut it short
 
-Textures are imported as lossy WebP with mipmaps, not GPU-compressed formats, which keeps the web
-build small.
+Textures were imported as lossy WebP with mipmaps at the time; the generated models' maps are now
+VRAM-compressed (ETC2/ASTC on phones; `tools/texture_budget.py`).
 
 ## AI-generated creatures (Tripo or Meshy)
 
@@ -158,9 +158,6 @@ Check each service's licence terms for commercial use before shipping generated 
 ![In game](screenshots/models_ingame_warden.png)
 More: [bosses pass 1](screenshots/models_bosses_pass1.png), [guardian and herald pass 2](screenshots/models_guardian_herald_pass2.png),
 [herald in game](screenshots/models_ingame_herald.png), [pass 0 dark steel](screenshots/models_pass0_dark_steel.png).
-
-The web build is now 19.7 MB as a single file. For the artifact host it splits into a 14 MB page
-plus a 5.7 MB `shardfall_artifact_data.js` (`tools/pack_web.py --split`).
 
 ## Swarm foes from CC0 packs (KayKit, Quaternius)
 
@@ -286,13 +283,12 @@ Critique passes:
 4. TRELLIS 2 at 1024 resolution failed on fal every time (HTTP 502). Heroes use 512, and `gen3d.py`
    retries 502s twice.
 
-Size: each hero is about 42k triangles with 1024 textures (imported as WebP). The hosted page now
-loads its game data from two files, 15 MB and 1.6 MB ([in the browser](screenshots/heroes_realistic_web.png)).
+Size: each hero is about 42k triangles with 1024 textures (imported as WebP)
+([screenshot](screenshots/heroes_realistic_web.png)).
 fal spend for the heroes: about $3.50, including the failed and repeated runs.
 
 2048 texture pass: the four heroes were regenerated from the same paintings and seed with
 `texture_size` 2048 (about $1 more; fal prices TRELLIS 2 by resolution, not texture size) and
 re-rigged with the same script. Shapes and rigs are unchanged. The added detail shows up close and
 on the title stage, but is barely visible at gameplay distance
-([1024 left, 2048 right](screenshots/heroes_tex1024_vs_2048.png)). The single-file page is now
-35 MB; the hosted page loads game data from two files (15 MB and 6 MB).
+([1024 left, 2048 right](screenshots/heroes_tex1024_vs_2048.png)).

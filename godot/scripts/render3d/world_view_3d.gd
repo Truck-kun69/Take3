@@ -398,7 +398,7 @@ func bind(world: World) -> void:
 	for k in Models.FOE_KINDS.size(): _kind_col.append(_foe_color(k))
 	fx.bind(w)
 	env_fx.bind(w)
-	# radial shadows from the hero's light: high quality only, and never on Compatibility/WebGL, where the
+	# radial shadows from the hero's light: high quality only, and never on Compatibility (the OpenGL fallback), where the
 	# omni shadow renders as a large black wedge
 	torch.shadow_enabled = false          # set by _features (never on phones)
 	torch.shadow_bias = 0.08

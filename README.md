@@ -16,6 +16,9 @@ authored models, sounds and textures (`godot/models`, `godot/audio`, `godot/text
 bash tools/provision.sh                 # Godot 4.7.2, Android templates, SDK, debug keystore
 export PATH="$HOME/toolchains/godot:$PATH"
 godot --headless --path godot res://tests/tests.tscn -- unit sim bench
-bash tools/build_android.sh             # build/shardfall-debug.apk
-bash tools/build_web.sh                 # build/shardfall.html: one self-contained file, double-click to play
+bash tools/build_android.sh             # build/shardfall.apk (release; `debug` and `aab` modes too)
+python3 tools/gate_check.py             # the release gate: every check, then the APK
 ```
+
+The Android APK (`com.shardfall.riftsurvivors`) is the only build: the web build and Shardfall Lite
+were retired in 0.9.9. Desktop runs are for development and the tests. See `docs/RELEASE.md`.

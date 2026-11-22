@@ -135,7 +135,6 @@ lavapipe) and the model turntable (`tests/model_view.tscn`).
 | `tile.png`, `card.png` | neutral silver frames, tinted in Godot per hero, act, item rarity or reward type |
 | `orb_frame.png`, `slot.png`, `bar.png`, `divider.png` | globe bezel, action/buff slots, bar trough, ornamental rule |
 | `godot/icon.png` (from `tools/emblem.png`) | ringed falling-shard emblem for the app icon |
-| `tools/web_logo.png` | 760 px logo for the web loading screen |
 
 Fonts are OFL (licences in `godot/fonts/`), loaded as WOFF2 through `UIKit.font(role)`:
 
@@ -189,7 +188,7 @@ xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 r
 xvfb-run -a godot --path godot --rendering-method mobile --resolution 720x1280 res://tests/ui_shots.tscn -- /tmp/ui P_ 1
 ```
 
-The web page is 15.6 MB. The logo ships at 1400 px and unused font weights were dropped to stay under 16 MB.
+The logo ships at 1400 px, and unused font weights were dropped.
 
 ## Optimisation pass (render benchmark)
 
@@ -212,11 +211,9 @@ What changed:
   props 700–3,000 (tree 5,000), heroes 31–35k (42k, checked side by side on the title stage). No
   tangents on meshes without normal maps.
 * LOD switches at 1.5 px instead of 1; sun shadows reach 1,150 units instead of 1,800.
-* **3D resolution option** (Auto, 100%, 75%, 50%): Auto renders 3D at 75% on phones and the web
+* **3D resolution option** (Auto, 100%, 75%, 50%): Auto renders 3D at 75% on phones
   (FSR 1 upscaling where the renderer supports it) with the UI at full resolution.
 * **Show FPS** now reads frame time, draw calls, triangles, foe count and 3D resolution.
-* **Web build**: hero textures at 1024 (desktop and Android keep 2048). Page 35 → 30 MB; the rest is
-  the 13 MB engine and the four hero meshes, which all ship because the pack is downloaded whole.
 
 ## Clutter (0.9.9)
 
@@ -228,10 +225,10 @@ own grass would blink out.
 
 ## Graphics tiers (scripts/render3d/quality.gd)
 
-Android and desktop are now the main target. The web artifact is a lighter preview. Tiers change
+The Android APK is the only build (desktop runs are for development and the tests). Tiers change
 only visuals: the simulation, spawns and balance are the same on every tier.
 
-| | Low | Medium (web default) | High (Android / desktop default) |
+| | Low | Medium | High |
 |---|---|---|---|
 | Sun shadows | off | soft (low), 1 split; atlas 1024 on phones, 2048 desktop | soft (medium); 1 split and a 2048 atlas on phones, 2 splits and 4096 on desktop |
 | MSAA | off | off | 2x, phones too (no FXAA with it) |
@@ -243,12 +240,14 @@ only visuals: the simulation, spawns and balance are the same on every tier.
 | Dynamic lights | 4 | 8 | 14 |
 | Prop meshes | models/props | same | the generated props as on Medium; models/props_hi for the crystal and the Act V set pieces (2.5x the triangles) |
 | LOD threshold | 1.5 px | 1.5 px | 1 px |
-| Auto 3D resolution | 75% on phones and the web | 100% on phones, dynamic down to 85% when frames run slow | 100% on phones, never lowered; desktops always 100% |
+| Auto 3D resolution | 75% on phones | 100% on phones, dynamic down to 85% when frames run slow | 100% on phones, never lowered; desktops always 100% |
 | FXAA | off | on while the 3D scale is 0.9 or more | off (MSAA instead) |
 | Particles | 1/3 | full | full |
 
-Options > Graphics: Auto (High, except Medium on the web), Low, Medium, High. The Android and web
-exports exclude `models/props_hi` (export_presets.cfg): only desktop runs use those variants.
+Options > Graphics: Auto, Low, Medium, High. Auto goes by the device class (`Quality.device_class`: the
+GPU's name and the RAM): Low on budget GPUs and 4 GB phones, Medium on mid-range ones, High on flagships
+and desktops, and Medium at most on the OpenGL fallback (when Vulkan fails to start). The APK leaves out
+`models/props_hi` (export_presets.cfg): only desktop runs use those variants.
 
 The high-detail variants are rebuilt by passing `--hi` to the import scripts:
 
@@ -320,7 +319,7 @@ Other changes in the pass:
   as dust.
 - **Glow levels.** Crystal props glow at 0.6× instead of 1.4×; terrain shard veins at 0.2× instead of
   0.35×; the breach ring is quieter.
-- **FXAA** on Medium and High (not WebGL) smooths the swarm's sub-pixel triangles.
+- **FXAA** on Medium and High (not on Compatibility) smooths the swarm's sub-pixel triangles.
 - **UI motion.**
   - Sheets fade in and settle 18 px upward the first time they open (refreshes don't animate).
   - Level-up cards are dealt in 70 ms apart.

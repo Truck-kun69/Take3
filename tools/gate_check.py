@@ -13,14 +13,16 @@
    channels' pixel standard deviation >= 3.0), and a walk cycle that moves (its .vat: > 2 units of travel);
    props: a baseColorTexture on every material
 3. code: no JumpTuck in scripts/; no "pal * 4.0" in the terrain shader; prop_mat never on a PBR prop; High
-   and Medium phones at 3D scale 1.0
+   and Medium phones at 3D scale 1.0; no web branch (OS.has_feature("web")) in scripts/
 4. textures: the imported .ctex headers of everything under textures/terrain and models/{heroes, bosses,
    foes, props}: none 256 px or smaller; and the texel budget (tools/texture_budget.py --check)
 5. engine: godot --headless --quit with no ERROR / WARNING line; tests/gate_chunk.tscn (models as the game
    resolves them, chunk dressing on Low, Medium and High, solids the same on every tier); the unit tests
    (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation group printed
-6. the single Android APK: export_presets.cfg holds one Android preset (com.shardfall.riftsurvivors, no
-   Lite), tools/build_android.sh has no lite mode; built, its size and the .ctex bytes inside printed
+6. the single Android APK, the only build: export_presets.cfg holds one preset, Android
+   (com.shardfall.riftsurvivors: no Web, no Lite); no web build tools (tools/build_web.sh, pack_web.py) and
+   no web renderer override in project.godot; tools/build_android.sh has no lite mode; built, its size and
+   the .ctex bytes inside printed
 """
 import glob
 import io
@@ -141,6 +143,8 @@ def main(build_apk=True):
     m = re.search(r"if mobile: return \[([0-9.]+), ([0-9.]+), ([0-9.]+)\]", mg)
     check(m is not None and float(m.group(3)) == 1.0 and float(m.group(2)) == 1.0,
           "main.gd auto_render_scale: phones Low/Medium/High = " + (", ".join(m.groups()) if m else "?") + " (High and Medium 1.0)")
+    webf = subprocess.run(["grep", "-rn", 'has_feature("web")', os.path.join(GD, "scripts")], capture_output=True, text=True).stdout.strip()
+    check(webf == "", 'OS.has_feature("web"): 0 matches in scripts/ (the APK is the only build)' + ("" if not webf else f" ({len(webf.splitlines())} found)"))
     # 4 ----------------------------------------------------------------
     section("4. imported texture sizes (.ctex headers)")
     dirs = ["textures/terrain", "models/heroes", "models/bosses", "models/foes", "models/props"]
@@ -208,10 +212,16 @@ def main(build_apk=True):
         section("6. Android APK (one build)")
         pre = open(os.path.join(GD, "export_presets.cfg")).read()
         blocks = re.split(r"^\[preset\.\d+\]$", pre, flags=re.M)[1:]
-        android = [re.search(r'^name="([^"]*)"', b, re.M).group(1) for b in blocks if 'platform="Android"' in b]
+        names = [re.search(r'^name="([^"]*)"', b, re.M).group(1) for b in blocks]
+        plats = [re.search(r'^platform="([^"]*)"', b, re.M).group(1) for b in blocks]
         ids = re.findall(r'^package/unique_name="([^"]*)"', pre, re.M)
-        check(android == ["Android"] and ids == ["com.shardfall.riftsurvivors"] and "Lite" not in pre,
-              f"export_presets.cfg: Android presets {android}, app ids {ids} (no Shardfall Lite)")
+        check(names == ["Android"] and plats == ["Android"] and ids == ["com.shardfall.riftsurvivors"] and "Lite" not in pre,
+              f"export_presets.cfg: presets {names} on {plats}, app ids {ids} (one APK: no Web, no Shardfall Lite)")
+        webt = [f for f in ("tools/build_web.sh", "tools/pack_web.py") if os.path.exists(os.path.join(ROOT, f))]
+        pg = open(os.path.join(GD, "project.godot")).read()
+        check(not webt and ".web=" not in pg,
+              "no web build: " + (f"{webt} still there" if webt else "no tools/build_web.sh or tools/pack_web.py") +
+              (", a web override in project.godot" if ".web=" in pg else ", no web override in project.godot"))
         bs = open(os.path.join(HERE, "build_android.sh")).read()
         check(re.search(r"\blite\b", bs, re.I) is None, "tools/build_android.sh: no lite mode")
         r = subprocess.run(["bash", os.path.join(HERE, "build_android.sh")], capture_output=True, text=True, timeout=3600)

@@ -997,9 +997,9 @@ func _look_tests() -> void:
 	print("== look: resolution, ground, light, draping")
 	# 3D resolution: phones by tier, FXAA only at 0.9 and up, the dynamic factor's floor
 	var M: Script = load("res://scripts/main.gd")
-	ok(M.auto_render_scale(0, true, false) == 0.75 and M.auto_render_scale(1, true, false) == 1.0 and M.auto_render_scale(2, true, false) == 1.0,
+	ok(M.auto_render_scale(0, true) == 0.75 and M.auto_render_scale(1, true) == 1.0 and M.auto_render_scale(2, true) == 1.0,
 		"phones render 3D at 0.75 on Low and natively on Medium and High")
-	ok(M.auto_render_scale(2, false, false) == 1.0 and M.auto_render_scale(1, false, true) == 0.75, "desktops native, the web 0.75")
+	ok(M.auto_render_scale(0, false) == 1.0 and M.auto_render_scale(2, false) == 1.0, "desktops native on every tier")
 	ok(M.fxaa_allowed(1.0) and M.fxaa_allowed(0.9) and not M.fxaa_allowed(0.85) and not M.fxaa_allowed(0.75),
 		"FXAA runs at a 3D scale of 0.9 or more only (a Medium phone loses it when the dynamic factor drops)")
 	var d := 1.0

@@ -7,8 +7,8 @@ extends RefCounted
 ##   res://models/bosses/<boss|herald|guardian>.(tscn|glb)      -> replaces a boss rig
 ##   res://models/foes/<grunt|runner|...>.(glb|tscn|tres)       -> first mesh found is instanced for the swarm
 ##   res://models/props/<rock|tree|crystal|pillar|bones|grass>.(glb|tscn|tres)
-##   res://models/foes_hi/, props_hi/: denser variants used on the High graphics tier (Quality); the web
-##   export leaves them out (export_presets.cfg exclude_filter)
+##   res://models/foes_hi/, props_hi/: denser variants used on the High graphics tier (Quality); the APK
+##   leaves props_hi out (export_presets.cfg exclude_filter), so only desktop runs use it
 ## Authored hero/boss scenes may contain an AnimationPlayer with any of: idle, run, cast, roll, hit, die.
 ## The rigs then play those instead of the procedural animation (see HeroRig.attach_override).
 

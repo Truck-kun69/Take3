@@ -8,7 +8,7 @@ builds:
 
 | File | What it is |
 |---|---|
-| `shardfall.apk` | The one Android build (`com.shardfall.riftsurvivors`, Vulkan Mobile renderer). Shardfall Lite was retired in 0.9.9. |
+| `shardfall.apk` | The one build (`com.shardfall.riftsurvivors`, Vulkan Mobile renderer). Shardfall Lite and the web build were retired in 0.9.9. |
 | `shardfall-release.aab` | The Play Store bundle. Built only when the release key is configured. |
 
 The files are attached to the workflow run as the `shardfall-android` artifact for 30 days.

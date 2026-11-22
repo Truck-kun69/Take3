@@ -2,7 +2,7 @@ class_name Quality
 extends RefCounted
 ## Graphics tiers. Visual only: the simulation, spawns and balance are identical on every tier.
 ##   0 Low     budget phones: no sun shadows, fewer props and particles, no anti-aliasing
-##   1 Medium  mid-range phones and the web build: one-cascade sun shadow (1024 atlas on phones), FXAA
+##   1 Medium  mid-range phones: one-cascade sun shadow (1024 atlas on phones), FXAA
 ##   2 High    flagship phones: native resolution, FXAA, 2048 shadow atlas, no torch shadow.
 ##             Desktop High: MSAA 2x, two shadow cascades on a 4096 atlas, the torch shadow.
 ##             Both: a 12-unit terrain grid, 1.3x prop density, 14 dynamic lights, the high-detail
@@ -30,7 +30,8 @@ static func tier() -> int:
 	var o := int(Save.opt("gfx"))
 	if o > 0: return clampi(o - 1, 0, 2)
 	var dc := device_class()
-	if OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility": return mini(dc, 1)
+	# the OpenGL fallback (Vulkan failed to start) runs Medium at most
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility": return mini(dc, 1)
 	return dc
 
 ## Device class for Auto: 0 budget, 1 mid-range, 2 flagship, from the GPU name and total RAM. The first
@@ -42,7 +43,7 @@ static func device_class() -> int:
 	var gpu := RenderingServer.get_video_adapter_name().to_lower()
 	var ram_gb := float(OS.get_memory_info().get("physical", 8.0e9)) / 1.0e9
 	var c := 2
-	if OS.has_feature("mobile") or OS.has_feature("web"):
+	if OS.has_feature("mobile"):
 		c = 1
 		var budget := RegEx.create_from_string("mali-(t|g31|g5\\d)|adreno \\(tm\\) ([3-5]\\d\\d|60\\d|61\\d)|powervr|ge8\\d\\d")
 		var flag := RegEx.create_from_string("adreno \\(tm\\) (6[5-9]\\d|[7-9]\\d\\d)|mali-g7[1-9]\\b|mali-g7\\d\\d|mali-g[89]\\d\\d|immortalis|xclipse")

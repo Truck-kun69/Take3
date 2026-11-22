@@ -224,7 +224,7 @@ def make_logo():
             od.polygon([(xx, ly - s), (xx + s, ly), (xx, ly + s), (xx - s, ly)], fill=BRONZE_L + (255,), outline=BRONZE_D + (255,))
     bbox = canvas.getbbox()
     canvas = canvas.crop((max(0, bbox[0] - 30), max(0, bbox[1] - 30), min(W, bbox[2] + 30), min(H, bbox[3] + 30)))
-    # 1400px is plenty for the title screen (shown at most ~700px wide) and keeps the web build under 16 MB
+    # 1400px is plenty for the title screen (shown at most ~700px wide)
     canvas.resize((1400, round(1400 * canvas.size[1] / canvas.size[0])), Image.LANCZOS).save(OUT / "logo.png", optimize=True)
     return canvas
 
@@ -444,7 +444,6 @@ def make_bar(W=256, H=40):
 
 if __name__ == "__main__":
     logo = make_logo()
-    logo.resize((760, round(760 * logo.size[1] / logo.size[0])), Image.LANCZOS).save(ROOT / "tools" / "web_logo.png", optimize=True)  # web loading screen
     emb = make_emblem(512)
     icon = emb.resize((512, 512), Image.LANCZOS)
     icon.save(ROOT / "godot" / "icon.png", optimize=True)

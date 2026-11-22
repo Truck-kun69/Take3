@@ -91,14 +91,14 @@ func _ui_scale() -> void:
 	if vs.y > vs.x: f = clampf(float(vs.y) / float(vs.x), 1.0, 1.9)
 	get_window().content_scale_factor = f * float(Save.opt("ui_scale"))
 
-## 3D render resolution. Phones and the web build are fill-rate bound: rendering the 3D at 75%
+## 3D render resolution. Phones are fill-rate bound: rendering the 3D at 75%
 ## (FSR 1 upscale where the renderer has it, bilinear on Compatibility) and drawing the UI at full
 ## resolution keeps text sharp. Option "render_scale": 0 auto, 1 = 100%, 2 = 75%, 3 = 50%.
 func _render_scale() -> void:
 	var opt := int(Save.opt("render_scale"))
 	var s := 1.0
 	match opt:
-		0: s = auto_render_scale(Quality.tier(), OS.has_feature("mobile"), OS.has_feature("web"))
+		0: s = auto_render_scale(Quality.tier(), OS.has_feature("mobile"))
 		2: s = 0.75
 		3: s = 0.5
 	var vp := get_viewport()
@@ -444,10 +444,10 @@ const FXAA_MIN_SCALE := 0.9
 
 ## The 3D resolution option "Auto": phones native on Medium and High, 0.75 on Low (the Mobile renderer
 ## upsamples a scaled image with a plain bilinear filter, no FSR, so every step below native softens the
-## whole frame); the web 0.75; desktops native.
-static func auto_render_scale(tier: int, mobile: bool, web: bool) -> float:
+## whole frame); desktops native.
+static func auto_render_scale(tier: int, mobile: bool) -> float:
 	if mobile: return [0.75, 1.0, 1.0][clampi(tier, 0, 2)]
-	return 0.75 if web else 1.0
+	return 1.0
 
 ## FXAA only at a 3D scale of 0.9 or more: below that the bilinear upsample already blurs the frame, and
 ## FXAA on top smears edges and texture detail further.
