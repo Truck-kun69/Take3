@@ -50,6 +50,8 @@ func _ready() -> void:
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
 	print("\n== %d passed, %d failed ==" % [passes, failures])
+	for w in _worlds: w.dispose()
+	_worlds.clear()
 	for a in args:
 		if a.begins_with("--json="):
 			var f := FileAccess.open(a.substr(7), FileAccess.WRITE)
@@ -1805,11 +1807,15 @@ func _vat_tests() -> void:
 			if fps < (5.9 if slot == "spawn" else 11.9): bad.append("%s %s: %.1f fps" % [kind, slot, fps])
 	ok(files >= 11 and bad.is_empty(), "all %d foe animations load, five clips each, at 12 fps or more%s" % [files, ("  " + "; ".join(bad)) if not bad.is_empty() else ""])
 
+## Every world _world() makes, disposed before the runner quits: a World's bosses and director point back at
+## it, so one left undisposed (and its terrain, swarm and generators) outlives the run as a reference cycle.
+var _worlds: Array[World] = []
 func _world(cfg: Dictionary) -> World:
 	cfg["headless"] = true
 	cfg["season"] = cfg.get("season", "")
 	var w := World.new()
 	w.setup(cfg)
+	_worlds.append(w)
 	return w
 
 # ================================================================= bot-played runs

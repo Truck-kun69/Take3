@@ -18,7 +18,8 @@
    foes, props}: none 256 px or smaller; and the texel budget (tools/texture_budget.py --check)
 5. engine: godot --headless --quit with no ERROR / WARNING line; tests/gate_chunk.tscn (models as the game
    resolves them, chunk dressing on Low, Medium and High, solids the same on every tier); the unit tests
-   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation and 0.10.0 voice groups printed
+   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation and 0.10.0 voice groups printed; neither
+   gate_chunk nor the unit run leaves an object alive at exit (an undisposed World is a reference cycle)
 6. voice (godot/data/voice_manifest.json, tools/gen_voices.py; nothing calls ElevenLabs or fal): the dry run exits 0
    with the network shut off; 61 lines, a valid schema, the 4 exiles on distinct voices and distinct
    stability/style; the validator refuses six broken copies of the manifest; no line's text is repeated in a
@@ -203,6 +204,8 @@ def main(build_apk=True):
     script_errs = [l for l in out.splitlines() if l.startswith("SCRIPT ERROR") or "Parse Error" in l]
     check(r.returncode == 0 and "GATE engine checks: PASS" in out and not script_errs,
           f"tests/gate_chunk.tscn: exit {r.returncode}, {len(script_errs)} script errors")
+    leak = next((l.strip() for l in out.splitlines() if "leaked at exit" in l), "")
+    check(not leak, "tests/gate_chunk.tscn: no objects left alive at exit" + (f" ({leak})" if leak else ""))
     env = dict(os.environ, TESTS_VERBOSE="1")
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
@@ -218,6 +221,8 @@ def main(build_apk=True):
     tot = next((l for l in lines if re.match(r"^== \d+ passed, \d+ failed ==$", l)), "no totals line")
     print("      " + tot)
     check(r.returncode == 0 and ", 0 failed ==" in tot and not fails, f"unit tests: {tot.strip('= ')}")
+    leak = next((l.strip() for l in lines if "leaked at exit" in l), "")
+    check(not leak, "unit tests: no objects left alive at exit" + (f" ({leak})" if leak else ""))
     # 6 ----------------------------------------------------------------
     section("6. voice: manifest, generator, drop-in (no ElevenLabs or fal calls)")
     dead = "http://127.0.0.1:9"                       # the dry run gets no way out: a network call would fail it

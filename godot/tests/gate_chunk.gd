@@ -93,6 +93,7 @@ func _ready() -> void:
 					print("GATE solids stage %d %s: %d obstacle circles, identical on every tier %s" % [stage, c, s_md.size() / 4, "ok" if same else "FAIL"])
 					if not same: bad += 1
 			v.free()
+			w.dispose()                                      # its bosses and director point back at it
 	for key in counts:
 		var t: Dictionary = counts[key]
 		if not (int(t[1]) < int(t[2]) and int(t[2]) <= int(t[3])):
