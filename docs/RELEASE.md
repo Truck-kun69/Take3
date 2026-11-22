@@ -14,11 +14,15 @@ builds:
 
 The files are attached to the workflow run as the `shardfall-android` artifact for 30 days.
 
-## APK size (budget: 50 MB)
+## APK size
 
-0.9.7: 49.90 MB (49,897,056 bytes), both APKs. The largest parts, compressed: the engine library 23.75 MB,
-textures 13.7 MB (of them the eight 1024 x 1024 ground sets, albedo and normal, 11.2 MB), scenes 4.8 MB,
-foe animation (`.vat`, SVA3) 1.9 MB, `classes.dex` 1.7 MB, music 1.7 MB.
+0.9.8: 157.84 MB (157,837,190 bytes), both APKs. From 0.9.8 every model and ground texture ships at
+its full 1024-2048 px, VRAM-compressed and never downscaled, so the 50 MB budget of 0.9.7 is retired.
+The largest parts, compressed: textures 116.4 MB (87 files; the generated heroes, bosses, foes and
+props carry 2048 px maps), the engine library 23.75 MB, scenes and meshes 10.3 MB, audio 2.1 MB,
+`classes.dex` 1.7 MB, foe animation (`.vat`, SVA3) 1.6 MB.
+
+0.9.7: 49.90 MB, under that budget, with the hero and boss textures at 256-512 px.
 
 After Godot exports a release or Lite APK, `tools/build_android.sh` repacks it (`tools/apk_repack.py`):
 the `.ctex` textures Godot stores uncompressed are deflated (13.5 -> 11.3 MB) and the engine library

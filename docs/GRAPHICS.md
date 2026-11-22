@@ -225,21 +225,22 @@ only visuals: the simulation, spawns and balance are the same on every tier.
 
 | | Low | Medium (web default) | High (Android / desktop default) |
 |---|---|---|---|
-| Sun shadows | off | soft (low), 1 split; atlas 1024 on phones, 2048 desktop | soft (low); 1 split and a 2048 atlas on phones, 2 splits and 4096 on desktop |
-| MSAA | off | off | 2x (cheap on tile-based phone GPUs) |
+| Sun shadows | off | soft (low), 1 split; atlas 1024 on phones, 2048 desktop | soft (medium); 1 split and a 2048 atlas on phones, 2 splits and 4096 on desktop |
+| MSAA | off | off | 2x, phones too (no FXAA with it) |
+| Model textures | 1024-2048 px | 1024-2048 px | 1024-2048 px (VRAM-compressed at full size on every tier) |
 | Terrain grid (2,200-unit ground) | 16 units | 12 units | 10 units |
 | Ground textures | 1024 albedo + normal, one scale | + a second scale (detail2) | + a second scale (detail2) |
 | Terrain noise octaves | 3 | 5 | 6 |
 | Prop density | 0.7x | 1x | 1.3x |
 | Dynamic lights | 4 | 8 | 14 |
-| Prop meshes | models/props | same | models/props_hi (2.5x the triangles) |
+| Prop meshes | models/props | same | the generated props as on Medium; models/props_hi for the crystal and the Act V set pieces (2.5x the triangles) |
 | LOD threshold | 1.5 px | 1.5 px | 1 px |
-| Auto 3D resolution | 75% on phones and the web | 90% on phones | 100% on phones; desktops always 100% |
-| FXAA (phones) | off | on while the 3D scale is 0.9 or more | on while the 3D scale is 0.9 or more |
+| Auto 3D resolution | 75% on phones and the web | 100% on phones, dynamic down to 85% when frames run slow | 100% on phones, never lowered; desktops always 100% |
+| FXAA | off | on while the 3D scale is 0.9 or more | off (MSAA instead) |
 | Particles | 1/3 | full | full |
 
-Options > Graphics: Auto (High, except Medium on the web), Low, Medium, High. The web export
-excludes `models/*_hi` (export_presets.cfg), so only the APK carries them.
+Options > Graphics: Auto (High, except Medium on the web), Low, Medium, High. The Android and web
+exports exclude `models/props_hi` (export_presets.cfg): only desktop runs use those variants.
 
 The high-detail variants are rebuilt by passing `--hi` to the import scripts:
 

@@ -118,9 +118,9 @@ func _render_scale() -> void:
 	var hi := Quality.high()
 	var mobile := OS.has_feature("mobile")
 	vp.mesh_lod_threshold = 1.0 if hi else 1.5
-	# one anti-aliasing method at a time, never MSAA and FXAA together. Phones: FXAA only (Medium and up):
-	# MSAA multiplies the tile memory of every pass on a tile-based GPU. Desktop: MSAA 2x on High, FXAA on
-	# Medium. FXAA smooths the swarm's sub-pixel triangles (a ~40 px foe has ~700 triangles)
+	# one anti-aliasing method at a time, never MSAA and FXAA together: High MSAA 2x (phones too: at native
+	# resolution it keeps edges sharp where FXAA would blur the 2048 px textures), Medium FXAA (it smooths
+	# the swarm's sub-pixel triangles: a ~40 px foe has ~700), Low neither
 	var aa := Quality.on("msaa") and not compat
 	if mobile:
 		# High: MSAA 2x and no FXAA (sharp edges, no full-screen blur); Medium: FXAA; Low: neither
