@@ -19,6 +19,16 @@ uniform sampler2D vat_pos : filter_nearest, repeat_disable;
 uniform sampler2D vat_nrm : filter_nearest, repeat_disable;
 uniform vec3 vat_min = vec3(0.0);
 uniform vec3 vat_ext = vec3(1.0);
+// Imported PBR foes (tools/blender/process_fal_assets.py): their own albedo, normal and roughness/metal
+// maps (glTF: G roughness, B metal), the kind's colour as at most a 10% tint, no procedural mottling,
+// veins or glowing parts. UV is the texture's, so their animation texture column is in UV2.x.
+uniform float corpse_sink = 0.6;      // how far a corpse sinks as it fades, in model units (WorldView3D: 0.3 x height)
+uniform bool has_albedo = false;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform bool has_normal = false;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform bool has_orm = false;
+uniform sampler2D orm_tex : filter_linear_mipmap, repeat_enable;
 varying flat float v_part;
 varying vec4 v_custom;
 varying vec3 v_mpos;
@@ -66,16 +76,28 @@ vec3 vat_p(int vi, int row) {
 void vertex() {
 	v_custom = INSTANCE_CUSTOM;
 	v_mpos = VERTEX;
-	float part = floor(UV2.x + 0.5);
+	float part = has_albedo ? 0.0 : floor(UV2.x + 0.5);
 	float piv = UV2.y;
 	v_part = part;
 	if (has_vat) {
 		ivec2 sz = textureSize(vat_pos, 0);
-		int vi = clamp(int(UV.x * float(sz.x)), 0, sz.x - 1);
+		int vi = clamp(int((has_albedo ? UV2.x : UV.x) * float(sz.x)), 0, sz.x - 1);
 		float fr = clamp(INSTANCE_CUSTOM.x, 0.0, float(sz.y - 2));
 		int f0 = int(floor(fr));
 		VERTEX = mix(vat_p(vi, f0), vat_p(vi, f0 + 1), fr - float(f0));
-		NORMAL = oct_normal(texelFetch(vat_nrm, ivec2(vi, f0), 0).xy);
+		vec3 n1 = oct_normal(texelFetch(vat_nrm, ivec2(vi, f0), 0).xy);
+		if (has_normal) {
+			// the normal map's tangent frame turns with the animated normal (shortest-arc rotation)
+			vec3 ax = cross(NORMAL, n1);
+			float sn = length(ax);
+			float cs = dot(NORMAL, n1);
+			if (sn > 1e-4) {
+				ax /= sn;
+				TANGENT = TANGENT * cs + cross(ax, TANGENT) * sn + ax * dot(ax, TANGENT) * (1.0 - cs);
+				BINORMAL = BINORMAL * cs + cross(ax, BINORMAL) * sn + ax * dot(ax, BINORMAL) * (1.0 - cs);
+			}
+		}
+		NORMAL = n1;
 		v_mpos = VERTEX;
 	} else if (INSTANCE_CUSTOM.z < 6.5) {                           // corpses (7) are not animated
 		float ph = INSTANCE_CUSTOM.x;
@@ -111,7 +133,7 @@ void vertex() {
 	if (INSTANCE_CUSTOM.z > 6.5) {
 		// corpses sink into the ground as they fade (polish: the noise-holed crumble with glowing edges
 		// read as confetti from the game camera once a fight left dozens of bodies)
-		VERTEX.y -= INSTANCE_CUSTOM.y * (has_vat ? 0.6 : 0.9);
+		VERTEX.y -= INSTANCE_CUSTOM.y * corpse_sink;
 	}
 	// no terrain lookup here: WorldView3D writes the ground height under each foe into its instance
 	// transform (_write_foes, _write_corpses), so this stage does no height texture fetches
@@ -128,6 +150,15 @@ void fragment() {
 	// shows stretching) replaces three 3D value noises = 24 hash evaluations per pixel of every foe
 	vec4 nz = texture(g_noise, (mp.xy + mp.z * vec2(0.71, 0.37)) * 0.2);
 	float n = clamp(0.5 + (nz.r - 0.5) * 1.25, 0.0, 1.0);
+	float rough = 0.35 + 0.5 * n;                       // 0.35 wet sheen where the noise dips .. 0.85 dry hide
+	float metal = 0.0;
+	if (has_albedo) {
+		vec3 tint = COLOR.rgb / max(0.001, max(COLOR.r, max(COLOR.g, COLOR.b)));
+		base = texture(albedo_tex, UV).rgb * mix(vec3(1.0), tint, 0.1);
+		if (has_normal) NORMAL_MAP = texture(normal_tex, UV).rgb;
+		if (has_orm) { vec3 orm = texture(orm_tex, UV).rgb; rough = orm.g; metal = orm.b; }
+		else rough = 0.75;
+	} else {
 	// the same noise as a bump: screen-space surface gradient (Mikkelsen 2010), no extra texture taps.
 	// dFdx / dFdy of the view-space position and of the noise height give the gradient of the height
 	// over the surface, which tilts the normal: mottled skin catches the light instead of reading flat
@@ -145,13 +176,13 @@ void fragment() {
 	base *= 0.68 + 0.5 * n;
 	base *= mix(0.45, 1.0, smoothstep(0.0, 1.2, v_mpos.y));
 	base = mix(base, base * vec3(0.5, 0.25, 0.22), vein * 0.6);
+	}
 
 	bool elite = mod(flags, 2.0) >= 1.0;
 	bool exile = mod(floor(flags / 8.0), 2.0) >= 1.0;
 	bool ally = mod(floor(flags / 64.0), 2.0) >= 1.0;
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	vec3 em = vec3(0.0);
-	float rough = 0.35 + 0.5 * n;                       // 0.35 wet sheen where the noise dips .. 0.85 dry hide
 	if (v_part > 5.5 && v_part < 6.5) {
 		base = vec3(0.05);
 		em += eye_col * 4.0;
@@ -179,6 +210,7 @@ void fragment() {
 	}
 	ALBEDO = base;
 	ROUGHNESS = rough;
+	METALLIC = metal;
 	EMISSION = em;
 	RIM = 0.75;                                          // a crisp edge light: silhouettes against the ground
 	RIM_TINT = 0.5;

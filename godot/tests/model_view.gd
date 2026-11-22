@@ -91,14 +91,23 @@ func _ready() -> void:
 				var fm2 := ShaderMaterial.new(); fm2.shader = load("res://shaders/3d/foe.gdshader")
 				fm2.set_shader_parameter("glow_col", Color("8fd8ff")); fm2.set_shader_parameter("eye_col", Color(1, 0.6, 0.2))
 				var vat := Models.foe_vat(kinds2[k])
+				var fmesh := Models.foe_mesh(kinds2[k])
+				var mh := fmesh.get_aabb().size.y
+				# bound as WorldView3D.bind does: the model's own maps, the animation texture and its box
+				var pbr := Models.pbr_maps(fmesh)
+				fm2.set_shader_parameter("has_albedo", pbr.has("albedo"))
+				fm2.set_shader_parameter("has_normal", pbr.has("normal"))
+				fm2.set_shader_parameter("has_orm", pbr.has("orm"))
+				for key in pbr: fm2.set_shader_parameter(key + "_tex", pbr[key])
 				fm2.set_shader_parameter("has_vat", not vat.is_empty())
 				if not vat.is_empty():
 					fm2.set_shader_parameter("vat_pos", vat.pos); fm2.set_shader_parameter("vat_nrm", vat.nrm)
+					fm2.set_shader_parameter("vat_min", vat.vmin); fm2.set_shader_parameter("vat_ext", vat.vext)
 				var mmi := MultiMeshInstance3D.new(); var mm := MultiMesh.new()
 				mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.use_custom_data = true
-				mm.mesh = Models.foe_mesh(kinds2[k]); mm.instance_count = 5
+				mm.mesh = fmesh; mm.instance_count = 5
 				for j in 5:
-					var s2 := 13.0
+					var s2 := 13.0 if mh < 10.0 else 1.0          # pack meshes ~2 units tall; generated ones at their height
 					mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, -0.9).scaled(Vector3(s2, s2, s2)), Vector3(j * 55.0, 0, -k * 44.0)))
 					mm.set_instance_color(j, Color(0.85, 0.8, 0.78, 0.3))
 					var fr := 1.2 + j
@@ -110,15 +119,24 @@ func _ready() -> void:
 				add_child(mmi)
 		"prop":
 			# props as the scatter draws them: several rotations each, glow in the act accent
+			# (imported PBR props draw their own materials, as in _build_cell; spaced by their own size)
 			var kinds3: PackedStringArray = (a[2] if a.size() > 2 else "crystal").split(",")
-			cam.position = Vector3(45.0 * kinds3.size(), 70, 190); cam.look_at(Vector3(45.0 * kinds3.size(), 18, 0))
 			var pmat := ShaderMaterial.new(); pmat.shader = load("res://shaders/3d/prop.gdshader")
-			pmat.set_shader_parameter("tint", Color(0.85, 0.8, 0.82)); pmat.set_shader_parameter("glow_col", Color("b890ff"))
+			pmat.set_shader_parameter("tint", Color(0.96, 0.95, 0.93)); pmat.set_shader_parameter("glow_col", Color("b890ff"))
+			var x := 0.0
+			var tall := 0.0
 			for k in kinds3.size():
+				var pmesh := Models.prop_mesh(kinds3[k])
+				var bb := pmesh.get_aabb()
+				var wide := maxf(bb.size.x, bb.size.z)
+				tall = maxf(tall, bb.size.y)
 				for j in 2:
-					var mi := MeshInstance3D.new(); mi.mesh = Models.prop_mesh(kinds3[k]); mi.material_override = pmat
-					mi.position = Vector3(k * 90.0 + j * 40.0, 0, -j * 50.0); mi.rotation.y = j * 2.1
+					var mi := MeshInstance3D.new(); mi.mesh = pmesh
+					if not Models.has_pbr(pmesh): mi.material_override = pmat
+					mi.position = Vector3(x + j * wide * 0.6, 0, -j * wide * 0.9); mi.rotation.y = j * 2.1
 					add_child(mi)
+				x += wide * 1.9 + 10.0
+			cam.position = Vector3(x * 0.5, tall * 0.9, x * 0.62 + tall); cam.look_at(Vector3(x * 0.5, tall * 0.3, 0))
 		"strip":
 			# one authored clip of a hero or boss as six frames, seen three-quarter from the front
 			var sid := a[2] if a.size() > 2 else "warden"

@@ -13,7 +13,26 @@ extends RefCounted
 ## The rigs then play those instead of the procedural animation (see HeroRig.attach_override).
 
 const FOE_KINDS := ["grunt", "runner", "brute", "spitter", "splitter", "mini", "charger", "breach", "goblin", "exile", "boss", "herald"]
-const PROP_KINDS := ["rock", "tree", "crystal", "pillar", "bones", "grass"]
+const PROP_KINDS := ["rock", "tree", "tree_dead", "bush", "arch", "wall", "crystal", "pillar", "bones", "grass"]
+
+## The PBR maps a mesh's first surface material brings: {albedo, normal, orm} (whichever exist; orm is
+## the glTF metallic-roughness image, G roughness and B metal).
+static func pbr_maps(m: Mesh) -> Dictionary:
+	var out := {}
+	if m == null or m.get_surface_count() == 0: return out
+	var mat := m.surface_get_material(0) as BaseMaterial3D
+	if mat == null: return out
+	if mat.albedo_texture != null: out["albedo"] = mat.albedo_texture
+	if mat.normal_enabled and mat.normal_texture != null: out["normal"] = mat.normal_texture
+	if mat.roughness_texture != null: out["orm"] = mat.roughness_texture
+	return out
+
+## Whether a mesh brings its own PBR material (an albedo texture on its first surface): those draw as
+## imported; the rest take the shared prop shader.
+static func has_pbr(m: Mesh) -> bool:
+	if m == null or m.get_surface_count() == 0: return false
+	var mat := m.surface_get_material(0)
+	return mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null
 
 static var _cache := {}
 
@@ -32,8 +51,27 @@ static func mesh_from_asset(path: String) -> Mesh:
 	if r is PackedScene:
 		var n: Node = r.instantiate()
 		var m := _first_mesh(n)
+		# a MultiMesh draws the mesh's own surface materials only: carry the instance's override materials
+		# (an imported scene can put its PBR materials there) onto a copy before the instance goes
+		var mi := _first_mesh_instance(n)
+		if m != null and mi != null:
+			var copy: Mesh = null
+			for i in m.get_surface_count():
+				var om := mi.get_surface_override_material(i)
+				if om == null: continue
+				if copy == null: copy = m.duplicate()
+				copy.surface_set_material(i, om)
+			if copy != null: m = copy
 		n.free()
 		return m
+	return null
+
+static func _first_mesh_instance(n: Node) -> MeshInstance3D:
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+		return n as MeshInstance3D
+	for c in n.get_children():
+		var r := _first_mesh_instance(c)
+		if r != null: return r
 	return null
 
 static func _first_mesh(n: Node) -> Mesh:
@@ -269,5 +307,6 @@ static func _build_prop(kind: String) -> ArrayMesh:
 			for i in 5:
 				var a := TAU * i / 5.0 + 0.4
 				var hgt := 11.0 + (i % 3) * 3.5
-				k.add("cone", Vector3(cos(a) * 3.5, hgt * 0.45, sin(a) * 3.5), Vector3(5.0, hgt, 1.6), Color(0.62, 0.72, 0.5) if i % 2 == 0 else Color(0.8, 0.86, 0.66), MeshKit.PART_TAIL, 0, Vector3(sin(a) * 0.45, a, -cos(a) * 0.45), 3)
+				# their own colours (the prop shader's tint is neutral): dark olive and dry straw blades
+				k.add("cone", Vector3(cos(a) * 3.5, hgt * 0.45, sin(a) * 3.5), Vector3(5.0, hgt, 1.6), Color(0.27, 0.31, 0.17) if i % 2 == 0 else Color(0.42, 0.4, 0.24), MeshKit.PART_TAIL, 0, Vector3(sin(a) * 0.45, a, -cos(a) * 0.45), 3)
 	return k.commit()

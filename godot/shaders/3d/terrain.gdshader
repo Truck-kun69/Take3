@@ -19,7 +19,7 @@ uniform sampler2D tex_b : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D nrm_a : filter_linear_mipmap, repeat_enable;
 uniform sampler2D nrm_b : filter_linear_mipmap, repeat_enable;
 uniform float tex_scale = 0.0085;       // one tile every ~118 world units (1024 px: ~8.7 texels per unit)
-uniform float tint = 0.45;               // how far the act palette recolours the photographs
+uniform float tint = 0.18;               // how far the act palette recolours the photographs (they stay natural)
 uniform bool displace = false;     // the run's ground follows the terrain; the title stage stays flat
 varying vec3 wp;
 varying vec3 v_n;
@@ -75,7 +75,7 @@ void fragment() {
 		vec3 grey = vec3(hc);
 		// tint: keep the photograph's light and dark, take most of the hue from the act palette
 		vec3 hue = pal / max(0.001, dot(pal, vec3(0.33)));
-		col = mix(t, grey * hue, tint) * mix(vec3(1.0), pal * 4.0, 0.25);
+		col = mix(t, grey * hue, tint);
 		col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.3) * 0.85;       // muted: the act colours the light, not the paint
 		col = mix(col, col * mix(vec3(0.75, 0.74, 0.78), vec3(1.0), 0.3), k);        // stone reads cooler than soil
 		vec3 na = texture(nrm_a, ua).rgb * 2.0 - 1.0;

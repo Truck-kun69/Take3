@@ -208,9 +208,11 @@ func _purse(d: Dictionary) -> CenterContainer:
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var row := UIKit.hbox(16)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for f in _resources(d, [["Gold", int(d.gold), UIKit.GOLD], ["Echoes", int(d.get("echoes", 0)), Color("9fd8ff")]]).get_children():
-		f.get_parent().remove_child(f)
+	var flow := _resources(d, [["Gold", int(d.gold), UIKit.GOLD], ["Echoes", int(d.get("echoes", 0)), Color("9fd8ff")]])
+	for f in flow.get_children():
+		flow.remove_child(f)
 		row.add_child(f)
+	flow.free()                                        # emptied, never in the tree: it leaked once per menu build
 	p.add_child(row)
 	c.add_child(p)
 	return c

@@ -4,9 +4,9 @@ animations (names and durations) and the textures each material uses.
     python3 tools/gltf_info.py <file.glb|.gltf> [...]       print a summary per file
 
 Used by tools/verify_assets.py and tools/gate_check.py. The bounding box is the scene as a viewer shows it
-before any animation: every mesh's POSITION min/max corners through its node's world matrix; a skinned
-mesh goes through joint 0's world matrix times its inverse bind matrix instead (the bind pose), which
-is what glTF says a skinned mesh's own node transform does not take part in.
+before any animation: a plain mesh's POSITION min/max corners through its node's world matrix; a skinned
+mesh skinned vertex by vertex through its joints' world matrices and inverse bind matrices (glTF: a
+skinned mesh's own node transform takes no part).
 """
 import json
 import math
@@ -89,29 +89,49 @@ def read_accessor(js, binchunk, ai):
     return out
 
 
+def _np_mat(m):
+    import numpy as np
+    return np.array(m, dtype=np.float64).reshape(4, 4).T          # column-major list -> row-major 4x4
+
+
 def bbox(js, binchunk=None):
-    """World-space AABB of the bind pose: (min xyz, max xyz) or None."""
+    """World-space AABB of the scene as written (node transforms, no animation): (min xyz, max xyz) or None.
+    Plain meshes: POSITION min/max corners through the node's world matrix. Skinned meshes: every vertex
+    skinned exactly (sum of weight x joint world x inverse bind matrix), as a viewer draws the file."""
+    import numpy as np
     wm = world_matrices(js)
     lo = [math.inf] * 3; hi = [-math.inf] * 3
+    def grow(p):
+        for k in range(3):
+            lo[k] = min(lo[k], float(p[k])); hi[k] = max(hi[k], float(p[k]))
     for ni, m in wm.items():
         node = js["nodes"][ni]
         if "mesh" not in node: continue
-        xf = m
-        if "skin" in node and binchunk is not None:
-            skin = js["skins"][node["skin"]]
-            if "inverseBindMatrices" in skin and skin.get("joints"):
-                ibm = read_accessor(js, binchunk, skin["inverseBindMatrices"])[0]
-                xf = _mat_mul(wm.get(skin["joints"][0], m), list(ibm))
+        skin = js["skins"][node["skin"]] if "skin" in node else None
         for prim in js["meshes"][node["mesh"]]["primitives"]:
-            pa = js["accessors"][prim["attributes"]["POSITION"]]
+            att = prim["attributes"]
+            if skin is not None and binchunk is not None and "JOINTS_0" in att and "WEIGHTS_0" in att:
+                pos = np.array(read_accessor(js, binchunk, att["POSITION"]), dtype=np.float64)
+                jnt = np.array(read_accessor(js, binchunk, att["JOINTS_0"]), dtype=np.int64)
+                wgt = np.array(read_accessor(js, binchunk, att["WEIGHTS_0"]), dtype=np.float64)
+                if js["accessors"][att["WEIGHTS_0"]].get("normalized"):
+                    wgt = wgt / {5121: 255.0, 5123: 65535.0}.get(js["accessors"][att["WEIGHTS_0"]]["componentType"], 1.0)
+                ibm = read_accessor(js, binchunk, skin["inverseBindMatrices"]) if "inverseBindMatrices" in skin else \
+                    [[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]] * len(skin["joints"])
+                jm = np.stack([_np_mat(wm.get(j, m)) @ _np_mat(ibm[i]) for i, j in enumerate(skin["joints"])])
+                ph = np.concatenate([pos, np.ones((len(pos), 1))], 1)
+                out = np.zeros((len(pos), 4))
+                for c in range(4):
+                    out += wgt[:, c:c + 1] * np.einsum("nij,nj->ni", jm[jnt[:, c]], ph)
+                grow(out[:, :3].min(0)); grow(out[:, :3].max(0))
+                continue
+            pa = js["accessors"][att["POSITION"]]
             if "min" not in pa: continue
             mn, mx = pa["min"], pa["max"]
             for cx in (mn[0], mx[0]):
                 for cy in (mn[1], mx[1]):
                     for cz in (mn[2], mx[2]):
-                        p = _xf(xf, [cx, cy, cz])
-                        for k in range(3):
-                            lo[k] = min(lo[k], p[k]); hi[k] = max(hi[k], p[k])
+                        grow(_xf(m, [cx, cy, cz]))
     if lo[0] == math.inf: return None
     return lo, hi
 

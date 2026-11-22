@@ -1,0 +1,4111 @@
+{
+ "cap_usd": 19.5,
+ "calls": [
+  {
+   "key": "auth-probe/queue-empty-submit",
+   "asset": "-",
+   "step": "auth probe",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2004d-66cf-7c90-8cf6-3646f4fb686a",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "error": "empty request body (auth check): fails validation, nothing generated; fal bills only successful requests",
+   "submitted_at": "2026-11-21T22:50:18Z",
+   "args": {}
+  },
+  {
+   "key": "auth-probe/sync-empty-bodies",
+   "asset": "-",
+   "step": "auth probe",
+   "endpoint": "fal-ai/flux/schnell (fal.run, x2)",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "error": "HTTP 422 prompt missing: rejected before any job was created",
+   "submitted_at": "2026-11-21T22:50:18Z",
+   "args": {}
+  },
+  {
+   "key": "warden/concept",
+   "asset": "warden",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2004e-955c-7142-a043-864118d00ae0",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2004e-955c-7142-a043-864118d00ae0/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2004e-955c-7142-a043-864118d00ae0",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T22:51:19Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a grizzled armored knight warden in battered dented steel plate armor over rusted chainmail, a tattered dark red tabard, a closed great helm with a narrow visor slit, worn leather straps and belts, a short torn dark red cape, a longsword sheathed on his back, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab369a4/ziLSatkYix8fV3uzVLHu9.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.42534532100034994
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a grizzled armored knight warden in battered dented steel plate armor over rusted chainmail, a tattered dark red tabard, a closed great helm with a narrow visor slit, worn leather straps and belts, a short torn dark red cape, a longsword sheathed on his back, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T22:51:28Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab369a4/ziLSatkYix8fV3uzVLHu9.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/warden/concept.jpg"
+   }
+  },
+  {
+   "key": "tree/concept",
+   "asset": "tree",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2004e-b824-73a1-ba5f-851c707f9680",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2004e-b824-73a1-ba5f-851c707f9680/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2004e-b824-73a1-ba5f-851c707f9680",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T22:51:28Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a tall gnarled old oak tree with a thick dark bark trunk, twisted branches and a sparse dark green canopy, roots gripping the earth, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab369a4/X5xUefEYwDVbkQWflxOGN.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.6024059659994236
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a tall gnarled old oak tree with a thick dark bark trunk, twisted branches and a sparse dark green canopy, roots gripping the earth, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T22:51:37Z",
+   "seconds": 9,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab369a4/X5xUefEYwDVbkQWflxOGN.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/tree/concept.jpg"
+   }
+  },
+  {
+   "key": "warden/model",
+   "asset": "warden",
+   "step": "model",
+   "endpoint": "fal-ai/meshy/v7.1/image-to-3d",
+   "request_id": "01a2004f-ae98-7611-9c0c-cf42830528d1",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a2004f-ae98-7611-9c0c-cf42830528d1/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a2004f-ae98-7611-9c0c-cf42830528d1",
+   "status": "done",
+   "cost_usd": 1.2,
+   "submitted_at": "2026-11-21T22:52:31Z",
+   "args": {
+    "image_url": "https://v3b.fal.media/files/b/0ab369a4/ziLSatkYix8fV3uzVLHu9.jpg",
+    "should_texture": true,
+    "enable_pbr": true,
+    "pose_mode": "a-pose",
+    "symmetry_mode": "on",
+    "topology": "triangle",
+    "target_polycount": 20000,
+    "should_remesh": true,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "animation_glb": null,
+    "animation_fbx": null,
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab369b8/Ra0gRgviGyrMcx1n8Mrik_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 11994136
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab369b9/PDTKdqeSXNRJvzSka5FpL_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 131853
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab369b8/Ra0gRgviGyrMcx1n8Mrik_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 11994136
+     },
+     "fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab369b8/QHlb90NXiawVTwzmhHm98_model.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "model.fbx",
+      "file_size": 12334860
+     },
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab369b9/UHNpDY6LL4pzVaZ4czZJ6_model.obj",
+      "content_type": "model/obj",
+      "file_name": "model.obj",
+      "file_size": 2051931
+     },
+     "usdz": {
+      "url": "https://v3b.fal.media/files/b/0ab369b8/KbSxPOFzmkqBKlHUD_Oi8_model.usdz",
+      "content_type": "model/vnd.usdz+zip",
+      "file_name": "model.usdz",
+      "file_size": 13157442
+     },
+     "blend": null,
+     "stl": {
+      "url": "https://v3b.fal.media/files/b/0ab369b9/lQ3rmVo35sO7e9IqOSJU6_model.stl",
+      "content_type": "model/stl",
+      "file_name": "model.stl",
+      "file_size": 1034734
+     }
+    },
+    "texture_urls": [
+     {
+      "base_color": {
+       "url": "https://v3b.fal.media/files/b/0ab369b9/Zt0ayrvIinchzupS6a11-_texture_0.png",
+       "content_type": "image/png",
+       "file_name": "texture_0.png",
+       "file_size": 5317921
+      },
+      "metallic": {
+       "url": "https://v3b.fal.media/files/b/0ab369b9/ipPjqCWAMcpMokmRkjbSM_texture_0_metallic.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_metallic.png",
+       "file_size": 993769
+      },
+      "normal": {
+       "url": "https://v3b.fal.media/files/b/0ab369ba/bOaTf90bDKx7roY88dskA_texture_0_normal.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_normal.png",
+       "file_size": 5445403
+      },
+      "roughness": {
+       "url": "https://v3b.fal.media/files/b/0ab369ba/goiFLl1a0AxqAtZV-bSAU_texture_0_roughness.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_roughness.png",
+       "file_size": 1606388
+      }
+     }
+    ],
+    "seed": 50213757,
+    "rigged_character_glb": null,
+    "rigged_character_fbx": null,
+    "basic_animations": null,
+    "rig_task_id": null
+   },
+   "finished_at": "2026-11-21T22:55:06Z",
+   "seconds": 155,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab369b8/Ra0gRgviGyrMcx1n8Mrik_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/warden/model.glb"
+   }
+  },
+  {
+   "key": "warden/rig",
+   "asset": "warden",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging/multi-animation",
+   "request_id": "01a20052-0f9c-7c43-a2fe-a8aa54d431b5",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20052-0f9c-7c43-a2fe-a8aa54d431b5/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20052-0f9c-7c43-a2fe-a8aa54d431b5",
+   "status": "done",
+   "cost_usd": 0.8,
+   "submitted_at": "2026-11-21T22:55:07Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab369b8/Ra0gRgviGyrMcx1n8Mrik_model.glb",
+    "animation_action_ids": [
+     0,
+     158,
+     466,
+     189,
+     131
+    ],
+    "height_meters": 1.8,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab369ce/6iSLSWcwBkRMgH7vAJu2o_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 13247836
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab369d0/ksUwp0tDVGGKNJ36-GygO_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 13641548
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab369cf/cxzIh1BZoVhYpwzqZHRir_walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 13339972
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab369d0/pJpyFs9pStrnthh83HwzU_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 13690444
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab369c2/IWQDAPewitChgQ2TTc9cH_walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52832
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab369cf/z16V46Xz88A1yEU9060Jg_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 13319756
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab369cf/fQOHG1P4pjhIkDNuQ0h_L_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 13669756
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab369c2/hDmX13WBFxDP3JEcjlhzf_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 43208
+     }
+    },
+    "animations": [
+     {
+      "action_id": 0,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab369e0/jvMX8hfJOk1DBGrD96GSu_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13490148
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab369e1/BiXCAXCKTrkG1riZnQJ3P_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13783932
+      }
+     },
+     {
+      "action_id": 158,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab369e6/QO1uxJiJk8xd8e8bTGS21_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13380420
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab369e6/jWd6p2le9HZgsAMAUE9Cq_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13710364
+      }
+     },
+     {
+      "action_id": 466,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab369d5/JWsgJ1ErlcCr3K40uy_Lq_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13382080
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab369d6/IomRXfJ-wTCl_-ZM-fNhT_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13711532
+      }
+     },
+     {
+      "action_id": 189,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab369d6/BiEsUME1FePAmBZ9cnZQj_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13399032
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab369dd/D6X8GBdLWQZMDKHYzJnVG_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13722028
+      }
+     },
+     {
+      "action_id": 131,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab369e4/-wTPLYckP1Fi7-QNN3oQ-_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13439476
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab369e5/daE4RQqa0tt3oNEnUpYOB_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13751148
+      }
+     }
+    ],
+    "rig_task_id": "01a20052-2fae-77aa-9497-16a04f82fe48"
+   },
+   "finished_at": "2026-11-21T23:02:35Z",
+   "seconds": 448,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab369ce/6iSLSWcwBkRMgH7vAJu2o_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab369cf/cxzIh1BZoVhYpwzqZHRir_walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab369cf/z16V46Xz88A1yEU9060Jg_running.glb",
+    "clip_idle": "https://v3b.fal.media/files/b/0ab369e0/jvMX8hfJOk1DBGrD96GSu_animation.glb",
+    "clip_roll": "https://v3b.fal.media/files/b/0ab369e6/QO1uxJiJk8xd8e8bTGS21_animation.glb",
+    "clip_jump": "https://v3b.fal.media/files/b/0ab369d5/JWsgJ1ErlcCr3K40uy_Lq_animation.glb",
+    "clip_die": "https://v3b.fal.media/files/b/0ab369d6/BiEsUME1FePAmBZ9cnZQj_animation.glb",
+    "clip_cast": "https://v3b.fal.media/files/b/0ab369e4/-wTPLYckP1Fi7-QNN3oQ-_animation.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/warden/rigged.glb",
+    "clip_walk": "tools/.fal_raw/warden/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/warden/clip_run.glb",
+    "clip_idle": "tools/.fal_raw/warden/clip_idle.glb",
+    "clip_roll": "tools/.fal_raw/warden/clip_roll.glb",
+    "clip_jump": "tools/.fal_raw/warden/clip_jump.glb",
+    "clip_die": "tools/.fal_raw/warden/clip_die.glb",
+    "clip_cast": "tools/.fal_raw/warden/clip_cast.glb"
+   }
+  },
+  {
+   "key": "tree/model",
+   "asset": "tree",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a20059-052d-7a40-b17b-2a2825fb6dac",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20059-052d-7a40-b17b-2a2825fb6dac/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20059-052d-7a40-b17b-2a2825fb6dac",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:02:43Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab369a4/X5xUefEYwDVbkQWflxOGN.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab369fa/Gf9dqf2IVcOzeuQqMLBaJ_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 45240248
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab369fa/E4UewTz24B23PyQgk2GQ8_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 82802
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab369fa/Gf9dqf2IVcOzeuQqMLBaJ_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 45240248
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab369fa/Jrr8xuhF663UhVDc2Jfv2_30cf762bd86850dd83c13fa95f96e5c0.obj",
+      "content_type": "model/obj",
+      "file_name": "30cf762bd86850dd83c13fa95f96e5c0.obj",
+      "file_size": 34534965
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab369fa/byHBzMs_PjOtO4WzUlNAc_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab369fa/uwa6ypMvXNOugYs7KF3Oe_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 14609530
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:05:52Z",
+   "seconds": 188,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab369fa/Gf9dqf2IVcOzeuQqMLBaJ_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/tree/model.glb"
+   }
+  },
+  {
+   "key": "spark/concept",
+   "asset": "spark",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005e-62df-77f1-8ce2-f492d7f29723",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-62df-77f1-8ce2-f492d7f29723/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-62df-77f1-8ce2-f492d7f29723",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:08:35Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a gaunt frost sorcerer in a deep hood and a long dark blue coat with a frayed hem and a fur-trimmed collar, frost-rimed leather bracers and boots, a pale hollow face half hidden in the hood's shadow, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a0b/bOe815TwBysPld2Yt2IWB.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.4365646189999097
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a gaunt frost sorcerer in a deep hood and a long dark blue coat with a frayed hem and a fur-trimmed collar, frost-rimed leather bracers and boots, a pale hollow face half hidden in the hood's shadow, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:08:43Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a0b/bOe815TwBysPld2Yt2IWB.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/spark/concept.jpg"
+   }
+  },
+  {
+   "key": "ember/concept",
+   "asset": "ember",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005e-84d1-7302-b32f-8a413a621886",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-84d1-7302-b32f-8a413a621886/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-84d1-7302-b32f-8a413a621886",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:08:44Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a fierce witch in a crooked wide-brimmed pointed black hat and a long tattered crimson robe, singed and soot-stained at the hem, a leather corset with tarnished brass buckles, an ash-smudged face, dark red hair, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a0c/I5EHnxSJFDxh7zZWicsnU.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.43367138499888824
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a fierce witch in a crooked wide-brimmed pointed black hat and a long tattered crimson robe, singed and soot-stained at the hem, a leather corset with tarnished brass buckles, an ash-smudged face, dark red hair, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:08:52Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a0c/I5EHnxSJFDxh7zZWicsnU.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/ember/concept.jpg"
+   }
+  },
+  {
+   "key": "storm/concept",
+   "asset": "storm",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005e-a6be-71c1-8d0e-3bbefae267f8",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-a6be-71c1-8d0e-3bbefae267f8/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-a6be-71c1-8d0e-3bbefae267f8",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:08:52Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a scarred barbarian storm shaman with a horned brass helmet and a braided beard, a heavy dark fur mantle over a dented bronze breastplate and a rusted chainmail shirt, leather bracers etched with faint violet lightning runes, a chainmail and leather kilt, fur boots, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a0d/HBFFZ2kQPiD3XzUSZLO7E.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.4341985770006431
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a scarred barbarian storm shaman with a horned brass helmet and a braided beard, a heavy dark fur mantle over a dented bronze breastplate and a rusted chainmail shirt, leather bracers etched with faint violet lightning runes, a chainmail and leather kilt, fur boots, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:01Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a0d/HBFFZ2kQPiD3XzUSZLO7E.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/storm/concept.jpg"
+   }
+  },
+  {
+   "key": "tyrant/concept",
+   "asset": "tyrant",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005e-c948-7602-87d1-85ffd9896943",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-c948-7602-87d1-85ffd9896943/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-c948-7602-87d1-85ffd9896943",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:01Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a towering horned tyrant warlord, gaunt and monstrous, in blackened scorched iron plate armor with a ribcage-shaped breastplate and a dull ember glow inside it, curved black horns, a ragged dark cloak, clawed iron gauntlets, hulking shoulders, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a0e/I_GKhuXGGXWNFDJWHmhYI.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.4329318800000692
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a towering horned tyrant warlord, gaunt and monstrous, in blackened scorched iron plate armor with a ribcage-shaped breastplate and a dull ember glow inside it, curved black horns, a ragged dark cloak, clawed iron gauntlets, hulking shoulders, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:10Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a0e/I_GKhuXGGXWNFDJWHmhYI.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/tyrant/concept.jpg"
+   }
+  },
+  {
+   "key": "herald/concept",
+   "asset": "herald",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005e-ec07-72f1-928c-96b47490ba5f",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-ec07-72f1-928c-96b47490ba5f/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005e-ec07-72f1-928c-96b47490ba5f",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:10Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a tall gaunt robed herald, a hollow cracked porcelain-white mask with a jagged crystal crown, long tattered pale grey and faded violet vestments, thin long arms, rusted chains hanging from the waist, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a0f/F4a-9hDnCwwn-rf726A-M.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.43285836200084304
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a tall gaunt robed herald, a hollow cracked porcelain-white mask with a jagged crystal crown, long tattered pale grey and faded violet vestments, thin long arms, rusted chains hanging from the waist, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:18Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a0f/F4a-9hDnCwwn-rf726A-M.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/herald/concept.jpg"
+   }
+  },
+  {
+   "key": "grunt/concept",
+   "asset": "grunt",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-0dd0-71f1-aa9d-2bed371a21fe",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-0dd0-71f1-aa9d-2bed371a21fe/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-0dd0-71f1-aa9d-2bed371a21fe",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:19Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a rotting undead foot soldier in rusted dented armor scraps and torn grey cloth, hunched, gaunt grey skin, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a0f/GJ2HI4oMUQTtuPWwoMkF9.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.4252586660004454
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a rotting undead foot soldier in rusted dented armor scraps and torn grey cloth, hunched, gaunt grey skin, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:27Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a0f/GJ2HI4oMUQTtuPWwoMkF9.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/grunt/concept.jpg"
+   }
+  },
+  {
+   "key": "runner/concept",
+   "asset": "runner",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-2fb0-7450-b158-755e20290419",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-2fb0-7450-b158-755e20290419/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-2fb0-7450-b158-755e20290419",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:27Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a lean emaciated ghoul with long clawed arms and mottled grey-green skin, a tattered loincloth, leaning forward, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a10/PNcWbIOL1o-bKH3YGp0Uc.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.45384858299803454
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a lean emaciated ghoul with long clawed arms and mottled grey-green skin, a tattered loincloth, leaning forward, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:36Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a10/PNcWbIOL1o-bKH3YGp0Uc.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/runner/concept.jpg"
+   }
+  },
+  {
+   "key": "brute/concept",
+   "asset": "brute",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-519b-74c2-a386-ba1105d7538d",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-519b-74c2-a386-ba1105d7538d/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-519b-74c2-a386-ba1105d7538d",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:36Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a hulking ogre brute with thick arms and a heavy gut, crude rusted iron pauldrons, thick leather straps, a scarred grey hide, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a11/oRI77uoLTgFgI957ZQ1NT.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.4515475730004255
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a hulking ogre brute with thick arms and a heavy gut, crude rusted iron pauldrons, thick leather straps, a scarred grey hide, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:44Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a11/oRI77uoLTgFgI957ZQ1NT.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/brute/concept.jpg"
+   }
+  },
+  {
+   "key": "spitter/concept",
+   "asset": "spitter",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-747b-7343-a58f-2c22b9a67170",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-747b-7343-a58f-2c22b9a67170/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-747b-7343-a58f-2c22b9a67170",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:45Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a hunched bloated plague cultist with a swollen throat sac, tattered dark hooded robes, a stained leather apron, sickly pale skin, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a12/iPZUUEB8740623J6ZQA_w.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.43062852900038706
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a hunched bloated plague cultist with a swollen throat sac, tattered dark hooded robes, a stained leather apron, sickly pale skin, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:09:53Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a12/iPZUUEB8740623J6ZQA_w.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/spitter/concept.jpg"
+   }
+  },
+  {
+   "key": "charger/concept#superseded1795302698",
+   "asset": "charger",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-9672-7472-9df0-e09e9dbbd0ed",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-9672-7472-9df0-e09e9dbbd0ed/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-9672-7472-9df0-e09e9dbbd0ed",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:09:54Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a horned bull-headed beastman with massive shoulders, iron rings on its curved horns, matted dark fur and leather wraps, hooves, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a13/mb217MdREwuRsbtjdxxMv.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.43186124800013204
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a horned bull-headed beastman with massive shoulders, iron rings on its curved horns, matted dark fur and leather wraps, hooves, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:10:02Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a13/mb217MdREwuRsbtjdxxMv.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/charger/concept.jpg"
+   },
+   "superseded": true
+  },
+  {
+   "key": "tree_dead/concept",
+   "asset": "tree_dead",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-b927-7661-90b4-8715bedf2b37",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-b927-7661-90b4-8715bedf2b37/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-b927-7661-90b4-8715bedf2b37",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:03Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a dead gnarled leafless tree with a twisted black trunk and claw-like bare branches, roots gripping a little earth, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a14/4i4sst81A9vrIC4qUWviO.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5854526119983348
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a dead gnarled leafless tree with a twisted black trunk and claw-like bare branches, roots gripping a little earth, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:10:11Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a14/4i4sst81A9vrIC4qUWviO.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/tree_dead/concept.jpg"
+   }
+  },
+  {
+   "key": "rock/concept",
+   "asset": "rock",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-daf8-7033-8341-6792467e6caa",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-daf8-7033-8341-6792467e6caa/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-daf8-7033-8341-6792467e6caa",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:11Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a large weathered mossy granite boulder with deep cracks and patches of lichen, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a15/aAiDYznP2Lor4NlGQNSFe.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5938050459990336
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a large weathered mossy granite boulder with deep cracks and patches of lichen, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:10:20Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a15/aAiDYznP2Lor4NlGQNSFe.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/rock/concept.jpg"
+   }
+  },
+  {
+   "key": "arch/concept",
+   "asset": "arch",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a2005f-fe47-7b63-9116-6ea054a80fdd",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-fe47-7b63-9116-6ea054a80fdd/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a2005f-fe47-7b63-9116-6ea054a80fdd",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:20Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a ruined gothic stone archway, two cracked stone pillars joined by a broken pointed arch, moss in the cracks, fallen stones at the base, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a16/dawrp374wkaLlTse1VmiG.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5954328640000313
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a ruined gothic stone archway, two cracked stone pillars joined by a broken pointed arch, moss in the cracks, fallen stones at the base, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:10:29Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a16/dawrp374wkaLlTse1VmiG.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/arch/concept.jpg"
+   }
+  },
+  {
+   "key": "wall/concept",
+   "asset": "wall",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20060-204d-7141-9e44-828ec0487dbe",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-204d-7141-9e44-828ec0487dbe/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-204d-7141-9e44-828ec0487dbe",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:29Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a ruined section of old fieldstone wall, low and long, a crumbling uneven top, mossy granite blocks, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a17/uIugDZzurzt_Krh1lna4l.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.6126394309999341
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a ruined section of old fieldstone wall, low and long, a crumbling uneven top, mossy granite blocks, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:10:37Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a17/uIugDZzurzt_Krh1lna4l.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/wall/concept.jpg"
+   }
+  },
+  {
+   "key": "pillar/concept#superseded1795302698",
+   "asset": "pillar",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20060-435b-75f1-ace0-42d25a44a484",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-435b-75f1-ace0-42d25a44a484/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-435b-75f1-ace0-42d25a44a484",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:38Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a broken weathered gothic stone pillar with carved runes, a crumbled jagged top and fallen chunks at its base, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a17/jCBYXTEmxCSRQkVbLTm6N.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.6120696590000989
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a broken weathered gothic stone pillar with carved runes, a crumbled jagged top and fallen chunks at its base, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:10:46Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a17/jCBYXTEmxCSRQkVbLTm6N.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/pillar/concept.jpg"
+   },
+   "superseded": true
+  },
+  {
+   "key": "bones/concept#superseded1795302698",
+   "asset": "bones",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20060-6538-7a81-80f4-238941406870",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-6538-7a81-80f4-238941406870/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-6538-7a81-80f4-238941406870",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:47Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a low pile of old yellowed human skulls, ribs and scattered long bones lying flat on the ground, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a18/7gVifQjXuqC_9F722FIyX.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5833825520001028
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a low pile of old yellowed human skulls, ribs and scattered long bones lying flat on the ground, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:10:55Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a18/7gVifQjXuqC_9F722FIyX.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/bones/concept.jpg"
+   },
+   "superseded": true
+  },
+  {
+   "key": "bush/concept",
+   "asset": "bush",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20060-879a-7cc1-880f-b46452867336",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-879a-7cc1-880f-b46452867336/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20060-879a-7cc1-880f-b46452867336",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:10:55Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a dense low thorny shrub with small dark green leaves and a few dead twigs, round and wider than tall, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 17,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a19/wYQtw7fFQKmCXizjf1N-v.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5826006710001366
+    },
+    "seed": 17,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a dense low thorny shrub with small dark green leaves and a few dead twigs, round and wider than tall, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:11:04Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a19/wYQtw7fFQKmCXizjf1N-v.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/bush/concept.jpg"
+   }
+  },
+  {
+   "key": "charger/concept#superseded1795302742",
+   "asset": "charger",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20061-2f9a-7373-93ab-e153d1a21795",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-2f9a-7373-93ab-e153d1a21795/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-2f9a-7373-93ab-e153d1a21795",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:11:38Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a horned minotaur-like beastman standing upright on two legs like a man, a bull head with curved horns, iron rings on the horns, massive shoulders, matted dark fur and leather wraps, hooved feet, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 23,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a1d/Mm-vHPBxMQsSRJKMUpkir.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.4329525079992891
+    },
+    "seed": 23,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a horned minotaur-like beastman standing upright on two legs like a man, a bull head with curved horns, iron rings on the horns, massive shoulders, matted dark fur and leather wraps, hooved feet, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, neutral combat stance, front three-quarter view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:11:47Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a1d/Mm-vHPBxMQsSRJKMUpkir.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/charger/concept.jpg"
+   },
+   "superseded": true
+  },
+  {
+   "key": "pillar/concept",
+   "asset": "pillar",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20061-524d-7fd3-a875-3c750bed4cf0",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-524d-7fd3-a875-3c750bed4cf0/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-524d-7fd3-a875-3c750bed4cf0",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:11:47Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a broken weathered gothic stone pillar with worn carved knotwork, no letters and no text, a crumbled jagged top and fallen chunks at its base, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 23,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a1e/iHVda7T3JQJwH5VzFY9FY.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5892866960002721
+    },
+    "seed": 23,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a broken weathered gothic stone pillar with worn carved knotwork, no letters and no text, a crumbled jagged top and fallen chunks at its base, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:11:56Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a1e/iHVda7T3JQJwH5VzFY9FY.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/pillar/concept.jpg"
+   }
+  },
+  {
+   "key": "bones/concept",
+   "asset": "bones",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20061-7498-7143-9da2-78a3db4113a9",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-7498-7143-9da2-78a3db4113a9/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-7498-7143-9da2-78a3db4113a9",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:11:56Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a low pile of old pale grey-white weathered human skulls, ribs and scattered long bones lying flat on the ground, muted dusty colors, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame",
+    "image_size": {
+     "width": 992,
+     "height": 992
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 23,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a1f/wyfVaUNxr9G65RlutTXBE.jpg",
+      "width": 992,
+      "height": 992,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.5912714900005085
+    },
+    "seed": 23,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a low pile of old pale grey-white weathered human skulls, ribs and scattered long bones lying flat on the ground, muted dusty colors, single isolated object, three-quarter view from slightly above, whole object visible, nothing else in frame"
+   },
+   "finished_at": "2026-11-21T23:12:04Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a1f/wyfVaUNxr9G65RlutTXBE.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/bones/concept.jpg"
+   }
+  },
+  {
+   "key": "charger/concept",
+   "asset": "charger",
+   "step": "concept",
+   "endpoint": "fal-ai/flux/schnell",
+   "request_id": "01a20061-db67-7773-9f2e-3b733e507f53",
+   "status_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-db67-7773-9f2e-3b733e507f53/status",
+   "response_url": "https://queue.fal.run/fal-ai/flux/requests/01a20061-db67-7773-9f2e-3b733e507f53",
+   "status": "done",
+   "cost_usd": 0.003,
+   "submitted_at": "2026-11-21T23:12:22Z",
+   "args": {
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a muscular humanoid minotaur warrior with a human body standing upright on two legs, a bull head with curved horns and iron rings, massive shoulders, matted dark fur and leather wraps, hooved feet, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground",
+    "image_size": {
+     "width": 768,
+     "height": 1024
+    },
+    "num_inference_steps": 4,
+    "num_images": 1,
+    "seed": 29,
+    "output_format": "jpeg",
+    "enable_safety_checker": false
+   },
+   "output": {
+    "images": [
+     {
+      "url": "https://v3b.fal.media/files/b/0ab36a22/PpGKf5ad-z5CDjof-O5Uz.jpg",
+      "width": 768,
+      "height": 1024,
+      "content_type": "image/jpeg"
+     }
+    ],
+    "timings": {
+     "inference": 0.43442164400039474
+    },
+    "seed": 29,
+    "has_nsfw_concepts": [
+     false
+    ],
+    "prompt": "dark gothic fantasy action RPG 3D game asset, Diablo IV / Path of Exile 2 aesthetic, realistic weathered PBR materials (aged iron, dark worn leather, muted linen, mossy granite, dark bark), grounded natural earth-tone colors, zero neon saturation, even neutral studio lighting, solid plain white background, full silhouette centered, a muscular humanoid minotaur warrior with a human body standing upright on two legs, a bull head with curved horns and iron rings, massive shoulders, matted dark fur and leather wraps, hooved feet, dull dark crystal shards jutting from its back and shoulders, full body from head to toe, strict symmetrical A-pose, arms straight and angled 45 degrees down away from the body, open empty hands, feet apart, front view, standing on flat ground"
+   },
+   "finished_at": "2026-11-21T23:12:31Z",
+   "seconds": 8,
+   "output_urls": {
+    "concept": "https://v3b.fal.media/files/b/0ab36a22/PpGKf5ad-z5CDjof-O5Uz.jpg"
+   },
+   "local_paths": {
+    "concept": "tools/.fal_raw/charger/concept.jpg"
+   }
+  },
+  {
+   "key": "ember/model",
+   "asset": "ember",
+   "step": "model",
+   "endpoint": "fal-ai/meshy/v7.1/image-to-3d",
+   "request_id": "01a20062-9059-7343-ab08-b356f9cb9902",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-9059-7343-ab08-b356f9cb9902/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-9059-7343-ab08-b356f9cb9902",
+   "status": "done",
+   "cost_usd": 1.2,
+   "submitted_at": "2026-11-21T23:13:09Z",
+   "args": {
+    "image_url": "https://v3b.fal.media/files/b/0ab36a0c/I5EHnxSJFDxh7zZWicsnU.jpg",
+    "should_texture": true,
+    "enable_pbr": true,
+    "pose_mode": "a-pose",
+    "symmetry_mode": "on",
+    "topology": "triangle",
+    "target_polycount": 20000,
+    "should_remesh": true,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "animation_glb": null,
+    "animation_fbx": null,
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a34/p1oX2w3rE8g4x_PoeVFOT_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 11439000
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a37/2L1RLcKjmKkww-lYjLzM6_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 107073
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a34/p1oX2w3rE8g4x_PoeVFOT_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 11439000
+     },
+     "fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a35/I-vyZP0VP6PI7tNvUCu6m_model.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "model.fbx",
+      "file_size": 11553900
+     },
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a36/J98oS6quI1i3uIQywZXyE_model.obj",
+      "content_type": "model/obj",
+      "file_name": "model.obj",
+      "file_size": 2028523
+     },
+     "usdz": {
+      "url": "https://v3b.fal.media/files/b/0ab36a36/e6JIf54B5dIT4oaGJqXLm_model.usdz",
+      "content_type": "model/vnd.usdz+zip",
+      "file_name": "model.usdz",
+      "file_size": 12310316
+     },
+     "blend": null,
+     "stl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a37/PQyOyoTGO8DI80P2LsVDW_model.stl",
+      "content_type": "model/stl",
+      "file_name": "model.stl",
+      "file_size": 1035134
+     }
+    },
+    "texture_urls": [
+     {
+      "base_color": {
+       "url": "https://v3b.fal.media/files/b/0ab36a38/U8PgMb7DB8mOV9QtOJpNy_texture_0.png",
+       "content_type": "image/png",
+       "file_name": "texture_0.png",
+       "file_size": 5884805
+      },
+      "metallic": {
+       "url": "https://v3b.fal.media/files/b/0ab36a38/Gc83VcWv-IktvSki_92ln_texture_0_metallic.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_metallic.png",
+       "file_size": 36276
+      },
+      "normal": {
+       "url": "https://v3b.fal.media/files/b/0ab36a39/hFxJGpPW9V_ievVn4aKc2_texture_0_normal.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_normal.png",
+       "file_size": 5284278
+      },
+      "roughness": {
+       "url": "https://v3b.fal.media/files/b/0ab36a39/wnmi0NL-2nIRyVXpOJ23O_texture_0_roughness.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_roughness.png",
+       "file_size": 1404090
+      }
+     }
+    ],
+    "seed": 879310387,
+    "rigged_character_glb": null,
+    "rigged_character_fbx": null,
+    "basic_animations": null,
+    "rig_task_id": null
+   },
+   "finished_at": "2026-11-21T23:16:24Z",
+   "seconds": 195,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a34/p1oX2w3rE8g4x_PoeVFOT_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/ember/model.glb"
+   }
+  },
+  {
+   "key": "spark/model",
+   "asset": "spark",
+   "step": "model",
+   "endpoint": "fal-ai/meshy/v7.1/image-to-3d",
+   "request_id": "01a20062-921b-7a61-bb87-cad4520c717d",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-921b-7a61-bb87-cad4520c717d/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-921b-7a61-bb87-cad4520c717d",
+   "status": "done",
+   "cost_usd": 1.2,
+   "submitted_at": "2026-11-21T23:13:09Z",
+   "args": {
+    "image_url": "https://v3b.fal.media/files/b/0ab36a0b/bOe815TwBysPld2Yt2IWB.jpg",
+    "should_texture": true,
+    "enable_pbr": true,
+    "pose_mode": "a-pose",
+    "symmetry_mode": "on",
+    "topology": "triangle",
+    "target_polycount": 20000,
+    "should_remesh": true,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "animation_glb": null,
+    "animation_fbx": null,
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a36/5AGwxcQlsE24T7vuY1_8L_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 12943712
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a39/9zhA60yC7ci7i8N408XYF_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 99181
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a36/5AGwxcQlsE24T7vuY1_8L_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 12943712
+     },
+     "fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a37/pNex_Xl05ks2lYDhA6E6p_model.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "model.fbx",
+      "file_size": 12897276
+     },
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a38/yPmbj2rF370M1xY4rDr-l_model.obj",
+      "content_type": "model/obj",
+      "file_name": "model.obj",
+      "file_size": 2123674
+     },
+     "usdz": {
+      "url": "https://v3b.fal.media/files/b/0ab36a38/mDKXJsS-SAXMDLzEUbTtY_model.usdz",
+      "content_type": "model/vnd.usdz+zip",
+      "file_name": "model.usdz",
+      "file_size": 13897391
+     },
+     "blend": null,
+     "stl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a39/kT3-wUolNq_SR0yoLxQFo_model.stl",
+      "content_type": "model/stl",
+      "file_name": "model.stl",
+      "file_size": 1025434
+     }
+    },
+    "texture_urls": [
+     {
+      "base_color": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3a/ushwfA763KfkgyxT2Uhuw_texture_0.png",
+       "content_type": "image/png",
+       "file_name": "texture_0.png",
+       "file_size": 5877667
+      },
+      "metallic": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3a/T_R1te3NBVFLiSMTNtf5b_texture_0_metallic.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_metallic.png",
+       "file_size": 192766
+      },
+      "normal": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3b/pPAxPnDwW4mdY0q0PgG-T_texture_0_normal.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_normal.png",
+       "file_size": 6073892
+      },
+      "roughness": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3c/BZea_YFU8-Yv8OVXXtDIp_texture_0_roughness.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_roughness.png",
+       "file_size": 1411334
+      }
+     }
+    ],
+    "seed": 391644213,
+    "rigged_character_glb": null,
+    "rigged_character_fbx": null,
+    "basic_animations": null,
+    "rig_task_id": null
+   },
+   "finished_at": "2026-11-21T23:16:49Z",
+   "seconds": 220,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a36/5AGwxcQlsE24T7vuY1_8L_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/spark/model.glb"
+   }
+  },
+  {
+   "key": "storm/model",
+   "asset": "storm",
+   "step": "model",
+   "endpoint": "fal-ai/meshy/v7.1/image-to-3d",
+   "request_id": "01a20062-928f-73b2-842d-39225b3abbbe",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-928f-73b2-842d-39225b3abbbe/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-928f-73b2-842d-39225b3abbbe",
+   "status": "done",
+   "cost_usd": 1.2,
+   "submitted_at": "2026-11-21T23:13:09Z",
+   "args": {
+    "image_url": "https://v3b.fal.media/files/b/0ab36a0d/HBFFZ2kQPiD3XzUSZLO7E.jpg",
+    "should_texture": true,
+    "enable_pbr": true,
+    "pose_mode": "a-pose",
+    "symmetry_mode": "on",
+    "topology": "triangle",
+    "target_polycount": 20000,
+    "should_remesh": true,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "animation_glb": null,
+    "animation_fbx": null,
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a37/_qA9PctsECHuFuifr-t0o_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 12755516
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a3b/gRrKPn5FYcONSRYPRPyg6_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 153833
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a37/_qA9PctsECHuFuifr-t0o_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 12755516
+     },
+     "fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a38/HLNwDbXU_K829EoHpPyLl_model.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "model.fbx",
+      "file_size": 12721660
+     },
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a39/efi00Gvf84OxAxv_6wEi2_model.obj",
+      "content_type": "model/obj",
+      "file_name": "model.obj",
+      "file_size": 2223496
+     },
+     "usdz": {
+      "url": "https://v3b.fal.media/files/b/0ab36a39/FDOU2PhJOa3tKnhmk1YEU_model.usdz",
+      "content_type": "model/vnd.usdz+zip",
+      "file_name": "model.usdz",
+      "file_size": 13814512
+     },
+     "blend": null,
+     "stl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3a/iqiLajvtJshU_JGG9qG-z_model.stl",
+      "content_type": "model/stl",
+      "file_name": "model.stl",
+      "file_size": 1033084
+     }
+    },
+    "texture_urls": [
+     {
+      "base_color": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3b/BQpwoyEiN3hc_YtsV_7um_texture_0.png",
+       "content_type": "image/png",
+       "file_name": "texture_0.png",
+       "file_size": 5554638
+      },
+      "metallic": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3c/NIX17y_FDGFDR4Tu1TCJn_texture_0_metallic.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_metallic.png",
+       "file_size": 237502
+      },
+      "normal": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3c/KGBEl5XFcQJOQBGr5Jvl0_texture_0_normal.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_normal.png",
+       "file_size": 6385647
+      },
+      "roughness": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3d/zDJjKOHErLF0kGLu2cO1Z_texture_0_roughness.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_roughness.png",
+       "file_size": 1508763
+      }
+     }
+    ],
+    "seed": 1858140290,
+    "rigged_character_glb": null,
+    "rigged_character_fbx": null,
+    "basic_animations": null,
+    "rig_task_id": null
+   },
+   "finished_at": "2026-11-21T23:16:58Z",
+   "seconds": 228,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a37/_qA9PctsECHuFuifr-t0o_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/storm/model.glb"
+   }
+  },
+  {
+   "key": "tyrant/model",
+   "asset": "tyrant",
+   "step": "model",
+   "endpoint": "fal-ai/meshy/v7.1/image-to-3d",
+   "request_id": "01a20062-931c-7922-954c-7304992c96a0",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-931c-7922-954c-7304992c96a0/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-931c-7922-954c-7304992c96a0",
+   "status": "done",
+   "cost_usd": 1.2,
+   "submitted_at": "2026-11-21T23:13:09Z",
+   "args": {
+    "image_url": "https://v3b.fal.media/files/b/0ab36a0e/I_GKhuXGGXWNFDJWHmhYI.jpg",
+    "should_texture": true,
+    "enable_pbr": true,
+    "pose_mode": "a-pose",
+    "symmetry_mode": "on",
+    "topology": "triangle",
+    "target_polycount": 24000,
+    "should_remesh": true,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "animation_glb": null,
+    "animation_fbx": null,
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a36/_8XMTqfJU9MeZXB-KzPx9_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 12577360
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a39/DW7DE_Y3wMxe38vPWi2Ed_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 179792
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a36/_8XMTqfJU9MeZXB-KzPx9_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 12577360
+     },
+     "fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a36/CFg74xsYOsRLyAtn9fCGr_model.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "model.fbx",
+      "file_size": 12775580
+     },
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a37/GY43mjltq5jhB0n3UvkZQ_model.obj",
+      "content_type": "model/obj",
+      "file_name": "model.obj",
+      "file_size": 2474182
+     },
+     "usdz": {
+      "url": "https://v3b.fal.media/files/b/0ab36a37/W1tokGWiTwGAenTNRmxiB_model.usdz",
+      "content_type": "model/vnd.usdz+zip",
+      "file_name": "model.usdz",
+      "file_size": 13773550
+     },
+     "blend": null,
+     "stl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a38/OlErb77zB1Ivfp49vHoSu_model.stl",
+      "content_type": "model/stl",
+      "file_name": "model.stl",
+      "file_size": 1244484
+     }
+    },
+    "texture_urls": [
+     {
+      "base_color": {
+       "url": "https://v3b.fal.media/files/b/0ab36a39/rmqRweZBObbCaD56b1zSn_texture_0.png",
+       "content_type": "image/png",
+       "file_name": "texture_0.png",
+       "file_size": 5778107
+      },
+      "metallic": {
+       "url": "https://v3b.fal.media/files/b/0ab36a39/t92fjiOPFggDa45B-12MV_texture_0_metallic.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_metallic.png",
+       "file_size": 764719
+      },
+      "normal": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3a/meABZTdeFAeS09-7nURXH_texture_0_normal.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_normal.png",
+       "file_size": 5764567
+      },
+      "roughness": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3b/plORxJ1NmtJHJjwXmMB4U_texture_0_roughness.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_roughness.png",
+       "file_size": 1709950
+      }
+     }
+    ],
+    "seed": 1313279938,
+    "rigged_character_glb": null,
+    "rigged_character_fbx": null,
+    "basic_animations": null,
+    "rig_task_id": null
+   },
+   "finished_at": "2026-11-21T23:16:41Z",
+   "seconds": 211,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a36/_8XMTqfJU9MeZXB-KzPx9_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/tyrant/model.glb"
+   }
+  },
+  {
+   "key": "herald/model",
+   "asset": "herald",
+   "step": "model",
+   "endpoint": "fal-ai/meshy/v7.1/image-to-3d",
+   "request_id": "01a20062-93bb-71c0-b71e-fa5867469aa8",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-93bb-71c0-b71e-fa5867469aa8/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20062-93bb-71c0-b71e-fa5867469aa8",
+   "status": "done",
+   "cost_usd": 1.2,
+   "submitted_at": "2026-11-21T23:13:10Z",
+   "args": {
+    "image_url": "https://v3b.fal.media/files/b/0ab36a0f/F4a-9hDnCwwn-rf726A-M.jpg",
+    "should_texture": true,
+    "enable_pbr": true,
+    "pose_mode": "a-pose",
+    "symmetry_mode": "on",
+    "topology": "triangle",
+    "target_polycount": 24000,
+    "should_remesh": true,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "animation_glb": null,
+    "animation_fbx": null,
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a33/a9HXccBHEWSX7HbMkaggF_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 12090840
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a34/SlCUkyQlApNe4gokaUCK8_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 105030
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a33/a9HXccBHEWSX7HbMkaggF_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 12090840
+     },
+     "fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a33/i17mYup_WnD3VV4v3zPs6_model.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "model.fbx",
+      "file_size": 12268860
+     },
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a34/3GD8OPSdiQGlUflBqyEq5_model.obj",
+      "content_type": "model/obj",
+      "file_name": "model.obj",
+      "file_size": 2461459
+     },
+     "usdz": {
+      "url": "https://v3b.fal.media/files/b/0ab36a33/ZLhmjGXXw7M3XAWUyQ8aZ_model.usdz",
+      "content_type": "model/vnd.usdz+zip",
+      "file_name": "model.usdz",
+      "file_size": 13128320
+     },
+     "blend": null,
+     "stl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a34/r-OrytEaq36mg_oVFNnKN_model.stl",
+      "content_type": "model/stl",
+      "file_name": "model.stl",
+      "file_size": 1234734
+     }
+    },
+    "texture_urls": [
+     {
+      "base_color": {
+       "url": "https://v3b.fal.media/files/b/0ab36a35/LI75kMyMvTOlLRGo_xa2u_texture_0.png",
+       "content_type": "image/png",
+       "file_name": "texture_0.png",
+       "file_size": 5512364
+      },
+      "metallic": {
+       "url": "https://v3b.fal.media/files/b/0ab36a35/yFY8s83ipYFim7LYVmKFr_texture_0_metallic.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_metallic.png",
+       "file_size": 23080
+      },
+      "normal": {
+       "url": "https://v3b.fal.media/files/b/0ab36a37/baZeLM_YXChgQJDfzfJlY_texture_0_normal.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_normal.png",
+       "file_size": 5680958
+      },
+      "roughness": {
+       "url": "https://v3b.fal.media/files/b/0ab36a37/dNxfF14rj4BgWJonqjkA9_texture_0_roughness.png",
+       "content_type": "image/png",
+       "file_name": "texture_0_roughness.png",
+       "file_size": 1487916
+      }
+     }
+    ],
+    "seed": 275431745,
+    "rigged_character_glb": null,
+    "rigged_character_fbx": null,
+    "basic_animations": null,
+    "rig_task_id": null
+   },
+   "finished_at": "2026-11-21T23:16:00Z",
+   "seconds": 171,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a33/a9HXccBHEWSX7HbMkaggF_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/herald/model.glb"
+   }
+  },
+  {
+   "key": "grunt/model",
+   "asset": "grunt",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d",
+   "request_id": "01a20062-9433-7113-8595-a50bd60719c1",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20062-9433-7113-8595-a50bd60719c1/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20062-9433-7113-8595-a50bd60719c1",
+   "status": "done",
+   "cost_usd": 0.375,
+   "submitted_at": "2026-11-21T23:13:10Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a0f/GJ2HI4oMUQTtuPWwoMkF9.jpg",
+    "enable_pbr": true
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a39/WQVr9r67cVq2gP8Kgs7pJ_98d78133c6069d347be89298b3ad8454.obj",
+     "content_type": "model/obj",
+     "file_name": "98d78133c6069d347be89298b3ad8454.obj",
+     "file_size": 3293752
+    },
+    "material_mtl": {
+     "url": "https://v3b.fal.media/files/b/0ab36a39/ZEo-JGE4mUE826Jbaubq-_material.mtl",
+     "content_type": "text/plain",
+     "file_name": "material.mtl",
+     "file_size": 245
+    },
+    "texture": {
+     "url": "https://v3b.fal.media/files/b/0ab36a39/ynZvyh4uVdqOELaXIobak_texture_pbr_20250901.png",
+     "content_type": "image/png",
+     "file_name": "texture_pbr_20250901.png",
+     "file_size": 14464000
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a3a/QebQ7WKTSaDuvK5bqzPZn_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 101342
+    },
+    "model_urls": {
+     "glb": null,
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a39/WQVr9r67cVq2gP8Kgs7pJ_98d78133c6069d347be89298b3ad8454.obj",
+      "content_type": "model/obj",
+      "file_name": "98d78133c6069d347be89298b3ad8454.obj",
+      "file_size": 3293752
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a39/ZEo-JGE4mUE826Jbaubq-_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a39/ynZvyh4uVdqOELaXIobak_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 14464000
+     },
+     "usdz": null
+    }
+   },
+   "finished_at": "2026-11-21T23:16:25Z",
+   "seconds": 196,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a39/WQVr9r67cVq2gP8Kgs7pJ_98d78133c6069d347be89298b3ad8454.obj",
+    "material_mtl": "https://v3b.fal.media/files/b/0ab36a39/ZEo-JGE4mUE826Jbaubq-_material.mtl",
+    "texture": "https://v3b.fal.media/files/b/0ab36a39/ynZvyh4uVdqOELaXIobak_texture_pbr_20250901.png"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/grunt/model.obj",
+    "material_mtl": "tools/.fal_raw/grunt/material_mtl.mtl",
+    "texture": "tools/.fal_raw/grunt/texture.png"
+   }
+  },
+  {
+   "key": "herald/rig",
+   "asset": "herald",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging/multi-animation",
+   "request_id": "01a20065-32ac-7f62-938e-24aaa605ae6b",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-32ac-7f62-938e-24aaa605ae6b/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-32ac-7f62-938e-24aaa605ae6b",
+   "status": "done",
+   "cost_usd": 0.68,
+   "submitted_at": "2026-11-21T23:16:01Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a33/a9HXccBHEWSX7HbMkaggF_model.glb",
+    "animation_action_ids": [
+     0,
+     92,
+     127,
+     189
+    ],
+    "height_meters": 2.6,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a3d/QiL1xs8oSqcWNeT7_Zvon_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 13534700
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab36a3e/HzCOQvEgqfSDI1Hev2z_J_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 13582044
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3e/GSEQkvEZwXN8zBglclcCf_walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 13627012
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3e/40ArTd5DzeLhn2lqyNSHz_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 13630940
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3d/V7Be6LFnCEc1XgnhvWmI__walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52840
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3e/yZPWAl2ykLKwMtQbMf6-h_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 13606772
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3d/LN4ISmHSpyMzJLijWSnEP_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 13610252
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a3d/FjyQQNumfKwQV-BVsWmHV_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 43208
+     }
+    },
+    "animations": [
+     {
+      "action_id": 0,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a40/jEzUQis7OgkTsXZsCl51C_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13777188
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a41/R-Wn6itCAtGH-DmM4MdZC_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13724220
+      }
+     },
+     {
+      "action_id": 92,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a42/jS07WFR3RPoI7x76UaPHV_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13718132
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a42/raP5ZzUqLvLwUeRazEad-_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13686060
+      }
+     },
+     {
+      "action_id": 127,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a40/bcJtEv37WxVmfedIgNNne_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13726516
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a40/oyCuoIAAMTSjFoCJ2I4L7_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13691308
+      }
+     },
+     {
+      "action_id": 189,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a40/P0aTe1JJF8Kt5lcBiL_AO_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 13686056
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a3f/R4Aol9XPQQxUQzVK7Y5Ao_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 13662428
+      }
+     }
+    ],
+    "rig_task_id": "01a20065-7c0f-740f-8f55-9d94031a131f"
+   },
+   "finished_at": "2026-11-21T23:17:47Z",
+   "seconds": 106,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab36a3d/QiL1xs8oSqcWNeT7_Zvon_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab36a3e/GSEQkvEZwXN8zBglclcCf_walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab36a3e/yZPWAl2ykLKwMtQbMf6-h_running.glb",
+    "clip_idle": "https://v3b.fal.media/files/b/0ab36a40/jEzUQis7OgkTsXZsCl51C_animation.glb",
+    "clip_attack": "https://v3b.fal.media/files/b/0ab36a42/jS07WFR3RPoI7x76UaPHV_animation.glb",
+    "clip_slam": "https://v3b.fal.media/files/b/0ab36a40/bcJtEv37WxVmfedIgNNne_animation.glb",
+    "clip_die": "https://v3b.fal.media/files/b/0ab36a40/P0aTe1JJF8Kt5lcBiL_AO_animation.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/herald/rigged.glb",
+    "clip_walk": "tools/.fal_raw/herald/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/herald/clip_run.glb",
+    "clip_idle": "tools/.fal_raw/herald/clip_idle.glb",
+    "clip_attack": "tools/.fal_raw/herald/clip_attack.glb",
+    "clip_slam": "tools/.fal_raw/herald/clip_slam.glb",
+    "clip_die": "tools/.fal_raw/herald/clip_die.glb"
+   }
+  },
+  {
+   "key": "ember/rig",
+   "asset": "ember",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging/multi-animation",
+   "request_id": "01a20065-8ec5-7ce2-99c8-a2cb9baa44ed",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-8ec5-7ce2-99c8-a2cb9baa44ed/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-8ec5-7ce2-99c8-a2cb9baa44ed",
+   "status": "done",
+   "cost_usd": 0.8,
+   "submitted_at": "2026-11-21T23:16:25Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a34/p1oX2w3rE8g4x_PoeVFOT_model.glb",
+    "animation_action_ids": [
+     0,
+     158,
+     466,
+     189,
+     129
+    ],
+    "height_meters": 1.8,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a41/yKVaI5R2hZP80NKmZITem_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 12643504
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab36a41/AinMMe3BM4kFNewNAd64e_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 12763148
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a41/v85oLzhZM33Jibtrj7s9X_walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 12735776
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a40/Yb_sylPo9ZShxX7ItgIF6_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 12812044
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a40/Fo2shQOdDCzmwBJM-XfFO_walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52828
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a41/kI7TEJ5E7UJVb2nk4pdwt_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 12715568
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a41/QNOKJyOGEA1QOP-20HpK5_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 12791356
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a40/YjJ2pmd1SumUiCXlK52MM_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 43224
+     }
+    },
+    "animations": [
+     {
+      "action_id": 0,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a44/haJtyMl8C-7PsBmJHN1Pa_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 12885940
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a43/4acGfAZRqkqqlNaUtWtfT_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 12906460
+      }
+     },
+     {
+      "action_id": 158,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a45/qgmY4dOl-xHPA3r9KnsuI_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 12776224
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a45/y1Q7tmB8iAdPsaXwVBHSE_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 12832252
+      }
+     },
+     {
+      "action_id": 466,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a42/3c1nXIzx08CF94trEyrXW_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 12777920
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a42/PZkJA2fTE6VNUVVNP-d6x_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 12833484
+      }
+     },
+     {
+      "action_id": 189,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a42/zk9IQF6Qa0bUCLBbJ2-PB_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 12794848
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a43/FpN0mSndWFYz6gDieR-kJ_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 12844124
+      }
+     },
+     {
+      "action_id": 129,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a45/Jm0vN9igDGLfZPOYWed60_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 12798224
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a45/ugFfyLzyy1Tt-BBi6U4Vr_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 12849052
+      }
+     }
+    ],
+    "rig_task_id": "01a20066-090a-764c-b048-da1a52ed4e43"
+   },
+   "finished_at": "2026-11-21T23:18:19Z",
+   "seconds": 114,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab36a41/yKVaI5R2hZP80NKmZITem_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab36a41/v85oLzhZM33Jibtrj7s9X_walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab36a41/kI7TEJ5E7UJVb2nk4pdwt_running.glb",
+    "clip_idle": "https://v3b.fal.media/files/b/0ab36a44/haJtyMl8C-7PsBmJHN1Pa_animation.glb",
+    "clip_roll": "https://v3b.fal.media/files/b/0ab36a45/qgmY4dOl-xHPA3r9KnsuI_animation.glb",
+    "clip_jump": "https://v3b.fal.media/files/b/0ab36a42/3c1nXIzx08CF94trEyrXW_animation.glb",
+    "clip_die": "https://v3b.fal.media/files/b/0ab36a42/zk9IQF6Qa0bUCLBbJ2-PB_animation.glb",
+    "clip_cast": "https://v3b.fal.media/files/b/0ab36a45/Jm0vN9igDGLfZPOYWed60_animation.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/ember/rigged.glb",
+    "clip_walk": "tools/.fal_raw/ember/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/ember/clip_run.glb",
+    "clip_idle": "tools/.fal_raw/ember/clip_idle.glb",
+    "clip_roll": "tools/.fal_raw/ember/clip_roll.glb",
+    "clip_jump": "tools/.fal_raw/ember/clip_jump.glb",
+    "clip_die": "tools/.fal_raw/ember/clip_die.glb",
+    "clip_cast": "tools/.fal_raw/ember/clip_cast.glb"
+   }
+  },
+  {
+   "key": "grunt/rig#failed1795303695",
+   "asset": "grunt",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "request_id": "01a20065-9543-7683-bf46-a6b4133bf2e0",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-9543-7683-bf46-a6b4133bf2e0/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-9543-7683-bf46-a6b4133bf2e0",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "submitted_at": "2026-11-21T23:16:27Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a39/WQVr9r67cVq2gP8Kgs7pJ_98d78133c6069d347be89298b3ad8454.obj",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "error": "result HTTP 422: {\"detail\":[{\"loc\":[\"body\",\"model_url\"],\"msg\":\"Model format not supported: failed to process model for rigging: invalid model file format .obj, supported formats: [.glb]\",\"type\":\"value_error\"}]}",
+   "finished_at": "2026-11-21T23:17:48Z"
+  },
+  {
+   "key": "tyrant/rig",
+   "asset": "tyrant",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging/multi-animation",
+   "request_id": "01a20065-d256-75a1-b4a7-0cca85cd09e7",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-d256-75a1-b4a7-0cca85cd09e7/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-d256-75a1-b4a7-0cca85cd09e7",
+   "status": "done",
+   "cost_usd": 0.68,
+   "submitted_at": "2026-11-21T23:16:42Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a36/_8XMTqfJU9MeZXB-KzPx9_model.glb",
+    "animation_action_ids": [
+     0,
+     92,
+     127,
+     189
+    ],
+    "height_meters": 2.6,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a43/g7S62S7TW9wRvJZuOir0Y_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 14076048
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab36a43/xIjh92RXM8jM3KwSeucvF_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 14183628
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a44/l0QVYeCs_qV45p4jnisIj_walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 14167812
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a43/rkYnKWImebRtA2p9gR1Oi_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 14232524
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a43/NIEFs6-DuILnqAzF30TSh_walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52524
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a44/RC9PCzrEZEaJo78SgugK5_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 14147616
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a44/XwZtPm-yoKoCtk0Ao_THK_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 14211836
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a43/6K0zyXL0RxVFood51oFpZ_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 42916
+     }
+    },
+    "animations": [
+     {
+      "action_id": 0,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a46/BMUMQQzkw-QpK6x-v1X4H_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14318028
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a47/lHgaLZUZpHENT8ZQYc67v_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14325804
+      }
+     },
+     {
+      "action_id": 92,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a48/NQIzqAU5DuUKHPqbajN52_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14258904
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a47/xmeORrtQKE-S34XP68TAU_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14287836
+      }
+     },
+     {
+      "action_id": 127,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a46/LW91yyyob7_oO-bn_5HUA_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14267292
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a46/-v9PSDAQQ_GA1QI1co8Qi_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14293308
+      }
+     },
+     {
+      "action_id": 189,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a47/YesrNr4-ZmSuJdnirypRv_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14226868
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a47/SRp_19z_hirlk2O2A99Vf_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14264188
+      }
+     }
+    ],
+    "rig_task_id": "01a20066-628c-70f4-ab41-b8758af757f5"
+   },
+   "finished_at": "2026-11-21T23:18:52Z",
+   "seconds": 130,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab36a43/g7S62S7TW9wRvJZuOir0Y_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab36a44/l0QVYeCs_qV45p4jnisIj_walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab36a44/RC9PCzrEZEaJo78SgugK5_running.glb",
+    "clip_idle": "https://v3b.fal.media/files/b/0ab36a46/BMUMQQzkw-QpK6x-v1X4H_animation.glb",
+    "clip_attack": "https://v3b.fal.media/files/b/0ab36a48/NQIzqAU5DuUKHPqbajN52_animation.glb",
+    "clip_slam": "https://v3b.fal.media/files/b/0ab36a46/LW91yyyob7_oO-bn_5HUA_animation.glb",
+    "clip_die": "https://v3b.fal.media/files/b/0ab36a47/YesrNr4-ZmSuJdnirypRv_animation.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/tyrant/rigged.glb",
+    "clip_walk": "tools/.fal_raw/tyrant/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/tyrant/clip_run.glb",
+    "clip_idle": "tools/.fal_raw/tyrant/clip_idle.glb",
+    "clip_attack": "tools/.fal_raw/tyrant/clip_attack.glb",
+    "clip_slam": "tools/.fal_raw/tyrant/clip_slam.glb",
+    "clip_die": "tools/.fal_raw/tyrant/clip_die.glb"
+   }
+  },
+  {
+   "key": "spark/rig",
+   "asset": "spark",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging/multi-animation",
+   "request_id": "01a20065-f113-7230-91ca-74a8b3420c72",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-f113-7230-91ca-74a8b3420c72/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20065-f113-7230-91ca-74a8b3420c72",
+   "status": "done",
+   "cost_usd": 0.8,
+   "submitted_at": "2026-11-21T23:16:50Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a36/5AGwxcQlsE24T7vuY1_8L_model.glb",
+    "animation_action_ids": [
+     0,
+     158,
+     466,
+     189,
+     125
+    ],
+    "height_meters": 1.8,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a45/EuPC37Ahen43fRw597fqO_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 14341332
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab36a44/vNF8E7DNGgAq501l1wg63_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 14177596
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a45/QNqzPQfKG3Csu0eD-nzJ__walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 14433880
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a45/J_7S6EnkeyZlqRX8wRhOc_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 14226492
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a44/eFQQGMFrsoL0Ih4oQK0Jy_walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52992
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a45/85tFoksoMGGsvoV__t7y2_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 14413672
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a45/yskLg5BtFw0vogZ4nzFmk_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 14205804
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a44/WkKhctHPpzbDEzCIPuTSP_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 43372
+     }
+    },
+    "animations": [
+     {
+      "action_id": 0,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a52/K8RN7_KZi7bq12oYnl26H_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14584060
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a52/duKjtssnc5n97p1ldq4-M_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14320188
+      }
+     },
+     {
+      "action_id": 158,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a4a/lnq_tTmgs0o9pl_5Ux_cD_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14474356
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a4a/8iE14G7jEIAJ0atlyjpzL_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14246492
+      }
+     },
+     {
+      "action_id": 466,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a4d/MLzzQY4wAafH7VZun1vsC_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14476052
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a4d/Aim4_eFo6g1b6EAb3zQGG_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14247724
+      }
+     },
+     {
+      "action_id": 189,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a48/1_-8dd8Tc7110vW2SHVpC_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14492964
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a48/X38RhrF-u6cW1F2z6nCGh_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14258284
+      }
+     },
+     {
+      "action_id": 125,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a4f/egwjGiA-AaOPmejxgKXFb_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14516564
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a4f/mMEedgH1shIevzTyxVTBC_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14275916
+      }
+     }
+    ],
+    "rig_task_id": "01a20066-8b0c-72d8-a94d-7b7e816abe58"
+   },
+   "finished_at": "2026-11-21T23:20:31Z",
+   "seconds": 221,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab36a45/EuPC37Ahen43fRw597fqO_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab36a45/QNqzPQfKG3Csu0eD-nzJ__walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab36a45/85tFoksoMGGsvoV__t7y2_running.glb",
+    "clip_idle": "https://v3b.fal.media/files/b/0ab36a52/K8RN7_KZi7bq12oYnl26H_animation.glb",
+    "clip_roll": "https://v3b.fal.media/files/b/0ab36a4a/lnq_tTmgs0o9pl_5Ux_cD_animation.glb",
+    "clip_jump": "https://v3b.fal.media/files/b/0ab36a4d/MLzzQY4wAafH7VZun1vsC_animation.glb",
+    "clip_die": "https://v3b.fal.media/files/b/0ab36a48/1_-8dd8Tc7110vW2SHVpC_animation.glb",
+    "clip_cast": "https://v3b.fal.media/files/b/0ab36a4f/egwjGiA-AaOPmejxgKXFb_animation.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/spark/rigged.glb",
+    "clip_walk": "tools/.fal_raw/spark/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/spark/clip_run.glb",
+    "clip_idle": "tools/.fal_raw/spark/clip_idle.glb",
+    "clip_roll": "tools/.fal_raw/spark/clip_roll.glb",
+    "clip_jump": "tools/.fal_raw/spark/clip_jump.glb",
+    "clip_die": "tools/.fal_raw/spark/clip_die.glb",
+    "clip_cast": "tools/.fal_raw/spark/clip_cast.glb"
+   }
+  },
+  {
+   "key": "storm/rig",
+   "asset": "storm",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging/multi-animation",
+   "request_id": "01a20066-13af-7803-946c-790c5e1c9788",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20066-13af-7803-946c-790c5e1c9788/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20066-13af-7803-946c-790c5e1c9788",
+   "status": "done",
+   "cost_usd": 0.8,
+   "submitted_at": "2026-11-21T23:16:59Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a37/_qA9PctsECHuFuifr-t0o_model.glb",
+    "animation_action_ids": [
+     0,
+     158,
+     466,
+     189,
+     130
+    ],
+    "height_meters": 1.8,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_safety_checker": false
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4b/_TvID0LRuTCrvzdyfjUu8_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 14270392
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab36a49/oTk3UPlFjWByjNaHK_7tf_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 14064892
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4b/AMFYXiP_oyYdrSbCeej1q_walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 14362900
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4a/dLV18LBW-gUaeeRAlJtaH_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 14113788
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a48/44YBp6MbVD7-6LRTDFaY2_walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52768
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4c/BSq6TxIM6WZ0YYPayPq1H_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 14342676
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4a/OuDp66-ZEVs3SM2n5ZMD1_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 14093100
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a47/wGxM6OybQJyxVnRG8MkiM_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 43144
+     }
+    },
+    "animations": [
+     {
+      "action_id": 0,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a5d/KRnQmwATbgWJu3MvIQ4yr_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14513084
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a5d/PCq7a-LEsWvELqgrOVyy0_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14207996
+      }
+     },
+     {
+      "action_id": 158,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a5b/vps5wxGp3rEtohaLjqRGd_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14403336
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a5b/lvoskmYHymHk387HJazFA_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14133900
+      }
+     },
+     {
+      "action_id": 466,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a56/odvOWe5FLsTyIemy4dGbQ_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14405052
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a56/r0C_ZUuShrz5I1kIncw1D_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14135148
+      }
+     },
+     {
+      "action_id": 189,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a58/8KPx6pPjds7p9u_BwVaCm_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14421932
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a58/AHmoMNFqYa6ZFJOtiacO2_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14145660
+      }
+     },
+     {
+      "action_id": 130,
+      "animation_glb": {
+       "url": "https://v3b.fal.media/files/b/0ab36a53/nBLD3LUpFN_ihHJV_aSWa_animation.glb",
+       "content_type": "model/gltf-binary",
+       "file_name": "animation.glb",
+       "file_size": 14487848
+      },
+      "animation_fbx": {
+       "url": "https://v3b.fal.media/files/b/0ab36a52/BIA-fAHyc6Mbxi7iF2DHf_animation.fbx",
+       "content_type": "application/vnd.autodesk.fbx",
+       "file_name": "animation.fbx",
+       "file_size": 14191116
+      }
+     }
+    ],
+    "rig_task_id": "01a20066-e271-737e-9562-5e3da35a7564"
+   },
+   "finished_at": "2026-11-21T23:22:24Z",
+   "seconds": 325,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab36a4b/_TvID0LRuTCrvzdyfjUu8_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab36a4b/AMFYXiP_oyYdrSbCeej1q_walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab36a4c/BSq6TxIM6WZ0YYPayPq1H_running.glb",
+    "clip_idle": "https://v3b.fal.media/files/b/0ab36a5d/KRnQmwATbgWJu3MvIQ4yr_animation.glb",
+    "clip_roll": "https://v3b.fal.media/files/b/0ab36a5b/vps5wxGp3rEtohaLjqRGd_animation.glb",
+    "clip_jump": "https://v3b.fal.media/files/b/0ab36a56/odvOWe5FLsTyIemy4dGbQ_animation.glb",
+    "clip_die": "https://v3b.fal.media/files/b/0ab36a58/8KPx6pPjds7p9u_BwVaCm_animation.glb",
+    "clip_cast": "https://v3b.fal.media/files/b/0ab36a53/nBLD3LUpFN_ihHJV_aSWa_animation.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/storm/rigged.glb",
+    "clip_walk": "tools/.fal_raw/storm/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/storm/clip_run.glb",
+    "clip_idle": "tools/.fal_raw/storm/clip_idle.glb",
+    "clip_roll": "tools/.fal_raw/storm/clip_roll.glb",
+    "clip_jump": "tools/.fal_raw/storm/clip_jump.glb",
+    "clip_die": "tools/.fal_raw/storm/clip_die.glb",
+    "clip_cast": "tools/.fal_raw/storm/clip_cast.glb"
+   }
+  },
+  {
+   "key": "runner/model",
+   "asset": "runner",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d",
+   "request_id": "01a20066-d2e9-7d81-8990-c511f60a107d",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20066-d2e9-7d81-8990-c511f60a107d/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20066-d2e9-7d81-8990-c511f60a107d",
+   "status": "done",
+   "cost_usd": 0.375,
+   "submitted_at": "2026-11-21T23:17:48Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a10/PNcWbIOL1o-bKH3YGp0Uc.jpg",
+    "enable_pbr": true
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4b/X3EUXBJUmaOhp5lnGJC9p_7094577b1fff5e2e056238b84dd9ac0a.obj",
+     "content_type": "model/obj",
+     "file_name": "7094577b1fff5e2e056238b84dd9ac0a.obj",
+     "file_size": 3246632
+    },
+    "material_mtl": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4b/JGbZ8WbdAQWyVY8NInYDl_material.mtl",
+     "content_type": "text/plain",
+     "file_name": "material.mtl",
+     "file_size": 245
+    },
+    "texture": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4b/c_khmUfQCfx8o7IgKe_rm_texture_pbr_20250901.png",
+     "content_type": "image/png",
+     "file_name": "texture_pbr_20250901.png",
+     "file_size": 11182716
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4b/UZw_fRdN572OMzfYFfxYb_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 85049
+    },
+    "model_urls": {
+     "glb": null,
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4b/X3EUXBJUmaOhp5lnGJC9p_7094577b1fff5e2e056238b84dd9ac0a.obj",
+      "content_type": "model/obj",
+      "file_name": "7094577b1fff5e2e056238b84dd9ac0a.obj",
+      "file_size": 3246632
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4b/JGbZ8WbdAQWyVY8NInYDl_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4b/c_khmUfQCfx8o7IgKe_rm_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 11182716
+     },
+     "usdz": null
+    }
+   },
+   "finished_at": "2026-11-21T23:19:25Z",
+   "seconds": 97,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a4b/X3EUXBJUmaOhp5lnGJC9p_7094577b1fff5e2e056238b84dd9ac0a.obj",
+    "material_mtl": "https://v3b.fal.media/files/b/0ab36a4b/JGbZ8WbdAQWyVY8NInYDl_material.mtl",
+    "texture": "https://v3b.fal.media/files/b/0ab36a4b/c_khmUfQCfx8o7IgKe_rm_texture_pbr_20250901.png"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/runner/model.obj",
+    "material_mtl": "tools/.fal_raw/runner/material_mtl.mtl",
+    "texture": "tools/.fal_raw/runner/texture.png"
+   }
+  },
+  {
+   "key": "brute/model",
+   "asset": "brute",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d",
+   "request_id": "01a20066-e4f8-7702-8dda-255cbb0fef50",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20066-e4f8-7702-8dda-255cbb0fef50/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20066-e4f8-7702-8dda-255cbb0fef50",
+   "status": "done",
+   "cost_usd": 0.375,
+   "submitted_at": "2026-11-21T23:17:53Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a11/oRI77uoLTgFgI957ZQ1NT.jpg",
+    "enable_pbr": true
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4c/MLQYh05X6op2jkfoV-X37_81d33763056ee3f537db6ff72dfef754.obj",
+     "content_type": "model/obj",
+     "file_name": "81d33763056ee3f537db6ff72dfef754.obj",
+     "file_size": 3305935
+    },
+    "material_mtl": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4c/IepqmlHVN-7-atu44BNfj_material.mtl",
+     "content_type": "text/plain",
+     "file_name": "material.mtl",
+     "file_size": 245
+    },
+    "texture": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4c/OBIyHlE4_1OyMXOm5KG0f_texture_pbr_20250901.png",
+     "content_type": "image/png",
+     "file_name": "texture_pbr_20250901.png",
+     "file_size": 16451400
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4c/VHuwIRfvxjgGe0JuTjy-y_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 188830
+    },
+    "model_urls": {
+     "glb": null,
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4c/MLQYh05X6op2jkfoV-X37_81d33763056ee3f537db6ff72dfef754.obj",
+      "content_type": "model/obj",
+      "file_name": "81d33763056ee3f537db6ff72dfef754.obj",
+      "file_size": 3305935
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4c/IepqmlHVN-7-atu44BNfj_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4c/OBIyHlE4_1OyMXOm5KG0f_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 16451400
+     },
+     "usdz": null
+    }
+   },
+   "finished_at": "2026-11-21T23:19:30Z",
+   "seconds": 98,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a4c/MLQYh05X6op2jkfoV-X37_81d33763056ee3f537db6ff72dfef754.obj",
+    "material_mtl": "https://v3b.fal.media/files/b/0ab36a4c/IepqmlHVN-7-atu44BNfj_material.mtl",
+    "texture": "https://v3b.fal.media/files/b/0ab36a4c/OBIyHlE4_1OyMXOm5KG0f_texture_pbr_20250901.png"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/brute/model.obj",
+    "material_mtl": "tools/.fal_raw/brute/material_mtl.mtl",
+    "texture": "tools/.fal_raw/brute/texture.png"
+   }
+  },
+  {
+   "key": "spitter/model",
+   "asset": "spitter",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d",
+   "request_id": "01a20067-65f6-7b91-bdb2-f31091c73973",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20067-65f6-7b91-bdb2-f31091c73973/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20067-65f6-7b91-bdb2-f31091c73973",
+   "status": "done",
+   "cost_usd": 0.375,
+   "submitted_at": "2026-11-21T23:18:26Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a12/iPZUUEB8740623J6ZQA_w.jpg",
+    "enable_pbr": true
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4f/FnIMwr-M45KB9OpbY0YA__0783cbf21d7a653cae5b563e728cff10.obj",
+     "content_type": "model/obj",
+     "file_name": "0783cbf21d7a653cae5b563e728cff10.obj",
+     "file_size": 3302028
+    },
+    "material_mtl": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4f/xBtfJx9YL2Ufqvzo1iQJs_material.mtl",
+     "content_type": "text/plain",
+     "file_name": "material.mtl",
+     "file_size": 245
+    },
+    "texture": {
+     "url": "https://v3b.fal.media/files/b/0ab36a4f/WumY7cBifzZfOzAwrWK-P_texture_pbr_20250901.png",
+     "content_type": "image/png",
+     "file_name": "texture_pbr_20250901.png",
+     "file_size": 14168488
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a50/CAp2myUOcoylbipv_fKLu_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 121539
+    },
+    "model_urls": {
+     "glb": null,
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4f/FnIMwr-M45KB9OpbY0YA__0783cbf21d7a653cae5b563e728cff10.obj",
+      "content_type": "model/obj",
+      "file_name": "0783cbf21d7a653cae5b563e728cff10.obj",
+      "file_size": 3302028
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4f/xBtfJx9YL2Ufqvzo1iQJs_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a4f/WumY7cBifzZfOzAwrWK-P_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 14168488
+     },
+     "usdz": null
+    }
+   },
+   "finished_at": "2026-11-21T23:20:03Z",
+   "seconds": 98,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a4f/FnIMwr-M45KB9OpbY0YA__0783cbf21d7a653cae5b563e728cff10.obj",
+    "material_mtl": "https://v3b.fal.media/files/b/0ab36a4f/xBtfJx9YL2Ufqvzo1iQJs_material.mtl",
+    "texture": "https://v3b.fal.media/files/b/0ab36a4f/WumY7cBifzZfOzAwrWK-P_texture_pbr_20250901.png"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/spitter/model.obj",
+    "material_mtl": "tools/.fal_raw/spitter/material_mtl.mtl",
+    "texture": "tools/.fal_raw/spitter/texture.png"
+   }
+  },
+  {
+   "key": "charger/model",
+   "asset": "charger",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d",
+   "request_id": "01a20067-e9d8-7dc0-8494-7d696605c989",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20067-e9d8-7dc0-8494-7d696605c989/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20067-e9d8-7dc0-8494-7d696605c989",
+   "status": "done",
+   "cost_usd": 0.375,
+   "submitted_at": "2026-11-21T23:18:59Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a22/PpGKf5ad-z5CDjof-O5Uz.jpg",
+    "enable_pbr": true
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a56/mz8jiq3zWuyK9Q9iR1wyW_8e89b5cf611a882e0a412500693492e1.obj",
+     "content_type": "model/obj",
+     "file_name": "8e89b5cf611a882e0a412500693492e1.obj",
+     "file_size": 3299344
+    },
+    "material_mtl": {
+     "url": "https://v3b.fal.media/files/b/0ab36a56/_JrsS3m5QjAkYeSPkF-WU_material.mtl",
+     "content_type": "text/plain",
+     "file_name": "material.mtl",
+     "file_size": 245
+    },
+    "texture": {
+     "url": "https://v3b.fal.media/files/b/0ab36a56/2NCsy3H0jgrK8-rJyAI6Y_texture_pbr_20250901.png",
+     "content_type": "image/png",
+     "file_name": "texture_pbr_20250901.png",
+     "file_size": 16672787
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a57/xEV2_xnunawRXh4yhpfCr_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 124240
+    },
+    "model_urls": {
+     "glb": null,
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a56/mz8jiq3zWuyK9Q9iR1wyW_8e89b5cf611a882e0a412500693492e1.obj",
+      "content_type": "model/obj",
+      "file_name": "8e89b5cf611a882e0a412500693492e1.obj",
+      "file_size": 3299344
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a56/_JrsS3m5QjAkYeSPkF-WU_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a56/2NCsy3H0jgrK8-rJyAI6Y_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 16672787
+     },
+     "usdz": null
+    }
+   },
+   "finished_at": "2026-11-21T23:21:18Z",
+   "seconds": 138,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a56/mz8jiq3zWuyK9Q9iR1wyW_8e89b5cf611a882e0a412500693492e1.obj",
+    "material_mtl": "https://v3b.fal.media/files/b/0ab36a56/_JrsS3m5QjAkYeSPkF-WU_material.mtl",
+    "texture": "https://v3b.fal.media/files/b/0ab36a56/2NCsy3H0jgrK8-rJyAI6Y_texture_pbr_20250901.png"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/charger/model.obj",
+    "material_mtl": "tools/.fal_raw/charger/material_mtl.mtl",
+    "texture": "tools/.fal_raw/charger/texture.png"
+   }
+  },
+  {
+   "key": "runner/rig#failed1795303778",
+   "asset": "runner",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "request_id": "01a20068-520c-7380-b040-e42de60f6383",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20068-520c-7380-b040-e42de60f6383/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20068-520c-7380-b040-e42de60f6383",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "submitted_at": "2026-11-21T23:19:26Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a4b/X3EUXBJUmaOhp5lnGJC9p_7094577b1fff5e2e056238b84dd9ac0a.obj",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "error": "result HTTP 422: {\"detail\":[{\"loc\":[\"body\",\"model_url\"],\"msg\":\"Model format not supported: failed to process model for rigging: invalid model file format .obj, supported formats: [.glb]\",\"type\":\"value_error\"}]}",
+   "finished_at": "2026-11-21T23:20:39Z"
+  },
+  {
+   "key": "brute/rig#failed1795303779",
+   "asset": "brute",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "request_id": "01a20068-643d-7dd0-9747-51388c2943e4",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20068-643d-7dd0-9747-51388c2943e4/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20068-643d-7dd0-9747-51388c2943e4",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "submitted_at": "2026-11-21T23:19:31Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a4c/MLQYh05X6op2jkfoV-X37_81d33763056ee3f537db6ff72dfef754.obj",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "error": "result HTTP 422: {\"detail\":[{\"loc\":[\"body\",\"model_url\"],\"msg\":\"Model format not supported: failed to process model for rigging: invalid model file format .obj, supported formats: [.glb]\",\"type\":\"value_error\"}]}",
+   "finished_at": "2026-11-21T23:20:20Z"
+  },
+  {
+   "key": "spitter/rig#failed1795303779",
+   "asset": "spitter",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "request_id": "01a20068-e66a-7253-8997-b0ccbf4bb9a2",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20068-e66a-7253-8997-b0ccbf4bb9a2/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20068-e66a-7253-8997-b0ccbf4bb9a2",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "submitted_at": "2026-11-21T23:20:04Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a4f/FnIMwr-M45KB9OpbY0YA__0783cbf21d7a653cae5b563e728cff10.obj",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "error": "result HTTP 422: {\"detail\":[{\"loc\":[\"body\",\"model_url\"],\"msg\":\"Model format not supported: failed to process model for rigging: invalid model file format .obj, supported formats: [.glb]\",\"type\":\"value_error\"}]}",
+   "finished_at": "2026-11-21T23:20:37Z"
+  },
+  {
+   "key": "tree_dead/model",
+   "asset": "tree_dead",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a20069-24a3-7b10-98f4-2fbf773f446f",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-24a3-7b10-98f4-2fbf773f446f/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-24a3-7b10-98f4-2fbf773f446f",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:20:20Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a14/4i4sst81A9vrIC4qUWviO.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a65/Em7-SXBfl0yHoQYzbaOzd_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 58474888
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a65/rduOlzcbq6yGLOAjSaPNr_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 109068
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a65/Em7-SXBfl0yHoQYzbaOzd_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 58474888
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a64/UGWg9LR2M4kCWSL5E1doX_54c718b1560f8aa9d53a0faca28406c1.obj",
+      "content_type": "model/obj",
+      "file_name": "54c718b1560f8aa9d53a0faca28406c1.obj",
+      "file_size": 34131986
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a65/14GGaEzvjUc9sXP4Cw01D_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a64/MtXwku5w26X3U4fa_E02g_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 21399583
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:23:44Z",
+   "seconds": 204,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a65/Em7-SXBfl0yHoQYzbaOzd_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/tree_dead/model.glb"
+   }
+  },
+  {
+   "key": "rock/model",
+   "asset": "rock",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a20069-67a9-7b60-b4db-e0b07272b9d1",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-67a9-7b60-b4db-e0b07272b9d1/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-67a9-7b60-b4db-e0b07272b9d1",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:20:37Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a15/aAiDYznP2Lor4NlGQNSFe.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a6c/YRWrnB-LwlpsmLrdZ--QC_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 52308196
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a6c/kzetwnyyEkBFERUf5gFyP_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 123939
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6c/YRWrnB-LwlpsmLrdZ--QC_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 52308196
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6b/dgFiN5wdSGPSjJUYxcXaX_f9b44a85bfe77c73deb3ccffae3c060f.obj",
+      "content_type": "model/obj",
+      "file_name": "f9b44a85bfe77c73deb3ccffae3c060f.obj",
+      "file_size": 34307345
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6b/qgrMrE4o7SrdM7ZaNmcSt_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6b/83zOCHPLU8PS30hAvWeIB_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 18810147
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:24:49Z",
+   "seconds": 252,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a6c/YRWrnB-LwlpsmLrdZ--QC_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/rock/model.glb"
+   }
+  },
+  {
+   "key": "arch/model",
+   "asset": "arch",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a20069-714b-7fc3-a051-475192201451",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-714b-7fc3-a051-475192201451/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-714b-7fc3-a051-475192201451",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:20:40Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a16/dawrp374wkaLlTse1VmiG.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a66/6pGI3px5RWwciabMYdZkc_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 59835944
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a66/cwXTA9QEk4Q_ZqYb3-3q3_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 103341
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a66/6pGI3px5RWwciabMYdZkc_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 59835944
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a65/-vdnA3K8_5Eu8lRUKc9lv_869cd38ae93b220507cefa22a266a73b.obj",
+      "content_type": "model/obj",
+      "file_name": "869cd38ae93b220507cefa22a266a73b.obj",
+      "file_size": 34782216
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a65/rnLpw3TQvTPVBM8j2mZ1r_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a65/NvxIC66YFoxjyCpbWmjRM_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 20548149
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:23:47Z",
+   "seconds": 187,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a66/6pGI3px5RWwciabMYdZkc_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/arch/model.glb"
+   }
+  },
+  {
+   "key": "wall/model",
+   "asset": "wall",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a20069-7568-76c1-87ff-10993484e4eb",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-7568-76c1-87ff-10993484e4eb/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a20069-7568-76c1-87ff-10993484e4eb",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:20:41Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a17/uIugDZzurzt_Krh1lna4l.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a64/ZbSk1uf0KWcaG0oiG7Zlh_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 55879272
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a64/0KlnqGTNKOnXU2lSJIl0u_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 73187
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a64/ZbSk1uf0KWcaG0oiG7Zlh_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 55879272
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a63/gMqc2-D6EZlHrpNEdao9k_f7f247d44ec960009d50b8e47f75707a.obj",
+      "content_type": "model/obj",
+      "file_name": "f7f247d44ec960009d50b8e47f75707a.obj",
+      "file_size": 34547312
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a63/HvewxzsiPLca0zo4lKycL_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a63/ZrQpgcYKkT0IICdmpnnxw_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 18088413
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:23:31Z",
+   "seconds": 171,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a64/ZbSk1uf0KWcaG0oiG7Zlh_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/wall/model.glb"
+   }
+  },
+  {
+   "key": "charger/rig#failed1795303779",
+   "asset": "charger",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "request_id": "01a2006a-08c4-79b2-a6d8-e6aa8569375b",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a2006a-08c4-79b2-a6d8-e6aa8569375b/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a2006a-08c4-79b2-a6d8-e6aa8569375b",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "submitted_at": "2026-11-21T23:21:18Z",
+   "args": {
+    "model_url": "https://v3b.fal.media/files/b/0ab36a56/mz8jiq3zWuyK9Q9iR1wyW_8e89b5cf611a882e0a412500693492e1.obj",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "error": "result HTTP 422: {\"detail\":[{\"loc\":[\"body\",\"model_url\"],\"msg\":\"Model format not supported: failed to process model for rigging: invalid model file format .obj, supported formats: [.glb]\",\"type\":\"value_error\"}]}",
+   "finished_at": "2026-11-21T23:21:27Z"
+  },
+  {
+   "key": "pillar/model",
+   "asset": "pillar",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a2006a-2a28-70e0-aed5-84f1c37637d2",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a2006a-2a28-70e0-aed5-84f1c37637d2/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a2006a-2a28-70e0-aed5-84f1c37637d2",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:21:27Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a1e/iHVda7T3JQJwH5VzFY9FY.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a6b/teS2YRGvenm4HPVOdIJv6_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 62530212
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a6b/I7g-IJwp6pDg3B3OQeJjG_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 113087
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6b/teS2YRGvenm4HPVOdIJv6_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 62530212
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6a/rpLv7_i1VXozJ8NXymPUo_5eccea9f4bf6b8ea127563ac7d844e36.obj",
+      "content_type": "model/obj",
+      "file_name": "5eccea9f4bf6b8ea127563ac7d844e36.obj",
+      "file_size": 34725618
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6a/dQz4BWXt3-89q96z8Krxw_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a6a/pIGj33-fBXexXZR_LsoVU_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 19720305
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:24:43Z",
+   "seconds": 196,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a6b/teS2YRGvenm4HPVOdIJv6_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/pillar/model.glb"
+   }
+  },
+  {
+   "key": "bones/model",
+   "asset": "bones",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a2006b-27b9-76e2-9aab-888ca650f03f",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a2006b-27b9-76e2-9aab-888ca650f03f/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a2006b-27b9-76e2-9aab-888ca650f03f",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:22:32Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a1f/wyfVaUNxr9G65RlutTXBE.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a73/CVKjiDAijs3YFRKmrj4A2_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 44364092
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a74/FpjHjYyFLljtAoQj7vQDX_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 122894
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a73/CVKjiDAijs3YFRKmrj4A2_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 44364092
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a73/omeunpj55X3A2FWEOmntm_fe3096c7e4368d8b87916b3581b5eaef.obj",
+      "content_type": "model/obj",
+      "file_name": "fe3096c7e4368d8b87916b3581b5eaef.obj",
+      "file_size": 37208190
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a73/Pp96n8G7j0r1VPIN8sJXn_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a73/WyYKYG7FJrfuCq-An1tFF_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 16701266
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:26:12Z",
+   "seconds": 220,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a73/CVKjiDAijs3YFRKmrj4A2_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/bones/model.glb"
+   }
+  },
+  {
+   "key": "bush/model",
+   "asset": "bush",
+   "step": "model",
+   "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+   "request_id": "01a2006c-1e23-7ce1-a55a-130ce602a379",
+   "status_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a2006c-1e23-7ce1-a55a-130ce602a379/status",
+   "response_url": "https://queue.fal.run/fal-ai/hunyuan-3d/requests/01a2006c-1e23-7ce1-a55a-130ce602a379",
+   "status": "done",
+   "cost_usd": 0.525,
+   "submitted_at": "2026-11-21T23:23:35Z",
+   "args": {
+    "input_image_url": "https://v3b.fal.media/files/b/0ab36a19/wYQtw7fFQKmCXizjf1N-v.jpg",
+    "enable_pbr": true,
+    "generate_type": "Normal"
+   },
+   "output": {
+    "model_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a7a/KLxyLGd9IGDrP9mIUyS6v_model.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "model.glb",
+     "file_size": 59146744
+    },
+    "thumbnail": {
+     "url": "https://v3b.fal.media/files/b/0ab36a7a/asTh-GuPWEODUy3V7WVxD_preview.png",
+     "content_type": "image/png",
+     "file_name": "preview.png",
+     "file_size": 105864
+    },
+    "model_urls": {
+     "glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a7a/KLxyLGd9IGDrP9mIUyS6v_model.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "model.glb",
+      "file_size": 59146744
+     },
+     "fbx": null,
+     "obj": {
+      "url": "https://v3b.fal.media/files/b/0ab36a79/pbFgsVDFVA9kdl9tcOwho_3b4da41036d180b236fc9f250f6bab44.obj",
+      "content_type": "model/obj",
+      "file_name": "3b4da41036d180b236fc9f250f6bab44.obj",
+      "file_size": 32855259
+     },
+     "mtl": {
+      "url": "https://v3b.fal.media/files/b/0ab36a7a/5VXkkMhe9ad5nCVy-4G0I_material.mtl",
+      "content_type": "text/plain",
+      "file_name": "material.mtl",
+      "file_size": 245
+     },
+     "texture": {
+      "url": "https://v3b.fal.media/files/b/0ab36a79/NGI7HKdmkJZKB8uFGtqyG_texture_pbr_20250901.png",
+      "content_type": "image/png",
+      "file_name": "texture_pbr_20250901.png",
+      "file_size": 19963137
+     },
+     "usdz": null
+    },
+    "seed": null
+   },
+   "finished_at": "2026-11-21T23:27:14Z",
+   "seconds": 219,
+   "output_urls": {
+    "model": "https://v3b.fal.media/files/b/0ab36a7a/KLxyLGd9IGDrP9mIUyS6v_model.glb"
+   },
+   "local_paths": {
+    "model": "tools/.fal_raw/bush/model.glb"
+   }
+  },
+  {
+   "key": "grunt/rig",
+   "asset": "grunt",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "request_id": "01a20070-66a1-7660-bff5-1a42c17e86ba",
+   "status_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20070-66a1-7660-bff5-1a42c17e86ba/status",
+   "response_url": "https://queue.fal.run/fal-ai/meshy/requests/01a20070-66a1-7660-bff5-1a42c17e86ba",
+   "status": "done",
+   "cost_usd": 0.2,
+   "submitted_at": "2026-11-21T23:28:16Z",
+   "args": {
+    "model_url": "<data uri, 2327014 chars, 1745236 bytes, sha256 50ac7eb99f29e2d1e27c278a2462a1643894561f23213270f9b200a261f673d2>",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "input_files": {
+    "model_url": "tools/.fal_raw/grunt/rig_input.glb",
+    "converted_from": "tools/.fal_raw/grunt/model.obj"
+   },
+   "output": {
+    "rigged_character_glb": {
+     "url": "https://v3b.fal.media/files/b/0ab36a84/UsbUMufUXPEnLOvICweKJ_rigged_character.glb",
+     "content_type": "model/gltf-binary",
+     "file_name": "rigged_character.glb",
+     "file_size": 3483604
+    },
+    "rigged_character_fbx": {
+     "url": "https://v3b.fal.media/files/b/0ab36a83/9gEMSbkW93r42EPFgAQq8_rigged_character.fbx",
+     "content_type": "application/vnd.autodesk.fbx",
+     "file_name": "rigged_character.fbx",
+     "file_size": 1528252
+    },
+    "basic_animations": {
+     "walking_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a84/h03TZwcbc-Xro5S5ts3oz_walking.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking.glb",
+      "file_size": 3575696
+     },
+     "walking_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a84/sAzGbXHz7HBSeAycPwtK9_walking.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "walking.fbx",
+      "file_size": 1577148
+     },
+     "walking_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a83/oqtChrasEx3lLd8rPDehU_walking_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "walking_armature.glb",
+      "file_size": 52832
+     },
+     "running_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a84/d8OWS3uOyeEy_Cmk5VN-Y_running.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running.glb",
+      "file_size": 3555472
+     },
+     "running_fbx": {
+      "url": "https://v3b.fal.media/files/b/0ab36a84/vmeaojSQ7obaD8oI3_yXB_running.fbx",
+      "content_type": "application/vnd.autodesk.fbx",
+      "file_name": "running.fbx",
+      "file_size": 1556460
+     },
+     "running_armature_glb": {
+      "url": "https://v3b.fal.media/files/b/0ab36a83/GRUKYlfNCQ1yvNfErx4Qq_running_armature.glb",
+      "content_type": "model/gltf-binary",
+      "file_name": "running_armature.glb",
+      "file_size": 43208
+     }
+    },
+    "animation_glb": null,
+    "animation_fbx": null,
+    "rig_task_id": "01a20070-728d-7477-a8b1-1d5587c9499b"
+   },
+   "finished_at": "2026-11-21T23:28:48Z",
+   "seconds": 33,
+   "output_urls": {
+    "rigged": "https://v3b.fal.media/files/b/0ab36a84/UsbUMufUXPEnLOvICweKJ_rigged_character.glb",
+    "clip_walk": "https://v3b.fal.media/files/b/0ab36a84/h03TZwcbc-Xro5S5ts3oz_walking.glb",
+    "clip_run": "https://v3b.fal.media/files/b/0ab36a84/d8OWS3uOyeEy_Cmk5VN-Y_running.glb"
+   },
+   "local_paths": {
+    "rigged": "tools/.fal_raw/grunt/rigged.glb",
+    "clip_walk": "tools/.fal_raw/grunt/clip_walk.glb",
+    "clip_run": "tools/.fal_raw/grunt/clip_run.glb"
+   }
+  },
+  {
+   "key": "runner/rig#rejected1795303779",
+   "asset": "runner",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "error": "submit HTTP 403: {\"detail\":\"User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.\"}",
+   "submitted_at": "2026-11-21T23:29:39Z",
+   "args": {
+    "model_url": "<data uri, 810238 chars, 607656 bytes, sha256 fbb252e0acf6b3b649306dc86f5ec6caab67b66c4c0a639b4423c5574745e2ef>",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "input_files": {
+    "model_url": "tools/.fal_raw/runner/rig_input.glb",
+    "converted_from": "tools/.fal_raw/runner/model.obj"
+   }
+  },
+  {
+   "key": "spitter/rig#rejected1795303779",
+   "asset": "spitter",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "error": "submit HTTP 403: {\"detail\":\"User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.\"}",
+   "submitted_at": "2026-11-21T23:29:39Z",
+   "args": {
+    "model_url": "<data uri, 893046 chars, 669760 bytes, sha256 9a04355cae09100a67cc3efc068fe95ee4de3009d53c522d20d636fd37ca57f7>",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "input_files": {
+    "model_url": "tools/.fal_raw/spitter/rig_input.glb",
+    "converted_from": "tools/.fal_raw/spitter/model.obj"
+   }
+  },
+  {
+   "key": "charger/rig#rejected1795303779",
+   "asset": "charger",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "error": "submit HTTP 403: {\"detail\":\"User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.\"}",
+   "submitted_at": "2026-11-21T23:29:39Z",
+   "args": {
+    "model_url": "<data uri, 927606 chars, 695680 bytes, sha256 86d5ef9a3f445fbd502d445207747fd528f7500d7f963acb91489f466d80b761>",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "input_files": {
+    "model_url": "tools/.fal_raw/charger/rig_input.glb",
+    "converted_from": "tools/.fal_raw/charger/model.obj"
+   }
+  },
+  {
+   "key": "brute/rig#rejected1795303779",
+   "asset": "brute",
+   "step": "rig",
+   "endpoint": "fal-ai/meshy/rigging",
+   "status": "failed",
+   "cost_usd": 0.0,
+   "error": "submit HTTP 403: {\"detail\":\"User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.\"}",
+   "submitted_at": "2026-11-21T23:29:39Z",
+   "args": {
+    "model_url": "<data uri, 945818 chars, 709340 bytes, sha256 65d8e2ffa1ddcc8077e20b88f40278eae7622149c9844650bf76c8a8b46f98da>",
+    "height_meters": 1.9,
+    "skeleton_template": "mixamo",
+    "include_fingers": false,
+    "enable_animation": false,
+    "enable_safety_checker": false
+   },
+   "input_files": {
+    "model_url": "tools/.fal_raw/brute/rig_input.glb",
+    "converted_from": "tools/.fal_raw/brute/model.obj"
+   }
+  }
+ ],
+ "total_usd": 18.104
+}

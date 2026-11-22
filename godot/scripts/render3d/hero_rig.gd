@@ -381,7 +381,7 @@ func animate(st: Dictionary, dt: float) -> void:
 	position = Vector3(p.x, 0.0, p.y)
 	var want: Vector2 = st.face
 	if float(st.cast_age) < 0.35: want = st.cast_dir
-	_yaw = lerp_angle(_yaw, atan2(-want.y, want.x), minf(1.0, dt * 16.0))
+	_yaw = lerp_angle(_yaw, atan2(-want.y, want.x), minf(1.0, dt * 14.0))
 	rotation.y = _yaw
 	_cast = clampf(1.0 - float(st.cast_age) / 0.3, 0.0, 1.0)
 	_hit = maxf(_hit - dt * 6.0, float(st.hit))
@@ -443,97 +443,96 @@ func animate(st: Dictionary, dt: float) -> void:
 		shin_l.rotation.z = lerpf(shin_l.rotation.z, -1.5, tk)
 		shin_r.rotation.z = lerpf(shin_r.rotation.z, -1.5, tk)
 		arm_l.rotation.z = lerpf(arm_l.rotation.z, -0.7, tk)
-	hips.scale = _jump_scale(jp, dt)
 	if _dead > 0.0:
 		rotation.z = -_dead * PI * 0.5
 		position.y = -_dead * 4.0
 
-## Stride lengths the retarget measured (model units per cycle): playback follows ground speed.
-const STRIDE_WALK := 45.0
-const STRIDE_RUN := 69.5
-const UPPER := ["spine", "chest", "neck", "head", "upperarm.L", "forearm.L", "hand.L", "upperarm.R", "forearm.R", "hand.R"]
-const CAST_RATE := 2.3            # the slash lands ~0.2 s after the weapon fires
+## Animation tree for an imported hero (tools/blender/process_fal_assets.py: Meshy rig and clips):
+## idle, then walk/run synced and blended by ground speed -> upper-body cast layer (cast while moving) ->
+## full-body cast (standing) -> roll (scrubbed by the dodge timer) -> jump (scrubbed by the jump's
+## progress; the view lifts the body along the arc) -> death. Clip names are matched case-insensitively
+## (cast or attack, roll or dodge, die or death); a missing one is an error, not a silent fallback.
+const REQUIRED := {"idle": ["idle"], "walk": ["walk"], "run": ["run"], "cast": ["cast", "attack"], "roll": ["roll", "dodge"],
+	"jump": ["jump"], "die": ["die", "death"]}
+const UPPER_KEYS := ["spine", "chest", "neck", "head", "clavicle", "shoulder", "arm", "hand"]
+const CAST_RATE := 1.25
+const CAST_VIS_CD := 0.45           # at most one visible cast per 0.45 s: auto-weapons fire faster than that
+const V_WALK := 75.0                # world units per second at which the walk clip plays at its own rate
+const V_RUN := 155.0                # and the run clip
 var tree: AnimationTree
-var _v_walk := 43.0
-var _v_run := 85.0
+var _clips := {}                    # role -> the clip's name in this model
+var _v_walk := V_WALK
+var _v_run := V_RUN
 var _last_cast_age := 9.0
 var _cast_flip := 0
+var _cast_vis_cd := 0.0
 var _roll_k := 0.0
 var _jump_k := 0.0
-var _tuck: JumpTuck                  # procedural airborne pose, for models without a "jump" clip
-
-# ---------------------------------------------------------------- jump pose
-## A model with a "jump" clip has it scrubbed by jump progress (take-off, tuck, landing crouch). One
-## without gets JumpTuck: hips and knees bent on top of whatever the tree posed, peaking at the apex.
-## Either way the body stretches up out of the take-off and squashes for a moment on landing.
-class JumpTuck extends SkeletonModifier3D:
-	var amount := 0.0                 # 0 straight .. 1 fully tucked
-	var _bones := PackedInt32Array()
-	func _process_modification_with_delta(_delta: float) -> void:
-		if amount <= 0.001: return
-		var sk := get_skeleton()
-		if sk == null: return
-		if _bones.is_empty():
-			for nm in ["thigh.L", "thigh.R", "shin.L", "shin.R"]: _bones.append(sk.find_bone(nm))
-		for k in 4:
-			var b := _bones[k]
-			if b < 0: continue
-			var ang := (TUCK_THIGH if k < 2 else TUCK_SHIN) * amount
-			sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b) * Quaternion(Vector3.RIGHT, ang))
-const TUCK_THIGH := -1.15             # thighs swing forward (radians about the bone's x axis)
-const TUCK_SHIN := 1.7                # knees fold back
-const LAND_SQUASH_T := 0.16
-var _land_t := 0.0
-var _jp_last := -1.0
-
-## Scale for the body: stretched up (y + 13%) leaving the ground, easing out by 30% of the jump;
-## squashed (y - 16%, wider) on landing, springing back over LAND_SQUASH_T. Volume roughly kept.
-func _jump_scale(jp: float, dt: float) -> Vector3:
-	if jp < 0.0 and _jp_last >= 0.0: _land_t = LAND_SQUASH_T
-	_jp_last = jp
-	_land_t = maxf(0.0, _land_t - dt)
-	var k := 0.0
-	if jp >= 0.0: k = 0.13 * clampf(1.0 - jp / 0.3, 0.0, 1.0)
-	if _land_t > 0.0: k = -0.16 * sin(_land_t / LAND_SQUASH_T * PI * 0.5)
-	return Vector3(1.0 - k * 0.5, 1.0 + k, 1.0 - k * 0.5)
 var _spd := 0.0
 var _was_hit := false
 
-## idle/walk/run blended by speed -> upper-body cast layer (cast while running) -> full-body cast
-## (standing) -> roll (scrubbed by the dodge timer) -> hit flinch -> death.
+## role -> clip name, matched case-insensitively against the model's own clips.
+func _map_clips() -> Dictionary:
+	var have := {}
+	for nm in anim.get_animation_list(): have[String(nm).to_lower()] = String(nm)
+	var out := {}
+	for role in REQUIRED:
+		for alt in REQUIRED[role]:
+			if have.has(alt):
+				out[role] = have[alt]
+				break
+		if not out.has(role):
+			push_error("HeroRig %s: no '%s' clip (looked for %s; the model has %s)" % [hero_id, role, "/".join(REQUIRED[role]), ", ".join(have.values())])
+	for opt in ["cast2", "hit"]:
+		if have.has(opt): out[opt] = have[opt]
+	return out
+
 func _build_tree() -> void:
-	if anim == null or not anim.has_animation("walk") or not anim.has_animation("run"): return
-	for nm in ["cast", "cast2", "roll", "hit", "die"]:
-		if not anim.has_animation(nm): return
-	_v_walk = STRIDE_WALK / anim.get_animation("walk").length
-	_v_run = STRIDE_RUN / anim.get_animation("run").length
+	if anim == null:
+		push_error("HeroRig %s: the model has no AnimationPlayer" % hero_id)
+		return
+	_clips = _map_clips()
+	for role in REQUIRED:
+		if not _clips.has(role): _clips[role] = _clips.get("idle", String(anim.get_animation_list()[0]))
+	for role in ["idle", "walk", "run"]:
+		anim.get_animation(_clips[role]).loop_mode = Animation.LOOP_LINEAR
 	var bt := AnimationNodeBlendTree.new()
-	var loco := AnimationNodeBlendSpace1D.new()
-	loco.min_space = 0.0; loco.max_space = _v_run; loco.sync = true
-	loco.add_blend_point(_clip("idle"), 0.0, -1, "idle")
-	loco.add_blend_point(_clip("walk"), _v_walk, -1, "walk")
-	loco.add_blend_point(_clip("run"), _v_run, -1, "run")
-	bt.add_node("loco", loco)
+	# walk and run share one cycle (sync); idle stands apart, blended in by speed
+	var moving := AnimationNodeBlendSpace1D.new()
+	moving.min_space = _v_walk; moving.max_space = _v_run; moving.sync = true
+	moving.add_blend_point(_clip("walk"), _v_walk, -1, "walk")
+	moving.add_blend_point(_clip("run"), _v_run, -1, "run")
+	bt.add_node("moving", moving)
 	bt.add_node("rate", AnimationNodeTimeScale.new())
-	bt.connect_node("rate", 0, "loco")
-	var prev := "rate"
+	bt.connect_node("rate", 0, "moving")
+	bt.add_node("idle", _clip("idle"))
+	bt.add_node("loco", AnimationNodeBlend2.new())
+	bt.connect_node("loco", 0, "idle"); bt.connect_node("loco", 1, "rate")
+	var prev := "loco"
+	var cast2 := String(_clips.get("cast2", _clips.cast))
 	for layer in ["up", "full"]:
 		var pick := AnimationNodeTransition.new()
 		pick.xfade_time = 0.0
 		pick.add_input("a"); pick.add_input("b")
 		bt.add_node("pick_" + layer, pick)
-		bt.add_node("c1_" + layer, _clip("cast")); bt.add_node("c2_" + layer, _clip("cast2"))
+		bt.add_node("c1_" + layer, _clip("cast"))
+		var c2 := AnimationNodeAnimation.new(); c2.animation = cast2
+		bt.add_node("c2_" + layer, c2)
 		bt.connect_node("pick_" + layer, 0, "c1_" + layer); bt.connect_node("pick_" + layer, 1, "c2_" + layer)
 		bt.add_node("crate_" + layer, AnimationNodeTimeScale.new())
 		bt.connect_node("crate_" + layer, 0, "pick_" + layer)
 		var os := AnimationNodeOneShot.new()
-		os.fadein_time = 0.06; os.fadeout_time = 0.16
+		os.fadein_time = 0.08; os.fadeout_time = 0.22
 		if layer == "up":
 			os.filter_enabled = true
-			var ca := anim.get_animation("cast")
+			var ca := anim.get_animation(_clips.cast)
 			for ti in ca.get_track_count():
 				var tp := ca.track_get_path(ti)
-				if UPPER.has(String(tp.get_concatenated_subnames())): os.set_filter_path(tp, true)
+				var bone := String(tp.get_concatenated_subnames()).to_lower()
+				for k in UPPER_KEYS:
+					if bone.contains(k):
+						os.set_filter_path(tp, true)
+						break
 		bt.add_node("cast_" + layer, os)
 		bt.connect_node("cast_" + layer, 0, prev); bt.connect_node("cast_" + layer, 1, "crate_" + layer)
 		prev = "cast_" + layer
@@ -541,28 +540,22 @@ func _build_tree() -> void:
 	bt.add_node("roll_seek", AnimationNodeTimeSeek.new()); bt.connect_node("roll_seek", 0, "roll_clip")
 	bt.add_node("roll", AnimationNodeBlend2.new())
 	bt.connect_node("roll", 0, prev); bt.connect_node("roll", 1, "roll_seek")
-	# jump: the authored clip scrubbed by the simulation's jump progress; without one, JumpTuck (never the roll)
-	var below_hit := "roll"
-	if anim.has_animation("jump"):
-		bt.add_node("jump_clip", _clip("jump"))
-		bt.add_node("jump_seek", AnimationNodeTimeSeek.new()); bt.connect_node("jump_seek", 0, "jump_clip")
-		bt.add_node("jump", AnimationNodeBlend2.new())
-		bt.connect_node("jump", 0, "roll"); bt.connect_node("jump", 1, "jump_seek")
-		below_hit = "jump"
-	else:
-		var sks := anim.get_parent().find_children("*", "Skeleton3D", true, false)
-		if not sks.is_empty():
-			_tuck = JumpTuck.new()
-			sks[0].add_child(_tuck)
-	var hit := AnimationNodeOneShot.new()
-	hit.fadein_time = 0.05; hit.fadeout_time = 0.2
-	bt.add_node("hit_clip", _clip("hit")); bt.add_node("hit", hit)
-	bt.connect_node("hit", 0, below_hit); bt.connect_node("hit", 1, "hit_clip")
+	bt.add_node("jump_clip", _clip("jump"))
+	bt.add_node("jump_seek", AnimationNodeTimeSeek.new()); bt.connect_node("jump_seek", 0, "jump_clip")
+	bt.add_node("jump", AnimationNodeBlend2.new())
+	bt.connect_node("jump", 0, "roll"); bt.connect_node("jump", 1, "jump_seek")
+	var below := "jump"
+	if _clips.has("hit"):
+		var hit := AnimationNodeOneShot.new()
+		hit.fadein_time = 0.05; hit.fadeout_time = 0.2
+		bt.add_node("hit_clip", _clip("hit")); bt.add_node("hit", hit)
+		bt.connect_node("hit", 0, below); bt.connect_node("hit", 1, "hit_clip")
+		below = "hit"
 	var life := AnimationNodeTransition.new()
 	life.xfade_time = 0.12
 	life.add_input("alive"); life.add_input("dead")
 	bt.add_node("die_clip", _clip("die")); bt.add_node("life", life)
-	bt.connect_node("life", 0, "hit"); bt.connect_node("life", 1, "die_clip")
+	bt.connect_node("life", 0, below); bt.connect_node("life", 1, "die_clip")
 	bt.connect_node("output", 0, "life")
 	tree = AnimationTree.new()
 	tree.tree_root = bt
@@ -571,9 +564,9 @@ func _build_tree() -> void:
 	tree.active = true
 	for layer in ["up", "full"]: tree.set("parameters/crate_%s/scale" % layer, CAST_RATE)
 
-func _clip(nm: String) -> AnimationNodeAnimation:
+func _clip(role: String) -> AnimationNodeAnimation:
 	var n := AnimationNodeAnimation.new()
-	n.animation = nm
+	n.animation = _clips.get(role, role)
 	return n
 
 func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
@@ -584,39 +577,40 @@ func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 	var mv: float = st.mv
 	var roll: float = st.roll
 	if tree != null:
-		# ground speed in model units: from the real displacement, so slows, knockbacks and stops all read
-		var sc := maxf(0.01, global_transform.basis.get_scale().x)
-		var raw := (position - _prev_pos).length() / maxf(dt, 0.001) / sc
-		_prev_pos = position
-		if raw > 900.0: raw = 0.0                                 # teleports are not strides
-		if st.has("gs"): raw = float(st.gs) / sc                  # viewers that hold the model in place
-		if mv < 0.05: raw = 0.0
+		# ground speed in world units from the simulation's walking velocity ("vel"); viewers that hold the
+		# model in place pass "gs"; neither: the input strength times the run speed
+		var raw := float(st.vel) if st.has("vel") else (float(st.gs) if st.has("gs") else mv * _v_run)
+		if mv < 0.05 and not st.has("gs"): raw = 0.0
 		_spd = lerpf(_spd, raw, minf(1.0, dt * 12.0))
-		tree.set("parameters/loco/blend_position", minf(_spd, _v_run))
-		tree.set("parameters/rate/scale", clampf(_spd / _v_run, 1.0, 1.9))
+		tree.set("parameters/loco/blend_amount", clampf(_spd / (_v_walk * 0.6), 0.0, 1.0))
+		tree.set("parameters/moving/blend_position", clampf(_spd, _v_walk, _v_run))
+		var ref := _v_walk if _spd < (_v_walk + _v_run) * 0.5 else _v_run
+		tree.set("parameters/rate/scale", clampf(_spd / ref, 0.85, 1.30))
+		_cast_vis_cd = maxf(0.0, _cast_vis_cd - dt)
 		var age := float(st.cast_age)
-		if age < _last_cast_age and age < 0.3 and roll < 0.0 and not st.dead:
+		if age < _last_cast_age and age < 0.3 and roll < 0.0 and not st.dead and _cast_vis_cd <= 0.0:
 			var layer := "up" if _spd > _v_walk * 0.5 else "full"
 			if not bool(tree.get("parameters/cast_up/active")) and not bool(tree.get("parameters/cast_full/active")):
 				_cast_flip = 1 - _cast_flip
 				tree.set("parameters/pick_%s/transition_request" % layer, "a" if _cast_flip == 0 else "b")
 				tree.set("parameters/cast_%s/request" % layer, AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+				_cast_vis_cd = CAST_VIS_CD
 		_last_cast_age = age
 		_roll_k = move_toward(_roll_k, 1.0 if roll >= 0.0 else 0.0, dt * 12.0)
 		tree.set("parameters/roll/blend_amount", _roll_k)
 		if roll >= 0.0:
-			tree.set("parameters/roll_seek/seek_request", clampf(roll, 0.0, 0.98) * anim.get_animation("roll").length)
+			tree.set("parameters/roll_seek/seek_request", clampf(roll, 0.0, 0.98) * anim.get_animation(_clips.roll).length)
+		# the jump clip follows the simulation's jump progress (World.jump_progress); the view lifts the body
 		var jp := float(st.get("jump", -1.0))
-		if _tuck == null:
-			_jump_k = move_toward(_jump_k, 1.0 if jp >= 0.0 else 0.0, dt * 14.0)
-			tree.set("parameters/jump/blend_amount", _jump_k)
-			if jp >= 0.0:
-				tree.set("parameters/jump_seek/seek_request", clampf(jp, 0.0, 0.98) * anim.get_animation("jump").length)
-		else:
-			_tuck.amount = sin(jp * PI) if jp >= 0.0 else 0.0
-		override.scale = _jump_scale(jp, dt)
+		_jump_k = move_toward(_jump_k, 1.0 if jp >= 0.0 else 0.0, dt * 14.0)
+		tree.set("parameters/jump/blend_amount", _jump_k)
+		if jp >= 0.0:
+			tree.set("parameters/jump_seek/seek_request", clampf(jp, 0.0, 0.98) * anim.get_animation(_clips.jump).length)
 		var hit_now := _hit > 0.5
-		if hit_now and not _was_hit and roll < 0.0: tree.set("parameters/hit/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+		if _clips.has("hit"):
+			if hit_now and not _was_hit and roll < 0.0: tree.set("parameters/hit/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+		else:
+			override.rotation.z = -0.12 * _hit                       # no hit clip: a short lean back on the hit
 		_was_hit = hit_now
 		var life := "dead" if st.dead else "alive"
 		if tree.get("parameters/life/current_state") != life: tree.set("parameters/life/transition_request", life)

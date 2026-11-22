@@ -325,7 +325,7 @@ func bind(world: World) -> void:
 		fm.set_shader_parameter("glow_col", Content.col(s.acc))
 		fm.set_shader_parameter("colorblind", w.colorblind)
 	prop_mat.set_shader_parameter("glow_col", Content.col(s.acc))
-	prop_mat.set_shader_parameter("tint", Content.col(s.g2).lerp(Color.WHITE, 0.55))
+	prop_mat.set_shader_parameter("tint", Color(0.96, 0.95, 0.93))      # neutral: props keep their own colours
 	env.background_color = _look.bg
 	env.ambient_light_color = _look.amb
 	env.fog_light_color = _look.fog
@@ -367,9 +367,20 @@ func bind(world: World) -> void:
 	_sf_ver = -1
 	_cam_y = ground_y(w.pp)
 	_liquid_kind = lk
+	_foe_unit.resize(Models.FOE_KINDS.size()); _foe_h.resize(Models.FOE_KINDS.size())
 	for k in Models.FOE_KINDS.size():                # act-specific swarm variants (models/foes/<kind>_<stage>)
-		_foe_mm[k].multimesh.mesh = Models.foe_mesh(Models.FOE_KINDS[k], w.stage)
+		var fmesh := Models.foe_mesh(Models.FOE_KINDS[k], w.stage)
+		_foe_mm[k].multimesh.mesh = fmesh
 		var vat := Models.foe_vat(Models.FOE_KINDS[k], w.stage)
+		var mh := fmesh.get_aabb().size.y if fmesh != null else 2.0
+		_foe_h[k] = mh
+		_foe_unit[k] = (1.0 / float(Content.ENEMIES[k].r)) if (mh > 10.0 and k < Content.ENEMIES.size()) else 1.0
+		var pbr := Models.pbr_maps(fmesh)
+		foe_mats[k].set_shader_parameter("has_albedo", pbr.has("albedo"))
+		foe_mats[k].set_shader_parameter("has_normal", pbr.has("normal"))
+		foe_mats[k].set_shader_parameter("has_orm", pbr.has("orm"))
+		for key in pbr: foe_mats[k].set_shader_parameter(key + "_tex", pbr[key])
+		foe_mats[k].set_shader_parameter("corpse_sink", mh * (0.3 if not vat.is_empty() else 0.45))
 		foe_mats[k].set_shader_parameter("has_vat", not vat.is_empty())
 		if not vat.is_empty():
 			foe_mats[k].set_shader_parameter("vat_pos", vat.pos)
@@ -701,39 +712,115 @@ func _prop_ok(kind: String, p: Vector2) -> bool:
 	if w == null or w.terrain == null: return true
 	return w.terrain.prop_ok(kind, p)
 
+## Biome dressing, one 640-unit chunk at a time (seeded by chunk and act, so a chunk always dresses alike):
+##   CLUSTERS groves (2-4 trees, living or dead by the act) or outcrops (3-5 boulders, tilted with the slope),
+##   each ringed by 4-6 bushes and 18-28 grass tufts, scale 0.7-1.45 and any yaw;
+##   LANDMARKS ruins: an arch flanked by two wall sections, a pillar beside it and bones at its foot;
+##   loose grass up to the act's GRASS count (150-220 a chunk); the act's crystals and bones as accents.
+## Nothing within SPAWN_CLEAR of the spawn point; trunks, boulders, pillars, walls and arches stay MIN_GAP
+## apart (the hero never threads between two of them); nothing in deep water or on cliffs (Terrain.prop_ok);
+## every prop sinks 1 unit into the ground so slopes never show a gap under it.
+const CLUSTERS := Vector2i(4, 6)
+const LANDMARKS := Vector2i(1, 2)
+const SPAWN_CLEAR := 160.0
+const MIN_GAP := 48.0
+const SOLID := ["tree", "tree_dead", "rock", "pillar", "wall", "arch"]
+const DEAD_SHARE := [0.25, 0.85, 0.7, 0.9, 0.5]       # per act: how many grove trees are dead
+const GRASS := [220, 150, 175, 150, 160]              # per act: grass tufts a chunk
+
 func _build_cell(c: Vector2i) -> Node3D:
 	var cell := Node3D.new()
 	add_child(cell)
 	if not Quality.on("props"): return cell
-	var dens: Dictionary = _look.props
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(Vector3i(c.x, c.y, w.stage))
+	var lists := dress_chunk(c)
 	var lo := Vector3(c.x * CHUNK, -200.0, c.y * CHUNK)
-	for kind in Models.PROP_KINDS:
-		var n := float(dens.get(kind, 0.0)) * (w.terrain.density(kind, c) if w.terrain != null else 1.0) * Quality.prop_density()
-		var cnt := int(n) + (1 if rng.randf() < n - floorf(n) else 0)
-		var list := []
-		for i in cnt:
-			var p := Vector2((c.x + rng.randf()) * CHUNK, (c.y + rng.randf()) * CHUNK)
-			var s := rng.randf_range(0.7, 1.35)
-			var rot := rng.randf() * TAU
-			var sy := rng.randf_range(0.85, 1.2)
-			if p.length() < 120.0 or not _prop_ok(kind, p): continue      # keep the spawn point clear
-			var b := Basis(Vector3.UP, rot).scaled(Vector3(s, s * sy, s))
-			list.append(Transform3D(b, Vector3(p.x, ground_y(p) - 0.5, p.y)))
+	for kind in lists:
+		var list: Array = lists[kind]
 		if list.is_empty(): continue
+		var mesh := Models.prop_mesh(kind, w.stage)
+		if mesh == null: continue
 		var pmi := MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = Models.prop_mesh(kind, w.stage)
+		mm.mesh = mesh
 		mm.instance_count = list.size()
 		for i in list.size(): mm.set_instance_transform(i, list[i])
-		mm.custom_aabb = AABB(lo, Vector3(CHUNK, 600.0, CHUNK)).grow(60.0)
+		mm.custom_aabb = AABB(lo, Vector3(CHUNK, 600.0, CHUNK)).grow(160.0)
 		pmi.multimesh = mm
-		pmi.material_override = prop_mat
-		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if kind == "grass" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		# imported PBR props draw their own materials (albedo, normal, roughness maps); the procedural and
+		# vertex-coloured ones (grass, crystals, the act variants) keep the shared prop shader (sway, tint)
+		if not Models.has_pbr(mesh): pmi.material_override = prop_mat
+		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if (kind == "grass" or kind == "bush") else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		cell.add_child(pmi)
 	return cell
+
+## kind -> Array of Transform3D for one chunk (no nodes: _build_cell instances them; tests count them).
+func dress_chunk(c: Vector2i) -> Dictionary:
+	var dens: Dictionary = _look.props
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(Vector3i(c.x, c.y, w.stage))
+	var st := clampi(w.stage, 0, 4)
+	var lists := {}
+	var solid: Array[Vector2] = []
+	var origin := Vector2(c.x * CHUNK, c.y * CHUNK)
+	var tree_w := float(dens.get("tree", 1.0)) * (w.terrain.density("tree", c) if w.terrain != null else 1.0)
+	var rock_w := float(dens.get("rock", 1.0))
+	for k in rng.randi_range(CLUSTERS.x, CLUSTERS.y):
+		var cp := origin + Vector2(rng.randf_range(70.0, CHUNK - 70.0), rng.randf_range(70.0, CHUNK - 70.0))
+		if rng.randf() < tree_w / maxf(0.01, tree_w + rock_w):
+			for i in rng.randi_range(2, 4):
+				_put(lists, solid, "tree_dead" if rng.randf() < DEAD_SHARE[st] else "tree", cp + _disc(rng, 75.0), rng, false)
+		else:
+			for i in rng.randi_range(3, 5):
+				_put(lists, solid, "rock", cp + _disc(rng, 60.0), rng, true)
+		for i in rng.randi_range(4, 6):
+			_put(lists, solid, "bush", cp + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(45.0, 115.0), rng, false)
+		for i in rng.randi_range(18, 28):
+			_put(lists, solid, "grass", cp + _disc(rng, 150.0), rng, false)
+	for k in rng.randi_range(LANDMARKS.x, LANDMARKS.y):
+		var lp := origin + Vector2(rng.randf_range(110.0, CHUNK - 110.0), rng.randf_range(110.0, CHUNK - 110.0))
+		var yaw := rng.randf() * TAU
+		var side := Vector2(cos(yaw), -sin(yaw))                       # the arch spans along this
+		if not _put(lists, solid, "arch", lp, rng, false, yaw, 1.0): continue
+		_put(lists, solid, "wall", lp + side * 95.0, rng, false, yaw + rng.randf_range(-0.15, 0.15), rng.randf_range(0.9, 1.1))
+		_put(lists, solid, "wall", lp - side * 95.0, rng, false, yaw + rng.randf_range(-0.15, 0.15), rng.randf_range(0.9, 1.1))
+		var pp := lp + side.orthogonal() * rng.randf_range(70.0, 100.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+		_put(lists, solid, "pillar", pp, rng, false)
+		for i in rng.randi_range(2, 3):
+			_put(lists, solid, "bones", pp + _disc(rng, 40.0), rng, false)
+	var want: int = GRASS[st]
+	var tries := 0
+	while (lists.get("grass", []) as Array).size() < want and tries < want * 4:
+		tries += 1
+		_put(lists, solid, "grass", origin + Vector2(rng.randf() * CHUNK, rng.randf() * CHUNK), rng, false)
+	for kind in ["crystal", "bones"]:                                 # the act's accents
+		var n := float(dens.get(kind, 0.0))
+		for i in int(n) + (1 if rng.randf() < n - floorf(n) else 0):
+			_put(lists, solid, kind, origin + Vector2(rng.randf() * CHUNK, rng.randf() * CHUNK), rng, false)
+	return lists
+
+func _disc(rng: RandomNumberGenerator, r: float) -> Vector2:
+	return Vector2.from_angle(rng.randf() * TAU) * sqrt(rng.randf()) * r
+
+## One prop at p if the spot allows it; yaw < -100 = a random one, scale 0 = the cluster range 0.7-1.45.
+func _put(lists: Dictionary, solid: Array[Vector2], kind: String, p: Vector2, rng: RandomNumberGenerator, tilt: bool,
+		yaw: float = -1000.0, sc: float = 0.0) -> bool:
+	if p.length() < SPAWN_CLEAR or not _prop_ok(kind, p): return false
+	if SOLID.has(kind):
+		for q in solid:
+			if q.distance_squared_to(p) < MIN_GAP * MIN_GAP: return false
+		solid.append(p)
+	var s := sc if sc > 0.0 else rng.randf_range(0.7, 1.45)
+	var b := Basis(Vector3.UP, yaw if yaw > -100.0 else rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.92, 1.08), s))
+	if tilt:                                                           # boulders lean with the slope
+		var e := 12.0
+		var n := Vector3(ground_y(p - Vector2(e, 0)) - ground_y(p + Vector2(e, 0)), 2.0 * e,
+			ground_y(p - Vector2(0, e)) - ground_y(p + Vector2(0, e))).normalized()
+		var ax := Vector3.UP.cross(n)
+		if ax.length() > 1e-4: b = Basis(ax.normalized(), Vector3.UP.angle_to(n) * 0.6) * b
+	if not lists.has(kind): lists[kind] = []
+	lists[kind].append(Transform3D(b, Vector3(p.x, ground_y(p) - 1.0, p.y)))
+	return true
 
 # ================================================================= foes
 ## Each kind has its own buffer, exactly as long as its MultiMesh (a grow-only power-of-two instance
@@ -851,6 +938,7 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 	var c := _kind_col[k]
 	var vc: PackedFloat32Array = _vc[k]
 	var authored := not vc.is_empty()
+	var unit := _foe_unit[k] if k < _foe_unit.size() else 1.0
 	var n := 0
 	# the ground height goes into the instance transform (foe.gdshader does no terrain lookup): ground_y's
 	# window lookup inlined, through locals, since this runs for every foe on screen every frame
@@ -879,7 +967,7 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 		else:
 			gy = ground_y(p)
 		var o := n * FOE_STRIDE
-		var s := sw.rad[i]
+		var s := sw.rad[i] * unit
 		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
 		buf[o] = dir.x * s; buf[o + 1] = 0.0; buf[o + 2] = -dir.y * s; buf[o + 3] = p.x
 		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = gy
@@ -924,6 +1012,11 @@ func _status_code(i: int) -> float:
 	return 0.0
 
 var _kind_col: Array[Color] = []
+## Per foe kind: instance scale per unit of radius, and the mesh's height. The pack meshes are about 2 units
+## tall and scale by the radius itself (unit 1); the generated ones are modelled at their height in world
+## units for the kind's base radius (Content.ENEMIES r), so they scale by radius / base radius.
+var _foe_unit := PackedFloat32Array()
+var _foe_h := PackedFloat32Array()
 
 # ---------------------------------------------------------------- corpses: topple, lie, crumble
 var corpses: Array = []          # [kind, pos, dir, rad, t0, seed, ground height]
@@ -950,6 +1043,8 @@ func _write_corpses(buf: PackedFloat32Array, k: int, n: int) -> int:
 	var cap := buf.size() / FOE_STRIDE
 	var vcd: PackedFloat32Array = _vc[k]
 	var col := _kind_col[k]
+	var unit := _foe_unit[k] if k < _foe_unit.size() else 1.0
+	var mh := _foe_h[k] if k < _foe_h.size() else 2.1
 	for c in corpses:
 		if int(c[0]) != k: continue
 		if n >= cap: break
@@ -957,7 +1052,7 @@ func _write_corpses(buf: PackedFloat32Array, k: int, n: int) -> int:
 		var o := n * FOE_STRIDE
 		var p: Vector2 = c[1]
 		var d: Vector2 = c[2]
-		var s: float = c[3]
+		var s: float = float(c[3]) * unit
 		var gy: float = c[6]
 		if not vcd.is_empty() and vcd[10] > 0.0:           # an authored death clip: play it once, hold its last frame
 			buf[o] = d.x * s; buf[o + 1] = 0.0; buf[o + 2] = -d.y * s; buf[o + 3] = p.x
@@ -977,9 +1072,9 @@ func _write_corpses(buf: PackedFloat32Array, k: int, n: int) -> int:
 		var side := Vector3(-d.y, 0, d.x)
 		var ya := Vector3.UP * cos(a) + side * sin(a)
 		var za := xa.cross(ya)
-		var bounce := sin(clampf((age - 0.28) / 0.2, 0.0, 1.0) * PI) * 0.08 * s
+		var bounce := sin(clampf((age - 0.28) / 0.2, 0.0, 1.0) * PI) * 0.04 * mh * s
 		buf[o] = xa.x * s; buf[o + 1] = ya.x * s; buf[o + 2] = za.x * s; buf[o + 3] = p.x
-		buf[o + 4] = xa.y * s; buf[o + 5] = ya.y * s; buf[o + 6] = za.y * s; buf[o + 7] = gy + 0.42 * s * fall + bounce
+		buf[o + 4] = xa.y * s; buf[o + 5] = ya.y * s; buf[o + 6] = za.y * s; buf[o + 7] = gy + 0.2 * mh * s * fall + bounce
 		buf[o + 8] = xa.z * s; buf[o + 9] = ya.z * s; buf[o + 10] = za.z * s; buf[o + 11] = p.y
 		buf[o + 12] = col.r; buf[o + 13] = col.g; buf[o + 14] = col.b; buf[o + 15] = float(c[5]) / 63.0
 		buf[o + 16] = 0.0
@@ -1019,7 +1114,7 @@ func _foe_color(k: int) -> Color:
 # ================================================================= hero and bosses
 func _hero(dt: float) -> void:
 	hero.animate({"pos": hero_p, "face": w.face, "mv": w.mv, "ph": w.walk_ph, "cast_age": w.t - w.cast_t, "cast_dir": w.cast_dir,
-		"roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "jump": _hero_jp,
+		"vel": w.vel.length(), "roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "jump": _hero_jp,
 		"hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
 	hero.position.y += hero_y
 	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
@@ -1077,6 +1172,7 @@ func _exiles(dt: float) -> void:
 		var at := lerp_pos(w.sw.prev[i], w.sw.pos[i])
 		var to := hero_p - at
 		rig.animate({"pos": at, "face": to.normalized(), "mv": 1.0 if w.sw.freeze_t[i] <= 0.0 else 0.0, "ph": time * 9.0 + u, "cast_age": fmod(time + u, 1.6),
+			"vel": w.sw.spd[i] if w.sw.freeze_t[i] <= 0.0 else 0.0,
 			"cast_dir": to.normalized(), "roll": -1.0, "hit": clampf(w.sw.flash[i] * 10.0, 0, 1), "dead": false, "t": time}, dt)
 		rig.position.y += ground_y(at)
 	for u in exile_rigs.keys():

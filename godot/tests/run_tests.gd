@@ -994,15 +994,15 @@ func _look_tests() -> void:
 	print("== look: resolution, ground, light, draping")
 	# 3D resolution: phones by tier, FXAA only at 0.9 and up, the dynamic factor's floor
 	var M: Script = load("res://scripts/main.gd")
-	ok(M.auto_render_scale(0, true, false) == 0.75 and M.auto_render_scale(1, true, false) == 0.9 and M.auto_render_scale(2, true, false) == 1.0,
-		"phones render 3D at 0.75 / 0.90 / 1.0 on Low / Medium / High")
+	ok(M.auto_render_scale(0, true, false) == 0.75 and M.auto_render_scale(1, true, false) == 1.0 and M.auto_render_scale(2, true, false) == 1.0,
+		"phones render 3D at 0.75 on Low and natively on Medium and High")
 	ok(M.auto_render_scale(2, false, false) == 1.0 and M.auto_render_scale(1, false, true) == 0.75, "desktops native, the web 0.75")
-	ok(M.fxaa_allowed(1.0) and M.fxaa_allowed(0.9) and not M.fxaa_allowed(0.9 * 0.92) and not M.fxaa_allowed(0.75),
+	ok(M.fxaa_allowed(1.0) and M.fxaa_allowed(0.9) and not M.fxaa_allowed(0.85) and not M.fxaa_allowed(0.75),
 		"FXAA runs at a 3D scale of 0.9 or more only (a Medium phone loses it when the dynamic factor drops)")
 	var d := 1.0
 	for k in 20: d = M.dyn_down(d, 1.0, 1.0 / 60.0)
-	ok(is_equal_approx(d, 0.75) and is_equal_approx(M.dyn_down(1.0, 0.025, 1.0 / 60.0), 0.92),
-		"the dynamic factor steps down 0.08 (0.15 when twice over budget) and stops at 0.75 (%.2f)" % d)
+	ok(is_equal_approx(d, 0.85) and is_equal_approx(M.dyn_down(1.0, 0.025, 1.0 / 60.0), 0.92),
+		"the dynamic factor steps down 0.08 (0.15 when twice over budget) and stops at 0.85 (%.2f)" % d)
 	# the ground grid and texture detail per tier
 	var qs := []
 	var d2 := []
@@ -1329,7 +1329,10 @@ func _vat_tests() -> void:
 		var vmin: Vector3 = vat.vmin
 		var vext: Vector3 = vat.vext
 		if img.get_format() != Image.FORMAT_RGBA8 or (vat.nrm as ImageTexture).get_image().get_format() != Image.FORMAT_RG8: bad.append(kind + ": texture formats")
-		if vext.y < 0.3 or vext.y > 20.0: bad.append(kind + ": box height %.2f" % vext.y)
+		# the box spans every clip: at least most of the standing mesh, at most three of its heights (a spawn
+		# rises from up to a body and a half below the ground: the KayKit skeletons' grave rise is 2.4)
+		var mh := Models.foe_mesh(parts[0], int(parts[1]) if parts.size() > 1 else -1).get_aabb().size.y
+		if vext.y < mh * 0.7 or vext.y > mh * 3.0: bad.append(kind + ": box height %.2f for a mesh %.2f tall" % [vext.y, mh])
 		var lo_y := INF
 		var hi_y := -INF
 		for k in 64:

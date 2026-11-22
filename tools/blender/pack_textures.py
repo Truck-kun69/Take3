@@ -1,8 +1,10 @@
 import os, sys, glob
 from PIL import Image, ImageOps
 import numpy as np
+# python3 tools/blender/pack_textures.py <sources dir> <out dir> [set ...]   (default: every set)
 src, out = sys.argv[1], sys.argv[2]
-S = 512
+ONLY = set(sys.argv[3:])
+S = 1024        # the sources' own size (1K); at least 1024 px for every model texture
 def find(d, *keys):
     for k in keys:
         g = [f for f in glob.glob(os.path.join(src, d, "*")) if k in os.path.basename(f)]
@@ -24,6 +26,7 @@ SETS = {
     "wood":    ("acg_Wood066", False, 0.0),
 }
 for name, (d, desat, metal) in SETS.items():
+    if ONLY and name not in ONLY: continue
     col = Image.open(find(d, "_Color", "_diff_", "_albedo_")).convert("RGB").resize((S, S), Image.LANCZOS)
     if desat:   # neutral grey with the original value structure, mean ~0.62, so a glTF base colour factor tints it
         g = np.asarray(ImageOps.grayscale(col), dtype=np.float32) / 255.0

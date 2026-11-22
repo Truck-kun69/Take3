@@ -60,6 +60,7 @@ func build(k: String, c: Color, slot: String) -> void:
 	else: _build_tyrant()
 
 var _over_flash: ShaderMaterial
+var _atk_flip := 0
 var _glow_over: Array = []         # [material, base energy]
 ## Authored bosses: loop idle/walk, hit-flash overlay, and recolour every "glow*" material to this
 ## boss's colour, so one tyrant model serves every act (green, ember, pale and neon bosses).
@@ -223,11 +224,14 @@ func animate(st: Dictionary) -> void:
 			(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * (0.7 + 0.6 * pulse0 + _atk * 1.2)
 		light.light_energy = (LIGHT_E + pulse0 * LIGHT_PULSE) * WorldView3D.LIGHT_GAIN
 		if anim != null:
-			# an attack plays to the end (wind-up, slam, recover); a hit flinch never interrupts it
-			var busy := anim.current_animation == "attack" and anim.is_playing()
+			# an attack plays to the end (wind-up, strike, recover); attacks alternate between the "attack" and
+			# "slam" clips where the model has both; a hit flinch never interrupts one
+			var busy := (anim.current_animation == "attack" or anim.current_animation == "slam") and anim.is_playing()
 			var want := "walk"
-			if st.attack: want = "attack"
-			elif fl0 > 0.85 and not busy and anim.current_animation != "hit": want = "hit"
+			if st.attack and not busy:
+				_atk_flip = 1 - _atk_flip
+				want = "slam" if (_atk_flip == 1 and anim.has_animation("slam")) else "attack"
+			elif fl0 > 0.85 and not busy and anim.current_animation != "hit" and anim.has_animation("hit"): want = "hit"
 			elif busy or (anim.current_animation == "hit" and anim.is_playing()): want = anim.current_animation
 			# the walk cadence follows the boss's real ground speed (stride measured by the retarget); it idles when held
 			var sc := maxf(0.01, global_transform.basis.get_scale().x)

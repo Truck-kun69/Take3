@@ -103,7 +103,8 @@ func _render_scale() -> void:
 		3: s = 0.5
 	var vp := get_viewport()
 	_base_scale = s
-	_dyn_auto = opt == 0 and not RenderingServer.get_video_adapter_name().to_lower().contains("llvmpipe")
+	# the dynamic factor (_dyn_res) runs on Low and Medium only: High holds native resolution
+	_dyn_auto = opt == 0 and Quality.tier() < 2 and not RenderingServer.get_video_adapter_name().to_lower().contains("llvmpipe")
 	if not _dyn_auto: _dyn = 1.0
 	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	# FSR 1 exists only in Forward+ (the Mobile renderer warned and ignored it on the S22)
@@ -122,18 +123,20 @@ func _render_scale() -> void:
 	# Medium. FXAA smooths the swarm's sub-pixel triangles (a ~40 px foe has ~700 triangles)
 	var aa := Quality.on("msaa") and not compat
 	if mobile:
-		vp.msaa_3d = Viewport.MSAA_DISABLED
-		_fxaa = aa and Quality.tier() >= 1
+		# High: MSAA 2x and no FXAA (sharp edges, no full-screen blur); Medium: FXAA; Low: neither
+		vp.msaa_3d = Viewport.MSAA_2X if (aa and Quality.tier() >= 2) else Viewport.MSAA_DISABLED
+		_fxaa = aa and Quality.tier() == 1
 	else:
 		vp.msaa_3d = Viewport.MSAA_2X if (aa and Quality.tier() >= 2) else Viewport.MSAA_DISABLED
 		_fxaa = aa and Quality.tier() == 1
 	_apply_scale()
 	if not compat:
-		# the sun's single cascade covers what the high camera sees: 1024 is enough on Low/Medium phones
-		var atlas := (2048 if hi else 1024) if mobile else (4096 if hi else 2048)
+		# the sun's single cascade covers what the high camera sees: 2048 on High phones, 1024 on Medium
+		var atlas := (2048 if Quality.tier() >= 2 else 1024) if mobile else (4096 if hi else 2048)
 		RenderingServer.directional_shadow_atlas_set_size(atlas, true)
-		# Medium and up filter the sun's shadow edge (soft low: a few PCF taps); Low draws no sun shadow at all
-		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if Quality.tier() >= 1 else RenderingServer.SHADOW_QUALITY_HARD)
+		# the sun's shadow edge: soft medium on High, soft low on Medium; Low draws no sun shadow at all
+		var sq: RenderingServer.ShadowQuality = [RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][Quality.tier()]
+		RenderingServer.directional_soft_shadow_filter_set_quality(sq)
 
 func _on_resize() -> void:
 	_ui_scale()
@@ -439,11 +442,11 @@ var _dyn := 1.0
 var _fxaa := false                  # the tier asks for FXAA (it runs only while the 3D scale is 0.9 or more)
 const FXAA_MIN_SCALE := 0.9
 
-## The 3D resolution option "Auto": phones by tier, Low 0.75, Medium 0.90, High native (the Mobile
-## renderer upsamples a scaled image with a plain bilinear filter, no FSR, so every step below native
-## softens the whole frame); the web 0.75; desktops native.
+## The 3D resolution option "Auto": phones native on Medium and High, 0.75 on Low (the Mobile renderer
+## upsamples a scaled image with a plain bilinear filter, no FSR, so every step below native softens the
+## whole frame); the web 0.75; desktops native.
 static func auto_render_scale(tier: int, mobile: bool, web: bool) -> float:
-	if mobile: return [0.75, 0.9, 1.0][clampi(tier, 0, 2)]
+	if mobile: return [0.75, 1.0, 1.0][clampi(tier, 0, 2)]
 	return 0.75 if web else 1.0
 
 ## FXAA only at a 3D scale of 0.9 or more: below that the bilinear upsample already blurs the frame, and
@@ -464,7 +467,7 @@ func _apply_scale() -> void:
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if (_fxaa and fxaa_allowed(sc)) else Viewport.SCREEN_SPACE_AA_DISABLED
 
 var _dyn_auto := false
-const DYN_FLOOR := 0.75             # the dynamic factor never drops the frame below 3/4 of the tier's scale
+const DYN_FLOOR := 0.85             # the dynamic factor (Low, Medium) never drops the frame below 85% of the tier's scale
 var _dyn_acc := 0.0
 var _dyn_n := 0
 var _dyn_good := 0
