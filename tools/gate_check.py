@@ -98,7 +98,7 @@ def main(build_apk=True):
     for imp in sorted(glob.glob(os.path.join(GD, "textures", "terrain", "*.import")) + glob.glob(os.path.join(GD, "models", "heroes", "**", "*.import"), recursive=True)):
         txt = open(imp).read()
         if 'importer="texture"' not in txt: continue
-        for dest in re.findall(r'"res://(\.godot/imported/[^"]+\.ctex)"', txt):
+        for dest in sorted(set(re.findall(r'"res://(\.godot/imported/[^"]+\.ctex)"', txt))):   # [remap] and dest_files name each
             f = os.path.join(GD, dest)
             if not os.path.exists(f):
                 check(False, f"{dest} missing (run the import)"); continue
@@ -110,7 +110,7 @@ def main(build_apk=True):
                 print(f"      {os.path.relpath(imp, GD)[:-7]} -> {w}x{h}  <= 256")
             else:
                 print(f"      {os.path.relpath(imp, GD)[:-7]} -> {w}x{h}  ({os.path.basename(dest).split('.')[-2]})")
-    check(count > 0 and small == 0, f"{count} imported terrain and hero textures, {small} at 256 px or less")
+    check(count > 0 and small == 0, f"{count} imported terrain and hero texture files (each map once per GPU format), {small} at 256 px or less")
     # 5 ----------------------------------------------------------------
     section("5. engine: headless boot and the chunk dressing count")
     r = subprocess.run([GODOT, "--headless", "--path", GD, "--quit"], capture_output=True, text=True, timeout=600)
@@ -129,7 +129,7 @@ def main(build_apk=True):
         section("6. Android APK")
         r = subprocess.run(["bash", os.path.join(HERE, "build_android.sh")], capture_output=True, text=True, timeout=3600)
         apk = os.path.join(ROOT, "build", "shardfall.apk")
-        tail = (r.stdout + r.stderr).strip().splitlines()[-6:]
+        tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if not l.startswith("Picked up JAVA_TOOL_OPTIONS")][-4:]
         for l in tail: print("      " + l)
         ok = r.returncode == 0 and os.path.exists(apk)
         check(ok, f"APK {apk}: " + (f"{os.path.getsize(apk)} bytes = {os.path.getsize(apk) / 1e6:.2f} MB" if os.path.exists(apk) else "missing"))
