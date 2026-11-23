@@ -40,6 +40,9 @@ not to a copied text).
 
 ## APK size
 
+0.10.1: 135.85 MB (135,845,361 bytes). 0.10.0's texel budget brings the foes' albedo maps to 1024 px; the
+0.10.1 features (Copy report, save transfer, the pinned page buttons) are script only.
+
 0.10.0: 139.04 MB (139,039,754 bytes). The voice layer (manifest, VoiceBank, subtitles, intro) adds 29 KB; the
 ElevenLabs voice pack, once generated, adds about 2 MB (the gate allows 2.5). See docs/VOICES.md.
 
