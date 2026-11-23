@@ -186,7 +186,7 @@ func start_ambience(stage: int) -> void:
 	if ov == null:
 		ov = _ambience_loop(stage)
 	ambience.stream = ov
-	ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("volume")) * 0.35))
+	ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("music_volume")) * 0.35))   # Master is the bus
 	Diag.first("ambience %d" % stage)
 	ambience.play()
 
@@ -213,7 +213,7 @@ func fire_bed(burning: int, dt: float) -> void:
 	if _fire_crackle == null:
 		_fire_crackle = _fire_player(_fire_loop("fire_crackle", 4.0, false))
 		_fire_rumble = _fire_player(_fire_loop("fire_rumble", 6.0, true))
-	var vol := float(Save.opt("volume")) * _fire_on
+	var vol := float(Save.opt("sfx_volume")) * _fire_on
 	_fire_crackle.volume_db = linear_to_db(maxf(0.0001, vol * 0.5 * cos(fire_k * PI * 0.5)))
 	_fire_rumble.volume_db = linear_to_db(maxf(0.0001, vol * 0.6 * sin(fire_k * PI * 0.5)))
 	if not _fire_crackle.playing:
@@ -341,7 +341,7 @@ func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
 	Diag.first("sound " + name)
 	var p: AudioStreamPlayer = players[name]
 	p.pitch_scale = _pitch(name, pitch, now)
-	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")) * gain)), -60.0, 6.0)
+	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("sfx_volume")) * gain)), -60.0, 6.0)
 	p.play()
 
 ## Pitch for one play: a semitone climb for chained pickups, a small random spread for the rest.
@@ -357,8 +357,9 @@ func _pitch(name: String, pitch: float, now: int) -> float:
 	ps = clampf(ps, 0.5, 2.5)
 	return ps if is_finite(ps) else 1.0
 
-## Option change: polyphony follows the Safe setting.
+## Option change: polyphony follows the Safe setting; the ambience follows Music.
 func apply_options() -> void:
+	if ambience.playing: ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("music_volume")) * 0.35))
 	for k in players: players[k].max_polyphony = _voices(k, bool(Save.opt("sfx_safe")))
 	if Save.opt("sfx_safe") or not Save.opt("sound"): ambience.stop()
 
@@ -398,6 +399,6 @@ func play_at(name: String, at: Vector2, pitch: float = 1.0) -> void:
 	var sp: AudioStreamPlayer2D = pool[pick]
 	sp.global_position = at
 	sp.pitch_scale = _pitch(name, pitch, now)
-	sp.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")))), -60.0, 6.0)
+	sp.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("sfx_volume")))), -60.0, 6.0)
 	Diag.first("sound " + name)
 	sp.play()

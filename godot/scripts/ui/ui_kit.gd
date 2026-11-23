@@ -160,10 +160,13 @@ static func divider() -> TextureRect:
 static func section(txt: String) -> Label:
 	return label(txt.to_upper(), 16, DIM, false, "label")
 
+## The smallest touch target, in units of the 1280 x 720 design base (the canvas stretch keeps it at least this
+## tall on any screen): every button and tile is clamped to it, whatever its caller asked for.
+const MIN_TOUCH := 48
 static func button(txt: String, cb: Callable, min_h: int = 56) -> Button:
 	var b := Button.new()
 	b.text = txt
-	b.custom_minimum_size = Vector2(0, min_h)
+	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
 	b.pressed.connect(func(): Sfx.play("click"); cb.call())
 	press_fx(b)
 	return b
@@ -183,7 +186,7 @@ static func press_fx(b: BaseButton) -> void:
 ## title in Cinzel, sub-line in Garamond italic. Returns the Button; content is laid out inside it.
 static func tile(title_txt: String, sub: String, cb: Callable, tint: Color = Color.WHITE, selected: bool = false, min_h: int = 92, left: bool = false, title_col: Color = Color(0, 0, 0, 0)) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(0, min_h)
+	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var base_t := Color(0.75, 0.72, 0.68).lerp(tint, 0.35)
 	var sel_t := Color("f2c76a")
@@ -242,6 +245,9 @@ static func bar(col: Color, h: int = 16) -> ProgressBar:
 	b.add_theme_stylebox_override("fill", f)
 	return b
 
+## Outside a run the subtitle banner hangs from the top of the screen (Subtitles); pages keep this band clear,
+## so a voice line never sits over a page's title.
+const SUB_BAND := 92
 ## Full-screen dimmed overlay hosting a centred, scrollable ornate panel.
 static func sheet(parent: Control, max_w: int = 980) -> VBoxContainer:
 	var dim := ColorRect.new()
@@ -251,6 +257,7 @@ static func sheet(parent: Control, max_w: int = 980) -> VBoxContainer:
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
 		m.add_theme_constant_override("margin_" + side, 14)
+	m.add_theme_constant_override("margin_top", 14 + SUB_BAND)        # the subtitle banner's band (Subtitles, menus)
 	parent.add_child(m)
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var cc := CenterContainer.new()
@@ -265,7 +272,7 @@ static func sheet(parent: Control, max_w: int = 980) -> VBoxContainer:
 	var v := vbox(12)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(v)
-	var maxh := float(vs.y) - 120.0                     # the panel hugs its content and scrolls only when taller than the screen
+	var maxh := float(vs.y) - 120.0 - SUB_BAND          # the panel hugs its content and scrolls only when taller than the screen
 	v.minimum_size_changed.connect(func(): sc.custom_minimum_size.y = minf(v.get_combined_minimum_size().y, maxh))
 	return v
 

@@ -166,6 +166,7 @@ var regen_acc := 0.0
 var cast_t := -9.0                # renderer feed: last weapon cast (hero turns and thrusts toward it)
 var cast_dir := Vector2.RIGHT
 var breakables: Array = []        # {pos, kind 0 urn / 1 barrel, r}; skills shatter them for small loot (PoE2)
+var rift_echoes: Array = []       # the act's two Echo Shards (Story): {pos, k, taken}, beside its nearest arches
 var broken: Array = []            # renderer feed: [pos, kind]
 var _brk_t := 6.0
 var deaths: Array = []            # renderer feed: [pos, colour, radius, elite] per kill, consumed by the 3D view
@@ -296,6 +297,63 @@ func setup(cfg: Dictionary) -> void:
 		bosses.spawn_herald()
 	if Save.has_nemesis() and mode != "pinnacle":
 		director.nemesis_pending = true
+	if mode == "campaign" and not daily: place_echoes()
+
+# ================================================================= Rift Echoes (Story)
+## Two Echo Shards per act, beside the act's arches nearest the start (but at least ECHO_MIN out): ECHO_IN
+## units in front of the gateway, on open ground. The arches come from PropLayout (the act's own layout, not
+## the run's seed), so the shards stand in the same places every run of an act. Touching one, or vaulting over
+## it, takes it: a Rift Surge (Content.BUFFS.rift_surge), the "echo" moment (main runs the hero/narrator exchange
+## from Story) and the fragment kept in the profile for the Codex.
+const ECHO_R := 40.0
+const ECHO_MIN := 420.0
+const ECHO_IN := 55.0
+const ECHO_SEARCH := 3              # chunk rings around the start searched for arches
+func place_echoes() -> void:
+	rift_echoes.clear()
+	var arches: Array = []
+	for cy in range(-ECHO_SEARCH, ECHO_SEARCH + 1):
+		for cx in range(-ECHO_SEARCH, ECHO_SEARCH + 1):
+			for a in PropLayout.chunk(Vector2i(cx, cy), stage, terrain, 1.0, false).arches: arches.append(a)
+	arches.sort_custom(func(a, b): return (a[0] as Vector2).length_squared() < (b[0] as Vector2).length_squared())
+	for a in arches:
+		if rift_echoes.size() >= 2: break
+		var c: Vector2 = a[0]
+		if c.length() < ECHO_MIN: continue
+		var far := true
+		for e in rift_echoes:
+			if (e.pos as Vector2).distance_to(c) < 600.0: far = false
+		if not far: continue
+		var fwd := Vector2(0, 1).rotated(float(a[1]))       # across the gateway (the posts stand on its local x)
+		for side in [1.0, -1.0]:
+			var q: Vector2 = c + fwd * (ECHO_IN * float(side))
+			if terrain.passable(q) and terrain.props_clear(q, 20.0):          # at setup: no tide yet, so every run agrees
+				rift_echoes.append({"pos": q, "k": rift_echoes.size(), "taken": false})
+				break
+	var k := rift_echoes.size()
+	while k < 2:                                         # an act with too few arches: two fixed spots on open ground
+		var q2 := terrain.nearest_passable(Vector2.from_angle(1.1 + PI * k) * 700.0)
+		rift_echoes.append({"pos": q2, "k": k, "taken": false})
+		k += 1
+
+func _step_echoes() -> void:
+	for e in rift_echoes:
+		if e.taken or pp.distance_squared_to(e.pos) > ECHO_R * ECHO_R: continue
+		e.taken = true
+		buffs.add("rift_surge")
+		var frag: Dictionary = Story.echo(stage, int(e.k))
+		banner.emit("Rift Echo", String(frag.title), Color("c48aff"))
+		var key := Story.echo_key(stage, int(e.k))
+		var found: Array = Save.data.get("rift_echoes", [])
+		if not found.has(key):
+			found.append(key)
+			Save.data.rift_echoes = found
+			Save.mark_dirty()
+		metrics.echoes = int(metrics.get("echoes", 0)) + 1
+		_burst(e.pos, Color("c48aff"), 14, 220.0)
+		fx.append({"k": "ring", "pos": e.pos, "r": 0.0, "max": 140.0, "col": Color("c48aff"), "life": 0.5, "t": 0.0})
+		Sfx.play("pylon")
+		moment.emit("echo", {"act": stage, "k": int(e.k), "hero": hero_id})
 
 ## Profile-driven modifiers: meta gold upgrades are folded into gear in this version; equipped
 ## items, codex legendary powers, bestiary bonuses, lore sets and map mods.
@@ -430,6 +488,7 @@ func _step(dt: float) -> void:
 		_trim_t += 7.0
 		terrain.trim(pp)
 	buffs.step(dt)
+	_step_echoes()
 	_step_light(dt)
 	_step_surfaces(dt)
 	_step_prophecy(dt)
@@ -2508,7 +2567,9 @@ func apply_choice(c: Dictionary) -> void:
 	inv_t = maxf(inv_t, 0.8)
 
 # ================================================================= end
-func end_run(win: bool) -> void:
+## quiet: the player left from the pause menu (Main Menu or Restart Run): the run is banked like an abandoned
+## one, but it is not a death (no nemesis, no death count), and no sound or `ended` signal follows.
+func end_run(win: bool, quiet: bool = false) -> void:
 	if over:
 		return
 	if win and hoard > 0.0 and mode != "pinnacle":
@@ -2529,7 +2590,7 @@ func end_run(win: bool) -> void:
 	d.stats.playtime = float(d.stats.playtime) + t
 	d.stats.best_combo = maxi(int(d.stats.best_combo), best_combo)
 	d.stats.champions = int(d.stats.get("champions", 0)) + champions_slain
-	if not win:
+	if not win and not quiet:
 		d.stats.deaths = int(d.stats.deaths) + 1
 		bosses.on_player_death()
 	if daily:
@@ -2548,6 +2609,7 @@ func end_run(win: bool) -> void:
 	Save.mark_dirty()
 	if not headless:
 		Save.flush()
+	if quiet: return
 	Sfx.play("win" if win else "lose")
 	ended.emit(win)
 

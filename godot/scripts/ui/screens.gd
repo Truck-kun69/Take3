@@ -6,6 +6,7 @@ extends Control
 signal act(what: String, arg: Variant)
 
 var main: Node
+var page := ""                 # what is showing: "menu", "pause", "" (closed) or "sub" (any other page); main.back() reads it
 var _sel_item := -1           # index into the combined gear list in the stash screen
 var _sel_node := -1
 var _craft_msg := ""
@@ -18,11 +19,13 @@ var _choices: Array = []       # level-up choices, so number keys can pick them
 
 func close() -> void:
 	_choices = []
+	page = ""
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _open(max_w: int = 980) -> VBoxContainer:
 	_choices = []
+	page = "sub"
 	var fresh := get_child_count() == 0          # opening over the game, not refreshing an open sheet
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -66,11 +69,12 @@ func _unhandled_key_input(ev: InputEvent) -> void:
 
 # ================================================================= main menu
 ## Title screen, phone first. The 3D stage (MenuStage3D) fills the screen with the chosen exile in the
-## middle, under light scrims. Left: the logo, a Gold and Echoes pill, the four exiles and a compact bar
-## (Gear, Upgrades, Modes, Options). Bottom right, under the right thumb: the act to play and one large
-## PLAY button, which starts the campaign with the chosen exile at that act (the highest one unlocked,
-## unless another is picked with the act pill). Fragments, keys, torment, the season and moon and the
-## endgame modes live in Modes; crafting shards in Gear. Narrow windows stack everything in one column.
+## middle, under light scrims. Bottom right, under the right thumb: Continue Campaign, the act pill over one
+## large tile that plays the chosen exile at that act (the highest one open, unless another is picked with the
+## pill). Left: the logo, a Gold and Echoes pill, then New Campaign, Daily Rift (today's code and your best),
+## Heroes (the showcase), Codex & Story (the acts, the exiles' bios, the bestiary), Options and Replay Intro,
+## and a compact bar for the rest (Gear, Upgrades, Modes). Narrow (portrait) windows stack it all in one
+## column. Every button is at least UIKit.MIN_TOUCH tall.
 const ROMAN := ["I", "II", "III", "IV", "V", "VI"]
 var _act_sel := -1                   # act picked with the act pill this session; -1 (or a sealed one): the highest open
 
@@ -88,6 +92,7 @@ func _act_pick(d: Dictionary) -> int:
 func show_menu() -> void:
 	_choices = []
 	UIKit.clear(self)
+	page = "menu"
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var d: Dictionary = Save.data
 	var vs := get_viewport_rect().size
@@ -96,48 +101,29 @@ func show_menu() -> void:
 	var x0 := m.x + (12.0 if portrait else 32.0)
 	var col_w := vs.x - x0 - m.z - 12.0 if portrait else clampf(vs.x * 0.31, 390.0, 470.0)
 	var blk_w := clampf(vs.x * 0.29, 380.0, 440.0)
-	var bx := vs.x - m.z - 32.0 - blk_w                   # the PLAY block's left edge (landscape)
+	var bx := vs.x - m.z - 32.0 - blk_w                   # the Continue block's left edge (landscape)
 	if main != null and main.menu_stage != null:
 		main.menu_stage.frame_x = 0.5 if portrait else ((x0 + col_w) + bx) * 0.5 / vs.x
 		main.menu_stage.frame_y = 0.3 if portrait else 0.5          # portrait: the exile above the column
 		main.menu_stage._frame()
-	# scrims: behind the left column (and lightly behind the PLAY block); clear over the exile
-	var ink := Color(0.02, 0.016, 0.022)
-	var gr := Gradient.new()
-	gr.set_color(0, Color(ink, 0.8)); gr.set_color(1, Color(ink, 0.5 if portrait else 0.3))
-	if not portrait:
-		gr.add_point(clampf((x0 + col_w + 20.0) / vs.x, 0.1, 0.9), Color(ink, 0.55))
-		gr.add_point(clampf((x0 + col_w + 150.0) / vs.x, 0.1, 0.92), Color(ink, 0.0))
-		gr.add_point(clampf((bx - 110.0) / vs.x, 0.15, 0.95), Color(ink, 0.0))
-	add_child(_grad_rect(gr, false))
-	var g2 := Gradient.new()
-	g2.set_color(0, Color(0, 0, 0, 0.35)); g2.set_color(1, Color(0, 0, 0, 0.45))
-	g2.add_point(0.14, Color(0, 0, 0, 0)); g2.add_point(0.8, Color(0, 0, 0, 0))
-	add_child(_grad_rect(g2, true))
+	_scrims(vs, x0, col_w, bx, portrait)
 	var v := _column(Vector2(x0, m.y), Vector2(col_w, vs.y - m.y - m.w))
 	if portrait: v.alignment = BoxContainer.ALIGNMENT_END        # the logo and controls below the exile
 	var logo := TextureRect.new()
 	logo.texture = UIKit.tex("logo")
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var lw := minf(col_w - 14.0, 430.0)
+	var lw := minf(col_w - 14.0, 430.0 if not portrait else 380.0)
 	logo.custom_minimum_size = Vector2(0, lw * float(logo.texture.get_height()) / float(logo.texture.get_width()))
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(logo)
 	v.add_child(_purse(d))
-	v.add_child(_spacer(8))
-	v.add_child(_section("Choose your exile"))
-	var hg := _grid(2, 8)
-	for i in Content.HEROES.size():
-		var h: Dictionary = Content.HEROES[i]
-		var t := UIKit.tile(h.name, "", func(): Save.data.hero = i; Save.mark_dirty(); act.emit("hero", i); show_menu(), Content.col(h.col), i == int(d.hero), 54)
-		t.tooltip_text = "%s Ultimate: %s. %s" % [h.blurb, h.ult, h.ult_d]
-		hg.add_child(t)
-	v.add_child(hg)
+	v.add_child(_spacer(6))
 	if portrait:
-		v.add_child(_spacer(6))
 		v.add_child(_play_block(d))
-	v.add_child(_spacer(8))
+		v.add_child(_spacer(4))
+	v.add_child(_menu_entries(d))
+	v.add_child(_spacer(6))
 	v.add_child(_menu_bar(d))
 	# keyboard help only without a touchscreen (UIKit.is_touch: DisplayServer.is_touchscreen_available())
 	if not UIKit.is_touch():
@@ -151,6 +137,41 @@ func show_menu() -> void:
 		blk.position = Vector2(bx, vs.y - m.w - 26.0 - bh)
 		blk.size = Vector2(blk_w, bh)
 		_hero_plate(Content.HEROES[int(d.hero)], x0 + col_w + 24.0, bx - 24.0, vs.y - m.w - 18.0)
+
+## The title's scrims: behind the left column (and lightly behind the Continue block); clear over the exile.
+func _scrims(vs: Vector2, x0: float, col_w: float, bx: float, portrait: bool) -> void:
+	var ink := Color(0.02, 0.016, 0.022)
+	var gr := Gradient.new()
+	gr.set_color(0, Color(ink, 0.8)); gr.set_color(1, Color(ink, 0.5 if portrait else 0.3))
+	if not portrait:
+		gr.add_point(clampf((x0 + col_w + 20.0) / vs.x, 0.1, 0.9), Color(ink, 0.55))
+		gr.add_point(clampf((x0 + col_w + 150.0) / vs.x, 0.1, 0.92), Color(ink, 0.0))
+		gr.add_point(clampf((bx - 110.0) / vs.x, 0.15, 0.95), Color(ink, 0.0))
+	add_child(_grad_rect(gr, false))
+	var g2 := Gradient.new()
+	g2.set_color(0, Color(0, 0, 0, 0.35)); g2.set_color(1, Color(0, 0, 0, 0.45))
+	g2.add_point(0.14, Color(0, 0, 0, 0)); g2.add_point(0.8, Color(0, 0, 0, 0))
+	add_child(_grad_rect(g2, true))
+
+## New Campaign, Daily Rift, Heroes, Codex & Story, Options and Replay Intro: two to a row.
+func _menu_entries(d: Dictionary) -> GridContainer:
+	var g := _grid(2, 8)
+	var td := Daily.today()
+	var best := int((d.daily.best as Dictionary).get(td.code, -1))
+	var h: Dictionary = Content.HEROES[int(d.hero)]
+	var a0 := Story.act(0)
+	var entries := [
+		["New Campaign", "Act I \u00b7 %s" % a0.title, func(): act.emit("new_campaign", null), Content.col(Content.STAGES[0].acc)],
+		["Daily Rift", "%s \u00b7 %s" % [td.code, ("best %d" % best) if best >= 0 else "no run yet"], func(): act.emit("daily", null), Color("7fd8ff")],
+		["Heroes", "%s \u00b7 %s" % [h.name, Story.hero(String(h.id)).mechanic], func(): act.emit("heroes", null), Content.col(h.col)],
+		["Codex & Story", "Acts, exiles, bestiary", func(): act.emit("codex", "menu"), Color("e8dcc0")],
+		["Options", "Audio, graphics, controls", func(): act.emit("options", null), Color("b8ad98")],
+		["Replay Intro", Story.TITLE, func(): act.emit("intro", null), Color("c48aff")]]
+	for e in entries:
+		var t := UIKit.tile(e[0], e[1], e[2], e[3], false, 62)
+		if t.has_meta("title_label"): (t.get_meta("title_label") as Label).add_theme_font_size_override("font_size", 19 if String(e[0]).length() <= 12 else 17)
+		g.add_child(t)
+	return g
 
 ## The act pill (previous, the act, next; tapping the act steps through the open ones) over PLAY.
 func _play_block(d: Dictionary) -> VBoxContainer:
@@ -171,20 +192,20 @@ func _play_block(d: Dictionary) -> VBoxContainer:
 	for c in [prev, at, nxt]: ar.add_child(c)
 	b.add_child(ar)
 	var tm := int(d.get("torment", 0))
-	var sub := "%s  \u00b7  Act %s%s" % [Content.HEROES[int(d.hero)].name, ROMAN[cur], ("  \u00b7  " + String(Content.TORMENT[tm].name)) if tm > 0 else ""]
-	var play := UIKit.tile("PLAY", sub, func(): act.emit("campaign", cur), UIKit.GOLD, true, 104)
+	var sub := "Continue Campaign  \u00b7  %s  \u00b7  Act %s%s" % [Content.HEROES[int(d.hero)].name, ROMAN[cur], ("  \u00b7  " + String(Content.TORMENT[tm].name)) if tm > 0 else ""]
+	var play := UIKit.tile("CONTINUE", sub, func(): act.emit("campaign", cur), UIKit.GOLD, true, 104)
 	var pt: Label = play.get_meta("title_label")
 	pt.add_theme_font_override("font", UIKit.font("display_heavy"))
-	pt.add_theme_font_size_override("font_size", 46)
+	pt.add_theme_font_size_override("font_size", 42)
 	b.add_child(play)
 	return b
 
-## Gear, Upgrades (Shard Web and Codex), Modes (the endgame) and Options in one compact row.
+## Gear, Upgrades (Shard Web and powers) and Modes (the endgame) in one compact row.
 func _menu_bar(d: Dictionary) -> HBoxContainer:
 	var row := UIKit.hbox(6)
 	var unspent := int(d.get("echoes", 0)) > 0
 	var prophecy := not (d.prophecy.active as Dictionary).is_empty()
-	for e in [["Gear", "stash"], ["Upgrades", "upgrades"], ["Modes", "endgame"], ["Options", "options"]]:
+	for e in [["Gear", "stash"], ["Upgrades", "upgrades"], ["Modes", "endgame"]]:
 		var b := UIKit.button(e[0], func(): act.emit(e[1], null), 50)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 16)
@@ -223,6 +244,69 @@ func _step_btn(txt: String, cb: Callable, h: int) -> Button:
 	b.custom_minimum_size.x = 54
 	b.add_theme_font_size_override("font_size", 30)
 	return b
+
+# ================================================================= Heroes (the showcase)
+## Main Menu > Heroes. The four exiles down the left; the chosen one stands framed on the title stage to the
+## right. Picking one makes them the exile, has them cast and settle back to idle (MenuStage3D.showcase), stops
+## whatever was speaking and plays their intro line (main's "hero" action: VoiceBank.stop_all, then
+## VoiceBank.play(hero, "intro", 0)); the panel shows their lore (Story.HEROES) and a card for the one mechanic
+## they are built around.
+func show_heroes() -> void:
+	_choices = []
+	UIKit.clear(self)
+	page = "sub"
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	var d: Dictionary = Save.data
+	var vs := get_viewport_rect().size
+	var m := UIKit.safe_margins(vs)
+	var portrait := vs.x < 820.0
+	var x0 := m.x + (12.0 if portrait else 32.0)
+	var col_w := vs.x - x0 - m.z - 12.0 if portrait else clampf(vs.x * 0.36, 400.0, 520.0)
+	if main != null and main.menu_stage != null:
+		main.menu_stage.frame_x = 0.5 if portrait else clampf((x0 + col_w + vs.x - m.z) * 0.5 / vs.x, 0.55, 0.8)
+		main.menu_stage.frame_y = 0.28 if portrait else 0.5
+		main.menu_stage._frame()
+	_scrims(vs, x0, col_w, vs.x, portrait)
+	var top := m.y + (0.0 if portrait else float(UIKit.SUB_BAND))     # clear of the subtitle band: the intro line plays here
+	var v := _column(Vector2(x0, top), Vector2(col_w, vs.y - top - m.w))
+	if portrait: v.alignment = BoxContainer.ALIGNMENT_END
+	v.add_child(UIKit.title("Heroes", 34))
+	var hg := _grid(2, 8)
+	for i in Content.HEROES.size():
+		var hh: Dictionary = Content.HEROES[i]
+		var t := UIKit.tile(hh.name, Story.hero(String(hh.id)).title, func(): Save.data.hero = i; Save.mark_dirty(); act.emit("hero", i); show_heroes(), Content.col(hh.col), i == int(d.hero), 60)
+		hg.add_child(t)
+	v.add_child(hg)
+	var h: Dictionary = Content.HEROES[int(d.hero)]
+	var st := Story.hero(String(h.id))
+	var nm := UIKit.label("%s  \u00b7  %s" % [String(h.name).to_upper(), st.title], 22, Content.col(h.col).lerp(UIKit.TEXT, 0.35), true, "display")
+	v.add_child(nm)
+	var bio := UIKit.label(String(st.bio), 16, Color("cfc5b0"), true, "italic")
+	v.add_child(bio)
+	v.add_child(_mechanic_card(h, st))
+	v.add_child(_back_btn("menu"))
+
+## The card for an exile's mechanic: its name, what it does, and their weapon and ultimate underneath.
+func _mechanic_card(h: Dictionary, st: Dictionary) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.032, 0.045, 0.9)
+	sb.border_color = Content.col(h.col).darkened(0.25)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 16; sb.content_margin_right = 16; sb.content_margin_top = 10; sb.content_margin_bottom = 12
+	p.add_theme_stylebox_override("panel", sb)
+	var b := UIKit.vbox(4)
+	b.add_child(UIKit.label(String(st.mechanic).to_upper(), 19, UIKit.GOLD, false, "label"))
+	b.add_child(UIKit.label(String(st.mechanic_d), 16, UIKit.TEXT, true, "body"))
+	b.add_child(UIKit.divider())
+	b.add_child(UIKit.label("Weapon: %s  \u00b7  Ultimate: %s" % [Content.WEAPONS[h.weapon].name, h.ult], 15, UIKit.DIM, true, "italic"))
+	b.add_child(UIKit.label(String(h.ult_d), 15, UIKit.DIM, true, "italic"))
+	p.add_child(b)
+	return p
+
+func _back_btn(what: String) -> Button:
+	return UIKit.button("Back", func(): act.emit(what, null), 52)
 
 # ================================================================= Upgrades and Modes (from the menu bar)
 func show_upgrades() -> void:
@@ -594,12 +678,17 @@ func show_web() -> void:
 	side.add_child(reset)
 	side.add_child(UIKit.button("Back", func(): act.emit("upgrades", null), 48))
 
-func show_codex() -> void:
+## Codex & Story: the acts (Story: what each one is, its boss, and the Rift Echoes found in it), the exiles'
+## bios, then the bestiary, lore pages, extracted powers, records and the arsenal. From the main menu (back:
+## "menu") and from Upgrades (back: "upgrades").
+func show_codex(back: String = "upgrades") -> void:
 	var v := _open(1100)
-	_title(v, "Codex")
+	_title(v, "Codex & Story", Story.TITLE)
 	var tabs := TabContainer.new()
 	tabs.custom_minimum_size = Vector2(0, 520)
 	v.add_child(tabs)
+	tabs.add_child(_scroll(_story_page(), "Story"))
+	tabs.add_child(_scroll(_exiles_page(), "Exiles"))
 	# bestiary
 	var b := UIKit.vbox(6)
 	b.name = "Bestiary"
@@ -663,7 +752,45 @@ func show_codex() -> void:
 		row.add_child(dl)
 		ar.add_child(row)
 	tabs.add_child(_scroll(ar, "Arsenal"))
-	_back(v, "upgrades")
+	_back(v, back)
+
+## The Codex's Story page: every act that is open (its title and place in the story, its lore, its boss and,
+## once cleared, how it ended) and its two Rift Echoes (the fragment once found, else where to look).
+func _story_page() -> VBoxContainer:
+	var d: Dictionary = Save.data
+	var found: Array = d.get("rift_echoes", [])
+	var open := _open_acts(d)
+	var b := UIKit.vbox(6)
+	for i in Story.ACTS.size():
+		var a: Dictionary = Story.ACTS[i]
+		var cleared: bool = i < d.cleared.size() and bool(d.cleared[i])
+		var hd := UIKit.label("%s  \u00b7  %s%s" % [a.subtitle, a.title, "   \u2713" if cleared else ""], 20, Content.col(Content.STAGES[i].acc).lerp(UIKit.TEXT, 0.3), true, "display")
+		b.add_child(hd)
+		if not open.has(i):
+			b.add_child(UIKit.label("Sealed until the act before it is cleared.", 15, Color(0.5, 0.47, 0.44), true, "italic"))
+			continue
+		b.add_child(UIKit.label(" ".join(a.intro_lines), 16, Color("cfc5b0"), true, "italic"))
+		b.add_child(UIKit.label("%s: \u201c%s\u201d" % [a.boss_name, a.boss_taunt], 15, Color("e0b0a0"), true, "body"))
+		if cleared: b.add_child(UIKit.label(String(a.victory_note), 15, Color("a8c890"), true, "italic"))
+		for k in 2:
+			var e: Dictionary = a.echoes[k]
+			if found.has(Story.echo_key(i, k)):
+				b.add_child(UIKit.label("Rift Echo: %s. %s" % [e.title, e.text], 15, Color("c9b3ff"), true, "body"))
+			else:
+				b.add_child(UIKit.label("Rift Echo: not yet heard (it waits beside an arch in this act)", 15, Color(0.5, 0.45, 0.6), true, "italic"))
+		b.add_child(UIKit.divider())
+	return b
+
+## The Codex's Exiles page: each exile's bio and mechanic.
+func _exiles_page() -> VBoxContainer:
+	var b := UIKit.vbox(8)
+	for h in Content.HEROES:
+		var st := Story.hero(String(h.id))
+		b.add_child(UIKit.label("%s  \u00b7  %s" % [String(h.name).to_upper(), st.title], 20, Content.col(h.col).lerp(UIKit.TEXT, 0.35), true, "display"))
+		b.add_child(UIKit.label(String(st.bio), 16, Color("cfc5b0"), true, "italic"))
+		b.add_child(UIKit.label("%s: %s" % [st.mechanic, st.mechanic_d], 15, UIKit.TEXT, true, "body"))
+		b.add_child(UIKit.divider())
+	return b
 
 func _scroll(c: Control, nm: String) -> ScrollContainer:
 	var s := ScrollContainer.new()
@@ -678,12 +805,19 @@ var _opt_tab := 0
 
 ## Options in three tabs (Game / Graphics / Diagnostics): on a 720-high landscape phone the single list
 ## had grown to ~25 rows with the graphics and test tools below the fold.
+## Options, in four tabs. Audio: sound on or off, Master, Music, SFX and Voice (Save.apply_audio: Master and
+## Voice are buses, Music and SFX scale their players), and the Safe sound engine. Graphics: the tier, the 3D
+## render scale, the renderer (Vulkan or OpenGL Safe Mode), the UI scale, Show FPS and the rest. Game: feel,
+## aim, controls, accessibility. Diagnostics: the self-test, benchmark and crash reports (from the main menu).
+## `back` is where Back goes: "menu", or "resume_pause" when opened from the pause menu.
+const OPT_TABS := ["Audio", "Graphics", "Game", "Diagnostics"]
+const UI_SCALES := [0.85, 1.0, 1.15, 1.3]
 func show_options(back: String = "menu") -> void:
 	var v := _open(900)
 	_title(v, "Options")
-	var tabs := _grid(3, 8)
-	for i in 3:
-		var tb := UIKit.button(["Game", "Graphics", "Diagnostics"][i], func(): _opt_tab = i; show_options(back), 46)
+	var tabs := _grid(OPT_TABS.size(), 8)
+	for i in OPT_TABS.size():
+		var tb := UIKit.button(OPT_TABS[i], func(): _opt_tab = i; show_options(back), 48)
 		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if i == _opt_tab: tb.add_theme_color_override("font_color", UIKit.GOLD)
 		else: tb.modulate = Color(0.75, 0.72, 0.7)
@@ -692,9 +826,25 @@ func show_options(back: String = "menu") -> void:
 	match _opt_tab:
 		0:
 			_toggle(v, "Sound", "sound", back)
+			_slider(v, "Master", "volume", 0.0, 1.0, back)
+			_slider(v, "Music", "music_volume", 0.0, 1.0, back)
+			_slider(v, "SFX", "sfx_volume", 0.0, 1.0, back)
+			_slider(v, "Voice", "voice_volume", 0.0, 1.0, back)
 			_toggle(v, "Sound engine: Safe (fewer voices, no ambience)", "sfx_safe", back)
-			_slider(v, "Volume", "volume", 0.0, 1.0, back)
-			_slider(v, "Voice volume", "voice_volume", 0.0, 1.0, back)
+		1:
+			_cycle(v, "Graphics tier", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
+			_cycle(v, "3D scale", "render_scale", ["Auto", "100%", "75%", "50%"], back)
+			_renderer_row(v, back)
+			_ui_scale_row(v, back)
+			_toggle(v, "Show FPS", "show_fps", back)
+			_cycle(v, "View", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
+			_cycle(v, "Frame rate cap", "frame_cap", ["Auto (%s)" % ("60" if OS.has_feature("mobile") else "none"), "30 (cool, saves battery)", "60", "None"], back)
+			_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
+			_toggle(v, "Ambient particles (fireflies, embers)", "ambient", back)
+			if not Save.opt("gfx_off").is_empty():
+				v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
+				v.add_child(UIKit.button("Turn them back on", func(): Save.set_opt("gfx_off", []); Quality.load_saved(); act.emit("options_changed", null); show_options(back), 48))
+		2:
 			_slider(v, "Screen shake", "shake", 0.0, 1.5, back)
 			_cycle(v, "Damage numbers", "dmg_numbers", ["Off", "Crits & reactions", "All"], back)
 			_cycle(v, "Auto-aim", "aim", ["Nearest", "Strongest", "Facing"], back)
@@ -706,20 +856,7 @@ func show_options(back: String = "menu") -> void:
 			_toggle(v, "Auto-equip upgrades", "auto_equip", back)
 			_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
 			_toggle(v, "Always show touch buttons", "force_touch_ui", back)
-			if back == "menu": v.add_child(UIKit.button("Replay intro", func(): act.emit("intro", null), 46))
-		1:
-			_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
-			_renderer_row(v, back)
-			_cycle(v, "View", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
-			_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
-			_cycle(v, "Frame rate cap", "frame_cap", ["Auto (%s)" % ("60" if OS.has_feature("mobile") else "none"), "30 (cool, saves battery)", "60", "None"], back)
-			_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
-			_toggle(v, "Ambient particles (fireflies, embers)", "ambient", back)
-			_toggle(v, "Show FPS", "show_fps", back)
-			if not Save.opt("gfx_off").is_empty():
-				v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
-				v.add_child(UIKit.button("Turn them back on", func(): Save.set_opt("gfx_off", []); Quality.load_saved(); act.emit("options_changed", null); show_options(back), 44))
-		2:
+		3:
 			if back != "menu":
 				var nl := UIKit.label("The tests start their own scene: open Options from the main menu to run them.", 16, UIKit.DIM, true, "italic")
 				nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -731,16 +868,27 @@ func show_options(back: String = "menu") -> void:
 				v.add_child(bb)
 				if FileAccess.file_exists(Diag.PREV):
 					v.add_child(UIKit.button("Last crash report", func():
-						show_crash(FileAccess.get_file_as_string(Diag.PREV).strip_edges().split("\n").slice(-30)), 46))
+						show_crash(FileAccess.get_file_as_string(Diag.PREV).strip_edges().split("\n").slice(-30)), 48))
 				var st: Dictionary = Save.data.get("selftest", {})
 				if not st.get("results", []).is_empty() and not st.get("running", false):
-					v.add_child(UIKit.button("Last self-test results", func(): show_selftest(st), 46))
+					v.add_child(UIKit.button("Last self-test results", func(): show_selftest(st), 48))
 			Quality.device_class()
 			var info := UIKit.label("%s  \u00b7  %s  \u00b7  %s\nDevice class: %s (Auto graphics: %s)" % [OS.get_model_name(), Quality.dev_reason, RenderingServer.get_current_rendering_method(),
 				["budget", "mid-range", "flagship"][Quality.device_class()], Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "overridden"], 14, UIKit.DIM, true, "italic")
 			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.add_child(info)
-	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null)))
+	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null), 52))
+
+## Graphics > UI scale: the canvas scale on top of the automatic one (main._ui_scale), in four steps.
+func _ui_scale_row(v: VBoxContainer, back: String) -> void:
+	var cur := float(Save.opt("ui_scale"))
+	var k := 1
+	for i in UI_SCALES.size():
+		if absf(UI_SCALES[i] - cur) < 0.01: k = i
+	_opt_row(v, "UI scale", ["Small", "Normal", "Large", "Largest"][k] + " (%d%%)" % roundi(UI_SCALES[k] * 100.0), func():
+		Save.set_opt("ui_scale", UI_SCALES[(k + 1) % UI_SCALES.size()])
+		act.emit("options_changed", null)
+		show_options(back))
 
 ## Options > Graphics > Renderer: Vulkan (the Mobile renderer) or OpenGL Safe Mode (Compatibility). The
 ## engine picks its driver before any script runs, so a change applies on the next launch (Quality.set_api).
@@ -948,7 +1096,7 @@ func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: 
 	var l := UIKit.label(label, 19, UIKit.TEXT)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(l)
-	var b := UIKit.button(value, cb, 46)
+	var b := UIKit.button(value, cb, 48)
 	b.custom_minimum_size.x = 230
 	b.add_theme_font_size_override("font_size", 17)
 	b.add_theme_color_override("font_color", UIKit.GOLD if on else UIKit.DIM)
@@ -973,7 +1121,10 @@ func _slider(v: VBoxContainer, label: String, key: String, lo: float, hi: float,
 	s.value = float(Save.opt(key))
 	s.custom_minimum_size = Vector2(0, 48)
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	s.value_changed.connect(func(x: float): Save.set_opt(key, x); l.text = "%s  %d%%" % [label, int(x * 100)])
+	s.value_changed.connect(func(x: float):
+		Save.set_opt(key, x)                          # Master and Voice: Save.apply_audio sets their buses
+		l.text = "%s  %d%%" % [label, int(x * 100)]
+		if key == "music_volume" or key == "sfx_volume": act.emit("audio_changed", null))
 	h.add_child(s)
 	v.add_child(h)
 
@@ -1054,13 +1205,35 @@ func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool) -> Button:
 	for n in v.get_children(): (n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b
 
+## Pause (the HUD's pause button, Back or Esc): Resume, Build & Stats, Gear & Crafting, Settings, Restart
+## Run and Main Menu (both confirmed first). Back from any page opened here returns here (main.back()).
 func show_pause(w: World) -> void:
 	var v := _open(700)
-	_title(v, "Paused", "%s - %s" % [Content.HEROES[w.hero].name, w.mode.capitalize()])
+	page = "pause"
+	_title(v, "Paused", "%s - %s" % [Content.HEROES[w.hero].name, (Story.act(w.stage).title if w.mode == "campaign" else w.mode.capitalize())])
 	v.add_child(UIKit.button("Resume", func(): act.emit("resume", null)))
-	v.add_child(UIKit.button("Gear & Crafting", func(): show_stash(true)))
-	v.add_child(UIKit.button("Options", func(): show_options("resume_pause")))
-	v.add_child(UIKit.button("Abandon run", func(): act.emit("abandon", null)))
+	var row := _grid(2, 8)
+	for e in [["Build & Stats", func(): show_build(w)], ["Gear & Crafting", func(): show_stash(true)], ["Settings", func(): show_options("resume_pause")]]:
+		var b := UIKit.button(e[0], e[1], 54)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	v.add_child(row)
+	var row2 := _grid(2, 8)
+	var rb := UIKit.button("Restart Run", func(): confirm("Restart this run?", "You keep the gold and Echoes it has earned so far, and start the same run again.", "Restart", "restart"), 54)
+	var mb := UIKit.button("Main Menu", func(): confirm("Leave this run?", "You keep the gold and Echoes it has earned so far. The run itself ends here.", "Leave", "leave"), 54)
+	for b2 in [rb, mb]:
+		b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row2.add_child(b2)
+	v.add_child(row2)
+	var cl := UIKit.label(contagion_line(w), 16, Color("ffa15a"), true, "italic")
+	cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if cl.text != "": v.add_child(cl)
+
+## Pause > Build & Stats: the weapons and their links, the perks, and how the run is going (and the
+## Emberwitch's contagion, the Warden's vaults, the Sparkcaller's ricochets, the Stormwright's conductions).
+func show_build(w: World) -> void:
+	var v := _open(820)
+	_title(v, "Build & Stats", "%s  \u00b7  level %d" % [Content.HEROES[w.hero].name, w.lvl])
 	v.add_child(_section("Your build"))
 	var build := ""
 	for id in w.weapons:
@@ -1070,12 +1243,37 @@ func show_pause(w: World) -> void:
 	var perks := []
 	for id in w.perks: perks.append("%s %d" % [Content.PERKS[id].name, w.perks[id]])
 	if not perks.is_empty(): build += "  \u00b7  ".join(perks)
-	var bl := UIKit.label(build.strip_edges(), 16, UIKit.DIM, true, "italic")
+	var bl := UIKit.label(build.strip_edges(), 16, UIKit.TEXT, true, "body")
 	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(bl)
-	var cl := UIKit.label(contagion_line(w), 16, Color("ffa15a"), true, "italic")
-	cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if cl.text != "": v.add_child(cl)
+	v.add_child(_section("This run"))
+	var m := w.metrics
+	var lines := ["Time %s  \u00b7  %d slain  \u00b7  best streak %d" % [Hud._fmt(w.t), w.kills, w.best_combo],
+		"Damage dealt %d  \u00b7  taken %d  \u00b7  %d reactions" % [int(m.get("dmg_dealt", 0.0)), int(m.get("dmg_taken", 0.0)), int(m.get("reactions", 0))]]
+	var syn := {"warden": ["warden_vaults", "vault slams"], "spark": ["spark_ricochets", "ricochets"], "storm": ["storm_conducts", "conductions"]}
+	if syn.has(w.hero_id): lines.append("%d %s" % [int(m.get(syn[w.hero_id][0], 0)), syn[w.hero_id][1]])
+	if int(m.get("echoes", 0)) > 0: lines.append("%d Rift Echo%s heard" % [int(m.echoes), "" if int(m.echoes) == 1 else "es"])
+	var cl := contagion_line(w)
+	if cl != "": lines.append(cl)
+	for ln in lines:
+		var l := UIKit.label(ln, 16, Color("cfc5b0"), true, "italic")
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
+	v.add_child(UIKit.button("Back", func(): show_pause(w), 52))
+
+## A yes/no question over the current page (Restart Run, Main Menu): `what` goes to main as an action on yes;
+## no (or Back) returns to the pause menu.
+func confirm(title: String, body: String, yes_txt: String, what: String) -> void:
+	var v := _open(620)
+	page = "confirm"
+	_title(v, title, body)
+	var row := _grid(2, 10)
+	var yes := UIKit.button(yes_txt, func(): act.emit(what, null), 56)
+	var no := UIKit.button("Cancel", func(): act.emit("resume_pause", null), 56)
+	for b in [no, yes]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	v.add_child(row)
 
 ## The Emberwitch's contagion so far this run (World.metrics), for the pause menu; empty for other heroes.
 static func contagion_line(w: World) -> String:

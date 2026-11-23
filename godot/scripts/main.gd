@@ -18,6 +18,7 @@ var crowd: CrowdCompute
 var subtitles: Subtitles          # voice lines' subtitle banner, on its own layer over everything
 var voice_dir: VoiceDirector       # which voice line a run says when (VoiceBank decides what is heard)
 var intro: IntroScreen             # the narrated cold open, while it is up
+var cold_open: ColdOpen            # ... and its 3D half (Act I under the narration), on the 3D renderer
 var bot_drive := false          # tests/screenshots: input comes from a Bot instead of devices
 
 func _ready() -> void:
@@ -80,16 +81,56 @@ func _ready() -> void:
 	elif not bool(Save.data.get("intro_seen", false)) and not bot_drive:
 		show_intro()
 
-## The narrated cold open (IntroScreen) over the title menu: on first launch, and from Options > Replay intro.
+## The narrated cold open: on first launch, and from Main Menu > Replay Intro. On the 3D renderer the words sit
+## over Act I itself (ColdOpen: the run's WorldView3D, its camera sweeping down as the Rift Shard strikes); the
+## title stage and menu step aside until it hands over, then the title fades in.
 func show_intro() -> void:
 	if intro != null: return
+	state = "intro"
+	screens.close()
+	menu_stage.hide_stage()
 	intro = IntroScreen.new()
 	intro.finished.connect(_on_intro_done)
+	# headless (the tests, the gate's boot check) has no display to show Act I on: the words run over black
+	if use_3d() and DisplayServer.get_name() != "headless":
+		cold_open = ColdOpen.new()
+		add_child(cold_open)
+		var total := 0.0
+		var vb := VoiceBank.current
+		if vb != null:
+			for i in vb.variants("narrator", "intro"): total += vb.duration_of("narrator", "intro", i) + IntroScreen.GAP_S
+		cold_open.begin(_view_3d(), int(Save.data.hero), total)
+		intro.cold = cold_open
 	ui.add_child(intro)
 
 func _on_intro_done() -> void:
 	if intro != null: intro.queue_free()
 	intro = null
+	if cold_open != null:
+		cold_open.end()
+		cold_open.queue_free()
+		cold_open = null
+	_menu()
+	_fade_in(0.5)
+
+## A black veil over everything that lifts over `secs` (the cold open's hand-over to the title stage).
+func _fade_in(secs: float) -> void:
+	var r := ColorRect.new()
+	r.color = Color.BLACK
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(r)
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var tw := r.create_tween()
+	tw.tween_property(r, "color:a", 0.0, secs)
+	tw.tween_callback(r.queue_free)
+
+## The 3D renderer, created on first use (a run's or the cold open's) and kept: it draws nothing while no world is bound.
+func _view_3d() -> WorldView3D:
+	if view3d == null:
+		view3d = WorldView3D.new()
+		add_child(view3d)
+		move_child(view3d, 0)
+	return view3d
 
 ## GPU crowd separation (a compute shader on a local RenderingDevice). Option "gpu_crowd":
 ## 0 Auto = off on phones (first S21 test crashed seconds into a run; CPU separation is cheap), on
@@ -237,6 +278,8 @@ func start(cfg: Dictionary) -> void:
 	_bind_view()
 	Diag.mark("view bound")
 	hud.bind(world)
+	hud.act_banner(world)
+	world.moment.connect(_on_moment)
 	touch.world = world
 	hud.visible = true
 	touch.visible = true
@@ -257,10 +300,7 @@ func _bind_view() -> void:
 		if view != null:
 			view.queue_free()
 			view = null
-		if view3d == null:
-			view3d = WorldView3D.new()
-			add_child(view3d)
-			move_child(view3d, 0)
+		_view_3d()
 		overlay.view = view3d
 		view3d.bind(world)
 		view3d.cam.make_current()
@@ -291,6 +331,20 @@ func _sim(dt: float) -> void:
 		world.step(FixedStep.STEP)
 	if view3d != null: view3d.alpha = _clock.alpha()
 
+## Run moments main presents itself (VoiceDirector voices the rest): a Rift Echo's exchange, written, in the
+## subtitle banner: the exile's remark, then the narrator reading the fragment (5 s, never pausing the run).
+func _on_moment(kind: String, info: Dictionary) -> void:
+	if kind != "echo" or subtitles == null: return
+	var hid := String(info.get("hero", "warden"))
+	var k := int(info.get("k", 0))
+	var frag := Story.echo(int(info.get("act", 0)), k)
+	var cast: Dictionary = VoiceBank.current.casting if VoiceBank.current != null else {}
+	var hc: Dictionary = cast.get(hid, {})
+	var nc: Dictionary = cast.get("narrator", {})
+	subtitles.exchange([
+		[String(hc.get("name", hid.capitalize())), Color(String(hc.get("color", "e9e1cf"))), String(Story.ECHO_REPLIES.get(hid, ["..."])[k % 2]), 2.2],
+		[String(nc.get("name", "Narrator")), Color(String(nc.get("color", "e8dcc0"))), String(frag.text), 2.8]])
+
 func _on_level() -> void:
 	if state != "play": return
 	state = "levelup"
@@ -318,6 +372,41 @@ func _resume() -> void:
 	if world == null: return
 	state = "play"
 	screens.close()
+
+## Pause > Main Menu (confirmed): the run is banked as an abandoned one (World.end_run quiet: no death, no
+## results screen, no death line), every voice stops, and the title comes back with the world freed.
+func _leave_run() -> void:
+	if world != null and not world.over:
+		if voice_dir != null: voice_dir.unbind()
+		world.end_run(false, true)
+	VoiceBank.stop_all()
+	_menu()
+
+## Pause > Restart Run (confirmed): the same, then the same run again.
+func _restart_run() -> void:
+	if world != null and not world.over:
+		if voice_dir != null: voice_dir.unbind()
+		world.end_run(false, true)
+	VoiceBank.stop_all()
+	start(last_cfg)
+
+## Android Back (and its desktop twin, Esc outside a run). Never quits (project setting quit_on_go_back is off):
+## in a run it toggles the pause menu (from a page opened inside the pause menu: back to the pause menu); in the
+## title's pages it returns to the main menu; on the title itself it does nothing; a level-up, merchant or
+## bargain waits for its choice.
+func back() -> void:
+	if intro != null:
+		intro.skip()
+		return
+	match state:
+		"play": _pause()
+		"pause":
+			if screens.page != "pause": screens.show_pause(world)
+			else: _resume()
+		"menu":
+			if screens.page != "menu": _menu()
+		"levelup", "merchant", "whisper": pass
+		_: _menu()
 
 ## World-side first-occurrence breadcrumbs (see Diag.first).
 func _firsts() -> void:
@@ -561,7 +650,7 @@ func _process(dt: float) -> void:
 		_sim(dt)
 		if world != null: Sfx.fire_bed(world.contagion.burning if world.contagion != null else 0, dt)
 	elif state == "pause" and Input.is_action_just_pressed("pause"):
-		_resume()
+		back()                                      # a page inside the pause menu: back to it; the pause menu: resume
 
 func _notification(what: int) -> void:
 	# the safe-mode sentinel follows Diag's clean-end lifecycle: disarmed in the background and on quit
@@ -572,20 +661,24 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		_pause()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:      # Android back button
-		if state == "play": _pause()
-		elif state == "pause": _resume()
-		elif state == "menu": pass
-		else: _menu()
+		back()
 
 # ================================================================= screen actions
 func _on_act(what: String, arg) -> void:
 	match what:
 		"menu": _menu()
-		"hero":
+		"hero":                                      # the showcase: framed, a cast then idle, and their intro line
 			menu_stage.show_stage(int(arg))
 			menu_stage.showcase()
-			if VoiceBank.current != null: VoiceBank.current.preview_hero(String(Content.HEROES[int(arg)].id))
+			VoiceBank.stop_all()
+			VoiceBank.play(String(Content.HEROES[int(arg)].id), "intro", 0)
 		"intro": show_intro()
+		"new_campaign": start({"mode": "campaign", "stage": 0})
+		"heroes": screens.show_heroes()
+		"build": if world != null: screens.show_build(world)
+		"restart": _restart_run()
+		"leave": _leave_run()
+		"audio_changed": Sfx.apply_options()
 		"campaign": start({"mode": "campaign", "stage": int(arg)})
 		"rift": start({"mode": "rift", "gr": int(arg)})
 		"atlas":
@@ -599,7 +692,7 @@ func _on_act(what: String, arg) -> void:
 		"stash": screens.show_stash(false)
 		"upgrades": screens.show_upgrades()
 		"endgame": screens.show_endgame()
-		"codex": screens.show_codex()
+		"codex": screens.show_codex(String(arg) if arg != null else "upgrades")
 		"web": screens.show_web()
 		"prophecy": screens.show_prophecies()
 		"daily": screens.show_daily()
@@ -614,6 +707,7 @@ func _on_act(what: String, arg) -> void:
 				world.aim_mode = int(Save.opt("aim"))
 				_bind_view()
 			_render_scale()
+			_ui_scale()
 			Sfx.apply_options()
 			_crowd_setup()
 			if world != null: world.crowd = crowd

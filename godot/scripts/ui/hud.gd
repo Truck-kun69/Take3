@@ -166,11 +166,21 @@ var _banner_scaled := false
 var _flame_o := PackedVector2Array()
 var _flame_i := PackedVector2Array()
 
-func show_banner(t: String, s: String, c: Color) -> void:
+var banner_dur := 2.8
+func show_banner(t: String, s: String, c: Color, dur: float = 2.8) -> void:
 	banner_t.text = t.to_upper()
 	banner_s.text = s
 	banner_t.add_theme_color_override("font_color", c.lerp(Color("f6e7c8"), 0.35))
-	banner_time = 2.8
+	banner_dur = maxf(0.8, dur)
+	banner_time = banner_dur
+
+const ACT_BANNER_S := 3.5
+## A campaign run opens on its act (Story): the title and, under it, the act's place in the story and the
+## first line of its lore, for ACT_BANNER_S.
+func act_banner(world: World) -> void:
+	if world.mode != "campaign": return
+	var a := Story.act(world.stage)
+	show_banner(String(a.title), "%s\n%s" % [a.subtitle, a.intro_lines[0]], Content.col(Content.STAGES[world.stage].acc), ACT_BANNER_S)
 
 func show_toast(t: String, c: Color) -> void:
 	if toasts.get_child_count() > 4:
@@ -276,7 +286,7 @@ func _process(dt: float) -> void:
 		plate_dirty = true
 	if boss_on:
 		boss_bar.value = bf
-		var nm := "Rift Guardian" if w.mode == "rift" else ("The Shard Herald" + ("   ·   Enraged" if w.bosses.H.get("enraged", false) else "   ·   Phase %d" % w.bosses.herald_phase()) if w.mode == "pinnacle" else String(Content.STAGES[w.stage].boss))
+		var nm := "Rift Guardian" if w.mode == "rift" else ("The Shard Herald" + ("   ·   Enraged" if w.bosses.H.get("enraged", false) else "   ·   Phase %d" % w.bosses.herald_phase()) if w.mode == "pinnacle" else String(Story.act(w.stage).boss_name))
 		_put("bn", boss_name, nm.to_upper())
 		if plate_dirty:
 			var bwid := minf(vs.x * 0.5, 640.0)
@@ -307,10 +317,10 @@ func _process(dt: float) -> void:
 	var a := 0.0
 	if banner_time > 0.0:
 		banner_time -= dt
-		a = clampf(banner_time / 0.5, 0, 1) * clampf((2.8 - banner_time) / 0.2, 0, 1)
+		a = clampf(banner_time / 0.5, 0, 1) * clampf((banner_dur - banner_time) / 0.2, 0, 1)
 	if banner_box.modulate.a != a: banner_box.modulate.a = a
 	if a > 0.0 or _banner_scaled:
-		var punch := clampf(1.0 - (2.8 - banner_time) / 0.22, 0.0, 1.0) if banner_time > 0.0 else 0.0
+		var punch := clampf(1.0 - (banner_dur - banner_time) / 0.22, 0.0, 1.0) if banner_time > 0.0 else 0.0
 		banner_box.scale = Vector2.ONE * (1.0 + 0.12 * punch * punch)        # lands with a small punch
 		_banner_scaled = punch > 0.0
 	var up_txt := upgrade_lbl.text
@@ -355,6 +365,8 @@ func _draw() -> void:
 	for u in w.boss_uids:
 		var i := w.sw.index_of(u)
 		if i >= 0: targets.append([w.sw.pos[i], Color("ff4a5e")])
+	for e in w.rift_echoes:
+		if not e.taken: targets.append([e.pos, Color("c48aff")])
 	var c := vs * 0.5
 	var rect := Rect2(Vector2(50, 120), vs - Vector2(100, 300))
 	for t in targets:

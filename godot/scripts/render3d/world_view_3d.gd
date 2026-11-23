@@ -38,6 +38,13 @@ const FOE_STRIDE := 20
 var w: World
 var cam: Camera3D
 var test_nudge := Vector3.ZERO      # tests/shimmer.gd moves the camera by a fraction of a pixel
+## The cold open (ColdOpen) flies the camera itself: cine_pos looking at cine_look, the hero hidden until
+## hide_hero clears. Everything that follows the camera (ground tiles, water, sun, terrain texture) follows it.
+var cine := false
+var cine_pos := Vector3.ZERO
+var cine_look := Vector3.ZERO
+var hide_hero := false
+const CINE_FOG := 0.0012
 var env: Environment
 var sun: DirectionalLight3D
 var torch: OmniLight3D
@@ -501,9 +508,14 @@ func _camera(dt: float) -> void:
 	var off := Vector3(0, sin(pitch), cos(pitch)) * dist
 	var tr := w.shake * w.shake * float(Save.opt("shake"))
 	var shake := Vector3(sin(time * 53.0), sin(time * 41.0) * 0.6, cos(time * 47.0)) * tr * 16.0
-	cam.position = _cam_target + off + shake + test_nudge
-	cam.look_at(_cam_target + shake * 0.5, Vector3.UP)
-	cam.rotate_object_local(Vector3.FORWARD, sin(time * 37.0) * tr * 0.012)
+	if cine:
+		_cam_target = cine_look
+		cam.position = cine_pos + shake
+		cam.look_at(cine_look + shake * 0.5, Vector3.UP)
+	else:
+		cam.position = _cam_target + off + shake + test_nudge
+		cam.look_at(_cam_target + shake * 0.5, Vector3.UP)
+		cam.rotate_object_local(Vector3.FORWARD, sin(time * 37.0) * tr * 0.012)
 	ground.position = Vector3(snappedf(_cam_target.x, GROUND_Q), 0, snappedf(_cam_target.z, GROUND_Q))
 	water.position = Vector3(snappedf(_cam_target.x, 64.0), w.terrain.level, snappedf(_cam_target.z, 64.0))
 	water_mat.set_shader_parameter("time", time)
@@ -544,7 +556,10 @@ func _lighting(dt: float) -> void:
 	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(AMBIENT_ENERGY, AMBIENT_FLOOR, gl), minf(1.0, dt * 2.0))
 	torch.light_energy = TORCH_ENERGY * lerpf(1.0, 1.4, gl) * flick * LIGHT_GAIN
 	torch.omni_range = TORCH_RANGE * lerpf(1.0, 0.87, gl)
-	env.fog_density = lerpf(env.fog_density, lerpf(0.0007, 0.0014, gl), minf(1.0, dt))
+	# the cold open looks far across the Hollow: thicker fog, over the sky too, so the streamed ground fades
+	# into the dark instead of ending at an edge
+	env.fog_density = lerpf(env.fog_density, CINE_FOG if cine else lerpf(0.0007, 0.0014, gl), minf(1.0, dt * (4.0 if cine else 1.0)))
+	env.fog_sky_affect = 1.0 if cine else 0.0
 
 # ================================================================= props
 ## Props are batched per 640-unit chunk and kind (optimisation pass): a cell off screen is frustum-culled
@@ -1104,7 +1119,7 @@ func _hero(dt: float) -> void:
 		"vel": w.vel.length(), "roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "jump": _hero_jp,
 		"hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
 	hero.position.y += hero_y
-	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
+	hero.visible = not hide_hero and not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
 	# contact shadow under the hero on every tier (Low has no shadow maps): it shrinks and fades as the
 	# hero rises, so a jump reads as height above the ground
 	var g := ground_y(hero_p)

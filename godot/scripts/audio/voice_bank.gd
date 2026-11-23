@@ -151,6 +151,20 @@ func line(speaker: String, cue: String, variant: int) -> Dictionary:
 	var list: Array = _cues.get("%s/%s" % [speaker, cue], [])
 	return list[variant] if variant >= 0 and variant < list.size() else {}
 
+## How long a line speaks when played: its clip's length once the voice pack is in, the manifest's estimate
+## until then (the cold open lays its camera sweep over the sum before it starts).
+func duration_of(speaker: String, cue: String, variant: int) -> float:
+	var ln := line(speaker, cue, variant)
+	if ln.is_empty(): return 0.0
+	var path := String(ln.file)
+	if ResourceLoader.exists(path):
+		var st := cache_get(path)
+		if st == null:
+			st = load(path) as AudioStream
+			if st != null: cache_put(path, st)
+		if st != null and st.get_length() > 0.0: return st.get_length()
+	return float(ln.duration_fallback_s)
+
 # ---------------------------------------------------------------- playback
 ## Plays one line of speaker's cue (variant -1: any but the one played last). Returns {played, using_pack,
 ## duration, text, speaker, id, cue, variant}, or {played: false, reason}. opts: "name" overrides the subtitle's
@@ -187,7 +201,7 @@ func say(speaker: String, cue: String, variant: int = -1, opts: Dictionary = {})
 		stream = chime(speaker)
 	var p := _free_player()
 	p.bus = _bus(speaker)
-	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")))), -60.0, 6.0)
+	p.volume_db = 0.0                    # the Master and Voice buses carry the player's levels (Save.apply_audio)
 	p.stream = stream
 	if bool(Save.opt("sound")) and _device: p.play()
 	_cur = {"line": ln, "start": now, "ends": now + dur, "player": p, "using_pack": using_pack}

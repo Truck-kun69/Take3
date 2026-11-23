@@ -46,28 +46,31 @@ func _process(dt: float) -> void:
 	match step:
 		-2: main.show_intro()
 		-1: await _snap("u0_intro"); main.intro.skip(); main._on_act("hero", int(Save.data.hero))
-		0: await _snap("u1_menu"); main.screens.show_codex()
-		1: await _snap("u2_codex"); main.screens.show_options("menu")
-		2: await _snap("u3_options"); main.screens._sel_item = 2; main.screens.show_stash(false)
-		3:
+		0: await _snap("u1_menu"); main._on_act("heroes", null)
+		1: await _snap("u1b_heroes"); main.screens.show_codex("menu")
+		2: await _snap("u2_codex"); main.screens.show_options("menu")
+		3: await _snap("u3_options"); main.screens._sel_item = 2; main.screens.show_stash(false)
+		4:
 			await _snap("u4_stash")
 			main.start({"mode": "campaign", "stage": 0})
 			main.world.stats.set_source("shot", [["max_hp", "add", 400.0]])
-		4:
+		5:
 			for k in 90: main.world.step(0.033)
 			main.world.pending = 1; main._on_level()
-		5: await _snap("u5_levelup"); main.screens.close(); main.state = "play"; main.world.pending = 0
-		6:
+		6: await _snap("u5_levelup"); main.screens.close(); main.state = "play"; main.world.pending = 0
+		7:
 			for k in 60: main.world.step(0.033)
 			main.world.light = 0.12               # show the lantern below the Engulfed line
 			await _snap("u6_hud")
 			main._pause()
-		7:
-			await _snap("u7_pause"); main._resume()
+		8: await _snap("u7_pause"); main._on_act("build", null)
+		9: await _snap("u7c_build"); main.screens.show_pause(main.world); main.screens.confirm("Leave this run?", "You keep the gold and Echoes it has earned so far. The run itself ends here.", "Leave", "leave")
+		10:
+			await _snap("u7d_confirm"); main._resume()
 			main.world.whisper_offer = ["blood_price", "long_night"]; main.state = "whisper"; main.screens.show_whisper(main.world)
-		8:
+		11:
 			await _snap("u7b_whisper"); main._on_act("bargain", "ember_pact"); main.world.end_run(false)
-		9: pass
-		10: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
-		11: await _snap("u9_web"); get_tree().quit()
+		12: pass
+		13: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
+		14: await _snap("u9_web"); get_tree().quit()
 	step += 1

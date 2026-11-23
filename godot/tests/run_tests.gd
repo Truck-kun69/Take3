@@ -1481,7 +1481,7 @@ func _voice_tests() -> void:
 	var p2 := hb.preview_hero("ember")
 	ok(bool(p1.played) and bool(p2.played) and hb.active_id() == "ember_intro_0", "picking another exile stops the last intro and plays the new one's (%s)" % hb.active_id())
 	hb.queue_free()
-	# the cold open: four narrator beats, each held for its line + 0.6 s; a tap moves on, Skip ends it
+	# the cold open: four narrator beats, each held for its line + 0.5 s; a tap moves on, Skip ends it
 	var ib := _voice_bank()
 	var intro := IntroScreen.new()
 	intro.bank = ib
@@ -1492,10 +1492,10 @@ func _voice_tests() -> void:
 	var adv := func(x: float) -> void:
 		ib.step(x)
 		intro.step(x)
-	adv.call(d0 + 0.6 - 0.05)
+	adv.call(d0 + IntroScreen.GAP_S - 0.05)
 	var still0 := intro.beat == 0
 	adv.call(0.1)
-	ok(b0 == "narrator_intro_0" and still0 and intro.beat == 1 and ib.active_id() == "narrator_intro_1", "the intro holds each beat for its line + 0.6 s, then plays the next")
+	ok(IntroScreen.GAP_S == 0.5 and b0 == "narrator_intro_0" and still0 and intro.beat == 1 and ib.active_id() == "narrator_intro_1", "the intro holds each beat for its line + 0.5 s, then plays the next")
 	intro.tap()
 	ok(intro.beat == 2 and ib.active_id() == "narrator_intro_2" and intro.shown_text() == String(ib.entries["narrator_intro_2"].text), "a tap moves to the next beat at once, cutting the narrator off; the text is the manifest's")
 	intro.skip()

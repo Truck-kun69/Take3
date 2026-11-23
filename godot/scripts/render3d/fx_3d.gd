@@ -21,6 +21,7 @@ const MARK_CAP := 96
 const MARK_LIFT := 0.4             # marks lie this far above the ground (clear of its depth, under decals at 0.5)
 const ESHOT_RING := Color(1.0, 0.08, 0.46)      # enemy shots' ring: magenta-crimson
 const DECAL_POOL := 110
+static var _headless := DisplayServer.get_name() == "headless"
 
 var glow_mm: MultiMeshInstance3D
 var _gb := PackedFloat32Array()
@@ -176,6 +177,7 @@ void fragment() {
 
 func bind(world: World) -> void:
 	w = world
+	_shards.clear()
 	d_n = 0
 	s_n = 0
 	_marks.clear()
@@ -190,6 +192,8 @@ func step(dt: float) -> void:
 	(beam_mm.material_override as ShaderMaterial).set_shader_parameter("time", time)
 	decal_mat.set_shader_parameter("time", time)
 	_consume_feed()
+	_step_shards(dt)
+	_echo_shards()
 	_sim_debris(dt)
 	_sim_sparks(dt)
 	var gn := 0
@@ -234,6 +238,10 @@ func light_candidates() -> Array:
 		if pc >= 3: break
 		out.append([Vector3(p.pos.x, view.ground_y(p.pos) + 16.0, p.pos.y), p.col, 1.2, 90.0])
 		pc += 1
+	for e in w.rift_echoes:
+		if not e.taken:
+			var ep: Vector2 = e.pos
+			out.append([Vector3(ep.x, view.ground_y(ep) + 45.0, ep.y), Color(0.7, 0.5, 1.0), 1.0, 180.0])
 	var cg := w.contagion
 	if cg != null:
 		for b in cg.beacons.slice(0, 2):                  # burning trunks: a low, flickering glow
@@ -575,6 +583,70 @@ func _ribbon(pts: PackedVector3Array, width: float, col: Color) -> void:
 		bolt_mesh.surface_set_uv(Vector2(1, 1)); bolt_mesh.surface_add_vertex(b + side)
 		bolt_mesh.surface_set_uv(Vector2(1, 0)); bolt_mesh.surface_add_vertex(b - side)
 
+# ================================================================= the cold open's Rift Shard
+## A Rift Shard (ColdOpen): it streaks from `from` (high in the sky) to `to` on the ground over `life` seconds,
+## a white-violet head with a trail of sparks and a ribbon behind it, then strikes: a flash, a shockwave, a
+## scorch, a spray of rubble, and the rift's glow lingering where it landed. Heights are world heights.
+var _shards: Array = []           # {from, to, t, life, hit, glow}
+signal shard_struck(at: Vector3)
+func shard(from: Vector3, to: Vector3, life: float) -> void:
+	_shards.append({"from": from, "to": to, "t": 0.0, "life": maxf(0.1, life), "hit": false, "glow": 0.0})
+
+func shard_head(s: Dictionary) -> Vector3:
+	var k := clampf(float(s.t) / float(s.life), 0.0, 1.0)
+	return (s.from as Vector3).lerp(s.to, pow(k, 1.6))    # accelerating down out of the sky
+
+func _step_shards(dt: float) -> void:
+	for s in _shards:
+		s.t += dt
+		var to: Vector3 = s.to
+		if not s.hit:
+			var h := shard_head(s)
+			ext_glow.append([h, 46.0, Color(0.92, 0.85, 1.0), 0.0])
+			ext_glow.append([h, 120.0, Color(0.6, 0.35, 1.0, 0.5), 0.0])
+			for i in 3:
+				_spark(h, Vector3(randf_range(-60, 60), randf_range(-20, 80), randf_range(-60, 60)), Color(0.8, 0.6, 1.0), randf_range(0.4, 0.9), randf_range(4.0, 8.0))
+			add_light(h, Color(0.75, 0.55, 1.0), 4.0, 500.0, 0.05)
+			if float(s.t) >= float(s.life):
+				s.hit = true
+				_shard_strike(to)
+		else:
+			s.glow = minf(1.0, float(s.glow) + dt * 0.8)
+			ext_glow.append([to + Vector3(0, 40, 0), 90.0 + 12.0 * sin(time * 3.0), Color(0.55, 0.3, 1.0, 0.55 * float(s.glow)), 0.0])
+			if randf() < 0.5:
+				_spark(to + Vector3(randf_range(-30, 30), 5.0, randf_range(-30, 30)), Vector3(randf_range(-15, 15), randf_range(90, 220), randf_range(-15, 15)), Color(0.7, 0.5, 1.0), randf_range(0.6, 1.2), randf_range(3.0, 6.0))
+
+func _shard_strike(to: Vector3) -> void:
+	var p := Vector2(to.x, to.z)
+	add_light(to + Vector3(0, 80, 0), Color(0.8, 0.6, 1.0), 12.0, 900.0, 1.4)
+	_mark(p, 140.0, 1)
+	for i in 50:
+		var a := randf() * TAU
+		_debris(to + Vector3(cos(a) * 20.0, 8.0, sin(a) * 20.0), Vector3(cos(a) * randf_range(150, 420), randf_range(280, 620), sin(a) * randf_range(150, 420)), Color(0.3, 0.27, 0.32), randf_range(5.0, 14.0), randf_range(1.2, 2.2))
+	for i in 90:
+		var a2 := randf() * TAU
+		_spark(to + Vector3(0, 12, 0), Vector3(cos(a2) * randf_range(200, 620), randf_range(60, 520), sin(a2) * randf_range(200, 620)), Color(0.85, 0.7, 1.0).lerp(Color.WHITE, randf() * 0.5), randf_range(0.5, 1.3), randf_range(4.0, 9.0))
+	if w != null:
+		w.fx.append({"k": "ring", "pos": p, "r": 0.0, "max": 300.0, "col": Color(0.75, 0.5, 1.0), "life": 0.9, "t": 0.0})
+	shard_struck.emit(to)
+
+func clear_shards() -> void:
+	_shards.clear()
+
+## The act's Rift Echoes (World.rift_echoes) until taken: a violet crystal of light hovering at chest height,
+## breathing, shedding motes upward (and a light candidate, in light_candidates).
+func _echo_shards() -> void:
+	if w == null: return
+	for e in w.rift_echoes:
+		if e.taken: continue
+		var p: Vector2 = e.pos
+		var gy := view.ground_y(p)
+		var br := 0.5 + 0.5 * sin(time * 2.2 + float(e.k) * 1.7)
+		ext_glow.append([Vector3(p.x, gy + 38.0 + 4.0 * sin(time * 1.3), p.y), 26.0 + 6.0 * br, Color(0.9, 0.82, 1.0), 0.0])
+		ext_glow.append([Vector3(p.x, gy + 38.0, p.y), 70.0 + 14.0 * br, Color(0.6, 0.35, 1.0, 0.45), 0.0])
+		if randf() < 0.25:
+			_spark(Vector3(p.x + randf_range(-14, 14), gy + 20.0, p.y + randf_range(-14, 14)), Vector3(randf_range(-10, 10), randf_range(60, 140), randf_range(-10, 10)), Color(0.75, 0.6, 1.0), randf_range(0.6, 1.1), randf_range(2.0, 4.0))
+
 ## The Emberwitch's fire between events: embers rising off every Incineration zone, flames off every lit
 ## trunk (Contagion.zones, beacons). Fewer on the Low tier.
 func _contagion(_dt: float) -> void:
@@ -601,6 +673,8 @@ func _lightning() -> void:
 	var any := false
 	for f in w.fx:
 		if f.k == "zap" or f.k == "arc" or f.k == "fire_arc": any = true
+	for s in _shards:
+		if not s.hit: any = true
 	if not any: return
 	bolt_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, bolt_mat)
 	for f in w.fx:
@@ -637,6 +711,16 @@ func _lightning() -> void:
 				pts3.append(Vector3(q.x, 16.0 + 4.0 * lift * u * (1.0 - u), q.y))
 			_ribbon(pts3, 4.0 * k + 1.5, col)
 			_ribbon(pts3, 1.5, Color(1.0, 0.9, 0.6, k))
+	for s in _shards:                    # the Rift Shard's trail: heights over the ground, as the ribbon shader wants
+		if s.hit: continue
+		var head := shard_head(s)
+		var dir := ((s.from as Vector3) - (s.to as Vector3)).normalized()
+		var trail := PackedVector3Array()
+		for q in 6:
+			var tp: Vector3 = head + dir * (q * 55.0)
+			trail.append(Vector3(tp.x, tp.y - view.ground_y(Vector2(tp.x, tp.z)), tp.z))
+		_ribbon(trail, 16.0, Color(0.7, 0.45, 1.0, 0.85))
+		_ribbon(trail, 5.0, Color(1.0, 0.95, 1.0, 1.0))
 	bolt_mesh.surface_end()
 
 # ================================================================= ground decals
@@ -647,6 +731,7 @@ func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: flo
 	Diag.first("decal kind %d" % int(kind))
 	d.visible = true
 	d.transform = Transform3D(xform_basis, Vector3(pos.x, y, pos.y))
+	if _headless: return                 # the dummy renderer keeps no materials: setting their instance uniforms only logs errors
 	d.set_instance_shader_parameter("col", col)
 	d.set_instance_shader_parameter("kind", kind)
 	d.set_instance_shader_parameter("prog", prog)
