@@ -48,7 +48,12 @@ var arc_t := PackedFloat32Array()     # arcane elites: seconds to their next orb
 var clock := 0.0                      # World.t, set each step
 # statuses: one stack count and one timer per DoT element, timers for the rest
 var burn := PackedFloat32Array()
-var burn_t := PackedFloat32Array()
+var burn_t := PackedFloat32Array()   # seconds of burning left: the fire status and the Emberwitch's Burn both run on it
+# the Emberwitch's contagion (Contagion): Burn stacks 0..MAX_BURN_STACKS that ramp, spread and conflagrate
+var burn_stacks := PackedInt32Array()
+var burn_dps := PackedFloat32Array()      # one stack's damage per second (from the spell that lit it)
+var burn_spread_cd := PackedFloat32Array() # seconds until this foe can pass its fire on again
+var burn_gen := PackedInt32Array()        # spreads between it and the fire that lit it (0 direct .. MAX_GEN)
 var pois := PackedFloat32Array()
 var pois_t := PackedFloat32Array()
 var bleed := PackedFloat32Array()
@@ -71,11 +76,11 @@ func _init() -> void:
 		v.resize(CAP)
 		set(a, v)
 	for a in ["hp", "mhp", "shield", "spd", "rad", "dmg", "xp", "flash", "ai_t", "hit_t", "burn", "burn_t", "pois", "pois_t", "bleed", "bleed_t",
-			"chill_t", "shock_t", "freeze_t", "cond_t", "react_cd", "ee_t", "dot_acc", "born", "atk_t", "hit_at", "arc_t"]:
+			"chill_t", "shock_t", "freeze_t", "cond_t", "react_cd", "ee_t", "dot_acc", "born", "atk_t", "hit_at", "arc_t", "burn_dps", "burn_spread_cd"]:
 		var f: PackedFloat32Array = get(a)
 		f.resize(CAP)
 		set(a, f)
-	for a in ["ai_s", "kind", "flags", "affix", "uid", "tag", "ee_el"]:
+	for a in ["ai_s", "kind", "flags", "affix", "uid", "tag", "ee_el", "burn_stacks", "burn_gen"]:
 		var p: PackedInt32Array = get(a)
 		p.resize(CAP)
 		set(a, p)
@@ -97,6 +102,7 @@ func add(k: int, p: Vector2, h: float, s: float, r: float, d: float, x: float, f
 	spd[i] = s; rad[i] = r; dmg[i] = d; xp[i] = x; flash[i] = 0.0
 	ai_t[i] = randf_range(1.0, 2.5); ai_s[i] = 0; kind[i] = k; flags[i] = fl; affix[i] = af; tag[i] = 0; hit_t[i] = -9.0
 	burn[i] = 0.0; burn_t[i] = 0.0; pois[i] = 0.0; pois_t[i] = 0.0; bleed[i] = 0.0; bleed_t[i] = 0.0
+	burn_stacks[i] = 0; burn_dps[i] = 0.0; burn_spread_cd[i] = 0.0; burn_gen[i] = 0
 	chill_t[i] = 0.0; shock_t[i] = 0.0; freeze_t[i] = 0.0; cond_t[i] = 0.0; react_cd[i] = 0.0; ee_t[i] = 0.0; ee_el[i] = -1; dot_acc[i] = 0.0
 	born[i] = clock; atk_t[i] = -9.0; hit_at[i] = -9.0
 	arc_t[i] = 0.5 + fmod(float(_uid_next) * 0.37, 3.5)          # staggered, so arcane packs do not volley in unison
@@ -114,6 +120,7 @@ func remove(i: int) -> void:
 		flash[i] = flash[l]; ai_t[i] = ai_t[l]; ai_s[i] = ai_s[l]; kind[i] = kind[l]; flags[i] = flags[l]; affix[i] = affix[l]
 		uid[i] = uid[l]; tag[i] = tag[l]; hit_t[i] = hit_t[l]
 		burn[i] = burn[l]; burn_t[i] = burn_t[l]; pois[i] = pois[l]; pois_t[i] = pois_t[l]; bleed[i] = bleed[l]; bleed_t[i] = bleed_t[l]
+		burn_stacks[i] = burn_stacks[l]; burn_dps[i] = burn_dps[l]; burn_spread_cd[i] = burn_spread_cd[l]; burn_gen[i] = burn_gen[l]
 		chill_t[i] = chill_t[l]; shock_t[i] = shock_t[l]; freeze_t[i] = freeze_t[l]; cond_t[i] = cond_t[l]; react_cd[i] = react_cd[l]
 		ee_t[i] = ee_t[l]; ee_el[i] = ee_el[l]; dot_acc[i] = dot_acc[l]
 		born[i] = born[l]; atk_t[i] = atk_t[l]; hit_at[i] = hit_at[l]; arc_t[i] = arc_t[l]
@@ -164,6 +171,16 @@ func take(i: int, amt: float) -> float:
 	if clock - hit_at[i] > 0.7: hit_at[i] = clock
 	return ab
 
+## Damage over time from the Emberwitch's Burn: like take(), shield first, but no hit flash and no flinch.
+## Ticking four times a second on every burning foe, those would pulse a whole blaze white (the ember crust
+## shows the burning instead).
+func take_dot(i: int, amt: float) -> void:
+	if shield[i] > 0.0:
+		var ab := minf(shield[i], amt)
+		shield[i] -= ab
+		amt -= ab
+	hp[i] -= amt
+
 ## Elemental statuses. Returns true when the status was newly applied (used for reactions).
 func apply_status(i: int, el: int, stacks: float, dur: float) -> void:
 	match el:
@@ -178,9 +195,68 @@ func apply_status(i: int, el: int, stacks: float, dur: float) -> void:
 		Content.El.LIGHT:
 			shock_t[i] = maxf(shock_t[i], dur)
 
+## Contagion Burn: `stacks` (0..5), one stack's damage per second, the generation, and BURN_TIME more seconds
+## of burning (never fewer than it had).
+func set_burn(i: int, stacks: int, dps: float, gen: int, dur: float) -> void:
+	burn_stacks[i] = stacks
+	burn_dps[i] = dps
+	burn_gen[i] = gen
+	burn_t[i] = maxf(burn_t[i], dur)
+func set_spread_cd(i: int, t: float) -> void: burn_spread_cd[i] = t
+
+## Contagion, stage 3: the foes ready to pass their fire on this tick (2+ stacks, cooldown up, generation
+## under max_gen, alive and hostile), written into `out`; each one's cooldown restarts at `cd`. Here, not in
+## Contagion: the loop reads and writes this object's own arrays in place.
+func spread_sources(out: PackedInt32Array, max_gen: int, cd: float) -> int:
+	var c := 0
+	for i in n:
+		if burn_stacks[i] < 2 or burn_spread_cd[i] > 0.0 or burn_gen[i] >= max_gen or hp[i] <= 0.0 or (flags[i] & F_ALLY) != 0: continue
+		burn_spread_cd[i] = cd
+		out[c] = i
+		c += 1
+	return c
+
+## Of the grid's first `count` results, the (at most) two foes that foe i can pass its fire to: hostile and
+## alive, fewer stacks than i (fewest first, then nearest). Written into `out`; returns how many.
+func spread_targets(i: int, res: PackedInt32Array, count: int, out: PackedInt32Array) -> int:
+	var s := burn_stacks[i]
+	var src := pos[i]
+	var a := -1
+	var b := -1
+	var ka := 0.0
+	var kb2 := 0.0
+	for q in count:
+		var j := res[q]
+		if j == i or j >= n or hp[j] <= 0.0 or (flags[j] & F_ALLY) != 0 or burn_stacks[j] >= s: continue
+		var key := float(burn_stacks[j]) * 1e7 + src.distance_squared_to(pos[j])
+		if a < 0 or key < ka:
+			b = a; kb2 = ka
+			a = j; ka = key
+		elif b < 0 or key < kb2:
+			b = j; kb2 = key
+	var c := 0
+	if a >= 0: out[0] = a; c = 1
+	if b >= 0: out[1] = b; c = 2
+	return c
+
+## Contagion, stage 2: every burning foe takes stacks x dps x (1 + ramp x (stacks - 1)) x tick x scale.
+## Returns how many burn; hurt[] collects [index, damage] pairs (for the numbers on screen).
+func burn_ramp(ramp: float, tick: float, scale: float, hurt: PackedFloat32Array) -> int:
+	var c := 0
+	hurt.clear()
+	for i in n:
+		var s := burn_stacks[i]
+		if s <= 0 or hp[i] <= 0.0: continue
+		c += 1
+		var d := burn_dps[i] * s * (1.0 + ramp * (s - 1)) * tick * scale
+		take_dot(i, d)
+		hurt.append(i)
+		hurt.append(d)
+	return c
+
 func has_status(i: int, el: int) -> bool:
 	match el:
-		Content.El.FIRE: return burn[i] > 0.0
+		Content.El.FIRE: return burn[i] > 0.0 or burn_stacks[i] > 0
 		Content.El.CHAOS: return pois[i] > 0.0
 		Content.El.PHYS: return bleed[i] > 0.0
 		Content.El.COLD: return chill_t[i] > 0.0
@@ -189,7 +265,9 @@ func has_status(i: int, el: int) -> bool:
 
 func consume_status(i: int, el: int, frac: float = 1.0) -> void:
 	match el:
-		Content.El.FIRE: burn[i] *= (1.0 - frac)
+		Content.El.FIRE:
+			burn[i] *= (1.0 - frac)
+			burn_stacks[i] = int(floor(burn_stacks[i] * (1.0 - frac)))
 		Content.El.CHAOS: pois[i] *= (1.0 - frac)
 		Content.El.PHYS: bleed[i] *= (1.0 - frac)
 		Content.El.COLD: chill_t[i] *= (1.0 - frac)
@@ -210,9 +288,12 @@ func tick_timers(dt: float) -> void:
 		if freeze_t[i] > 0.0: freeze_t[i] -= dt
 		if cond_t[i] > 0.0: cond_t[i] -= dt
 		if ee_t[i] > 0.0: ee_t[i] -= dt
-		if burn[i] > 0.0:
+		if burn[i] > 0.0 or burn_stacks[i] > 0:
 			burn_t[i] -= dt
-			if burn_t[i] <= 0.0: burn[i] = 0.0
+			if burn_t[i] <= 0.0:
+				burn[i] = 0.0
+				burn_stacks[i] = 0; burn_dps[i] = 0.0; burn_gen[i] = 0
+		if burn_spread_cd[i] > 0.0: burn_spread_cd[i] -= dt
 		if pois[i] > 0.0:
 			pois_t[i] -= dt
 			if pois_t[i] <= 0.0: pois[i] = 0.0

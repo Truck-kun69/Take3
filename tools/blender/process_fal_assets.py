@@ -30,6 +30,9 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Quaternion, Vector
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pipeline_math import lifted_name, lightness, pick_object_slot, snap_window  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 RAW = os.path.join(ROOT, "tools", ".fal_raw")
@@ -289,10 +292,15 @@ def assign(arm, act):
     """Put `act` on the armature through its slot. Blender 4.4+ evaluates an action only through a slot, and a
     clip imported on another armature carries that armature's slot ("OBArmature.001"), which assigning the
     action does not pick: without this the clip never moves the rig (0.9.8's foe walk cycles were baked
-    frozen that way)."""
+    frozen that way). The slot is the action's OBJECT slot (pick_object_slot), never simply the first: an
+    action can carry slots for other ID types, and the armature object evaluates only an OBJECT one."""
     arm.animation_data.action = act
-    if act is not None and arm.animation_data.action_slot is None and len(act.slots):
-        arm.animation_data.action_slot = act.slots[0]
+    if act is None or not len(act.slots): return
+    cur = arm.animation_data.action_slot
+    if cur is None or cur.target_id_type != "OBJECT":
+        slot = pick_object_slot(act.slots)
+        if slot is None: raise RuntimeError(f"{act.name}: no OBJECT action slot to play on {arm.name}")
+        arm.animation_data.action_slot = slot
 
 
 # hero clips trimmed to their action before the root motion is taken out (seconds: shortest, longest)
@@ -314,9 +322,10 @@ def _track(arm, act, ends, step=1.0):
 
 
 def trim_window(arm, act, name, fps):
-    """(first, last) frame of the clip's action: the jump centred on the hips' apex, reaching back to the
-    takeoff crouch and on to the landing impact; the roll over its tumble (hips down or the torso pitched);
-    the cast centred on the hands' fastest frame, over the swing around it. Each within TRIM's range."""
+    """(first, last) whole frame of the clip's action: the jump centred on the hips' apex, reaching back to
+    the takeoff crouch and on to the landing impact; the roll over its tumble (hips down or the torso pitched);
+    the cast centred on the hands' fastest frame, over the swing around it. Each snapped to whole frames
+    inside TRIM's range and clamped inward (pipeline_math.snap_window)."""
     lo, hi = TRIM[name]
     fr, t = _track(arm, act, ["hips", "head", "lefthand", "righthand"])
     hz = t["hips"][:, 2]
@@ -343,10 +352,7 @@ def trim_window(arm, act, name, fps):
         while b < len(sp) - 1 and sp[b + 1] > 0.35 * sp[peak]: b += 1
         mid = 0.5 * (fr[peak] + fr[peak + 1])
         half = max(mid - fr[a], fr[b + 1] - mid)
-    half = float(np.clip(half, lo * fps / 2.0, hi * fps / 2.0))
-    half = min(half, mid - fr[0], fr[-1] - mid) if mid - half < fr[0] or mid + half > fr[-1] else half
-    half = max(half, lo * fps / 2.0) if mid - lo * fps / 2.0 >= fr[0] and mid + lo * fps / 2.0 <= fr[-1] else half
-    return float(mid - half), float(mid + half)
+    return snap_window(float(mid), float(half), lo, hi, fps, float(fr[0]), float(fr[-1]))
 
 
 def trim_action(act, f0, f1):
@@ -568,7 +574,9 @@ def bake_foe_maps(aid, hi, lo, albedo):
     px = np.empty(size * 4, np.float32)
     alb.pixels.foreach_get(px)
     px = px.reshape(-1, 4)
-    lum = 0.3 * px[:, 0] + 0.59 * px[:, 1] + 0.11 * px[:, 2]
+    # the albedo's pixels are sRGB codes: linearised before the luminance (pipeline_math.lightness), which
+    # weighted the codes directly before 0.10.0 and read saturated reds and blues far too dark
+    lum = lightness(px[:, :3])
     rough = np.clip(0.45 + 0.45 * (1.0 - ao) + (0.5 - lum) * 0.2, 0.40, 0.92)
     orm = np.stack([ao, rough, np.zeros(size, np.float32), np.ones(size, np.float32)], 1).astype(np.float32)
     oimg = bpy.data.images.new(f"{aid}_orm", FOE_BAKE, FOE_BAKE, alpha=False)
@@ -813,7 +821,7 @@ def lift_albedo(aid, objs, floor):
             # a new image on its own file: the exporter would otherwise embed the source image's bytes
             out = bpy.data.images.new(img.name + "_lifted", img.size[0], img.size[1], alpha=False)
             out.pixels.foreach_set(px.ravel())
-            out.filepath_raw = os.path.join(RAW, aid, "albedo_lifted.png")
+            out.filepath_raw = os.path.join(RAW, aid, lifted_name(done))   # one file per map: never overwritten
             out.file_format = "PNG"
             out.save()
             node.image = out

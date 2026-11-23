@@ -215,13 +215,40 @@ What changed:
   (FSR 1 upscaling where the renderer supports it) with the UI at full resolution.
 * **Show FPS** now reads frame time, draw calls, triangles, foe count and 3D resolution.
 
-## Clutter (0.9.9)
+## Clutter (0.9.9, 0.10.0)
 
-Bones, bushes and grass cast no shadow. Grass and bushes are drawn in quarter-chunk MultiMeshes (320
-units) with a visibility range of 950 units at the 600-unit camera, following the camera's distance (the
-boss zoom and portrait screens pull it back), and no fade (no dithering on tile-based GPUs). A whole-chunk
-range would measure to the chunk's centre, up to ~450 units from where the hero stands in it, and its
-own grass would blink out.
+Bones, bushes and grass cast no shadow. Grass is drawn in quarter-chunk MultiMeshes (320 units) with a
+visibility range of 950 units at the 600-unit camera (`WorldView3D.NEAR_ONLY`), following the camera's distance
+(the boss zoom and portrait screens pull it back; the gate checks it stays within 2 units of NEAR_END x the
+view scale), and no fade (no dithering on tile-based GPUs). A whole-chunk range would measure to the chunk's
+centre, up to ~450 units from where the hero stands in it, and its own grass would blink out. Since 0.10.0
+bushes draw at every distance like the other props (they were near-only).
+
+## Solid props (0.10.0)
+
+Trees, dead trees, boulders, walls, pillars and arch posts are circles the simulation collides with
+(`PropLayout`, shared by the renderer): heroes and foes slide round them, a jump clears the low ones.
+- Chunk layouts are seeded with a SplitMix64 finaliser of the chunk and act (no engine `hash()`), placed
+  against the act's starting liquid level (`Terrain.level0`; river beds too), so Act V's rising tide never
+  moves a prop, and the same on every tier.
+- Movement is substepped in steps no longer than the body's radius, so a fast body never tunnels through a
+  trunk; a foe pushed off a prop is never pushed into deep water or a cliff (it keeps its last spot).
+- Every solid carries a tag beside its circle: WOOD (trees), STONE (boulders, walls, pillars) or ARCH. The
+  Emberwitch's fire lights WOOD as beacons; the Sparkcaller's bolts ricochet off STONE; the Warden's jump
+  over a low one lands in a crater.
+
+## The Emberwitch's fire, rims, the cold open (0.10.0)
+
+- Burning foes show an ember crust in `foe.gdshader`: the stacks ride over the flag bits of the instance's
+  custom.w (flags + 256 x stacks, at most 1535, an exact half float), so the vertex-animation frame, the hit
+  flash and the tint are untouched. Plain texture and trig math (GLES3 and Mali safe). Burn ticks do not
+  flash or flinch a foe (four a second on a whole blaze would pulse it white).
+- One dynamic light sits over the hottest burning cluster while 3 or more foes burn, never brighter than the
+  torch or a boss's own light.
+- Each act has its own Fresnel rim (`STAGE_LOOK.rim`) on foes and heroes: moon-cyan, molten-amber, frost-cyan,
+  rift-violet, bioluminescent-teal.
+- The cold open renders Act I with the run's own WorldView3D (its camera flown by `ColdOpen`, thicker fog over
+  the sky so the streamed ground fades into the dark) and a Rift Shard through FX3D.
 
 ## Graphics tiers (scripts/render3d/quality.gd)
 
@@ -232,11 +259,11 @@ only visuals: the simulation, spawns and balance are the same on every tier.
 |---|---|---|---|
 | Sun shadows | off | soft (low), 1 split; atlas 1024 on phones, 2048 desktop | soft (medium); 1 split and a 2048 atlas on phones, 2 splits and 4096 on desktop |
 | MSAA | off | off | 2x, phones too (no FXAA with it) |
-| Model textures | the texel budget: 2048 px heroes, bosses, landmark and foe albedo; 1024 px prop and foe normal/ORM and clutter albedo (`tools/texture_budget.py`), VRAM-compressed | same | same |
+| Model textures | the texel budget: 2048 px heroes, bosses (the Tide Bishop's maps included) and landmark albedo; 1024 px every foe map, prop normal/ORM, clutter albedo and the shared tiling sets (`tools/texture_budget.py`, every texture under models/**; an unbudgeted one fails), VRAM-compressed | same | same |
 | Terrain grid (2,200-unit ground) | 16 units | 12 units | 10 units |
 | Ground textures | 1024 albedo + normal, one scale | + a second scale (detail2) | + a second scale (detail2) |
 | Terrain noise octaves | 3 | 5 | 6 |
-| Prop density | 0.7x bushes and grass (116-188 instances a chunk) | 1x (160-262) | 1.3x (213-337); the solid props (trees, boulders, ruins) are the same on every tier: they block movement |
+| Prop density (`Quality.DENSITY`) | 0.45x bushes and grass (85-133 instances a chunk, about 105 on average: the Galaxy A05's budget; at most 145) | 1x (175-270) | 1.3x (237-342); strictly Low < Medium < High in every chunk, and the solid props (trees, boulders, ruins) are the same on every tier: they block movement |
 | Dynamic lights | 4 | 8 | 14 |
 | Prop meshes | models/props | same | the generated props as on Medium; models/props_hi for the crystal and the Act V set pieces (2.5x the triangles) |
 | LOD threshold | 1.5 px | 1.5 px | 1 px |
@@ -244,10 +271,18 @@ only visuals: the simulation, spawns and balance are the same on every tier.
 | FXAA | off | on while the 3D scale is 0.9 or more | off (MSAA instead) |
 | Particles | 1/3 | full | full |
 
-Options > Graphics: Auto, Low, Medium, High. Auto goes by the device class (`Quality.device_class`: the
-GPU's name and the RAM): Low on budget GPUs and 4 GB phones, Medium on mid-range ones, High on flagships
-and desktops, and Medium at most on the OpenGL fallback (when Vulkan fails to start). The APK leaves out
-`models/props_hi` (export_presets.cfg): only desktop runs use those variants.
+Options > Graphics > Graphics tier: Auto, Low, Medium, High. Auto goes by the device class
+(`Quality.device_class`: the GPU's name and the RAM): Low on budget GPUs and 4 GB phones, Medium on mid-range
+ones, High on flagships and desktops, and Medium at most on the OpenGL fallback (when Vulkan fails to start).
+The APK leaves out `models/props_hi` (export_presets.cfg): only desktop runs use those variants.
+
+Options > Graphics > Renderer: Vulkan (the Mobile renderer) or OpenGL Safe Mode (Compatibility), saved in the
+profile and written to `user://override.cfg` (`project.godot` reads it through
+`application/config/project_settings_override` before any driver starts), so it applies on the next launch.
+The crash sentinel (Galaxy A05: a Mali-G52 Vulkan driver fault can kill a session): while a phone runs on
+Vulkan in the foreground, the override file already asks for Compatibility and carries a sentinel; every clean
+end (the app sent to the background or closed) disarms it and a resume re-arms it. If the app dies on Vulkan,
+the next launch boots in Safe Mode, makes it the saved choice and says so on the crash report.
 
 The high-detail variants are rebuilt by passing `--hi` to the import scripts:
 

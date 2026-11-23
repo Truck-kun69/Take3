@@ -15,7 +15,8 @@ Providers:
   fal                   fal-ai/elevenlabs/tts/multilingual-v2 through fal's queue, "Authorization: Key $FAL_KEY"
                         (a cloud session's network proxy can add the key itself, as for tools/fal_assets.py)
 Voices: EL_VOICE_WARDEN, EL_VOICE_SPARK, EL_VOICE_EMBER, EL_VOICE_STORM, EL_VOICE_NARRATOR, EL_VOICE_TYRANT and
-EL_VOICE_HERALD hold the ElevenLabs voice IDs (through fal a voice name such as "Aria" also works).
+EL_VOICE_HERALD hold the ElevenLabs voice IDs of a custom casting; unset, each speaker uses its casting's
+default_voice_id, one of ElevenLabs' stock (premade) voices (through fal a voice name such as "Aria" also works).
 
 Each line: text-to-speech with its speaker's casting (model_id, stability, similarity_boost, style) ->
 tools/.voice_raw/<key>.mp3, kept so that re-encoding never pays again -> ffmpeg: the silence trimmed at both ends,
@@ -24,7 +25,8 @@ godot/audio/voices/<speaker>/<cue>_<variant>.ogg, with a .ogg.import (loop=false
 clip up on the next build and times the subtitle, the ducking and the intro to its real length.
 tools/voice_cache.json records every paid call under a content key, sha256 of (id, text, voice_id, model_id,
 stability, similarity_boost, style): a line is only sent again when one of those changes, or with --force.
-A run stops before sending more than --max-chars characters (default 6,000; the whole pack is about 3,900).
+A run stops before sending more than --max-chars characters (default 6,000; the whole pack is 4,000-5,500).
+The finished pack must stay under PACK_MAX_MB (2.5 MB) of .ogg files: the APK carries every clip.
 See docs/VOICES.md.
 """
 import argparse
@@ -54,10 +56,16 @@ NARRATOR_CUES = {"intro": 4, "act_0": 1, "act_1": 1, "act_2": 1, "act_3": 1, "ac
 BOSS_CUES = {"spawn": 1, "die": 1}
 EXPECTED = {**{h: HERO_CUES for h in HEROES}, "narrator": NARRATOR_CUES, "tyrant": BOSS_CUES, "herald": BOSS_CUES}
 TOTAL_LINES = sum(sum(c.values()) for c in EXPECTED.values())          # 61
-PRIORITY = {"cast": 0, "kill_streak": 1, "low_hp": 2, "ult": 2, "boss_spawn": 3, "death": 3, "spawn": 3, "die": 3, "intro": 4}
+# intro, boss_spawn and death (and the act openings and the bosses' lines) > ult and low_hp > kill_streak > cast
+PRIORITY = {"cast": 0, "kill_streak": 1, "low_hp": 2, "ult": 2, "boss_spawn": 3, "death": 3, "spawn": 3, "die": 3, "intro": 3}
 COOLDOWN = {"cast": 7.0, "kill_streak": 10.0, "low_hp": 15.0, "ult": 4.0}
-BARK_WORDS = (3, 8)            # combat barks
-LONG_WORDS = (10, 22)          # intros, act openings and the bosses' arrivals
+BARK_WORDS = (3, 12)           # combat barks
+LONG_WORDS = (10, 26)          # the exiles' intros, act openings and the bosses' arrivals
+BEAT_WORDS = (4, 8)            # the narrator's cold-open beats: about 2.5 s each, a 12 s intro
+CHARS = (4000, 5500)           # the whole pack's characters
+PACK_MAX_MB = 2.5
+# the moments an escalation line answers (VoiceDirector): trigger -> (speaker, cue)
+ESCALATIONS = {"burning_12": ("ember", "kill_streak"), "hp_30": ("warden", "low_hp"), "ricochet_2": ("spark", "cast"), "conduct": ("storm", "cast")}
 BUSES = ("VoiceHero", "VoiceNarrator", "VoiceBoss")
 REQUIRED = ("id", "speaker", "cue", "variant", "file", "text", "priority", "cooldown_s", "duration_fallback_s")
 # list prices for eleven_multilingual_v2 in Nov 2026: $0.10 per 1,000 characters through fal (its model page) and on
@@ -86,8 +94,18 @@ bar_beats=4
 """
 
 
-def is_long(cue):
-    return cue in ("intro", "spawn") or cue.startswith("act_")
+def is_long(cue, speaker=""):
+    return (cue == "intro" and speaker != "narrator") or cue == "spawn" or cue.startswith("act_")
+
+
+def word_range(cue, speaker):
+    if speaker == "narrator" and cue == "intro": return BEAT_WORDS, "cold-open beat"
+    return (LONG_WORDS, "long line") if is_long(cue, speaker) else (BARK_WORDS, "bark")
+
+
+def voice_id(cast_entry):
+    """The voice a speaker is synthesised with: its env var's ID when set, else the casting's stock default."""
+    return os.environ.get(str(cast_entry.get("voice_id_env", ""))) or str(cast_entry.get("default_voice_id", ""))
 
 
 def words(text):
@@ -114,10 +132,19 @@ def validate(man):
     if set(cast) != set(EXPECTED):
         err.append(f"casting has {sorted(cast)}, expected {sorted(EXPECTED)}")
     envs = {}
+    defaults = {}
     for sp, c in cast.items():
-        for k in ("name", "bus", "color", "direction", "voice_id_env", "model_id"):
+        for k in ("name", "bus", "color", "direction", "voice_id_env", "default_voice_id", "model_id"):
             if not isinstance(c.get(k), str) or not c.get(k):
                 err.append(f"casting {sp}: '{k}' missing")
+        if c.get("model_id") != "eleven_multilingual_v2":
+            err.append(f"casting {sp}: model_id {c.get('model_id')!r}, the pack is eleven_multilingual_v2")
+        dv = str(c.get("default_voice_id", ""))
+        if not re.fullmatch(r"[A-Za-z0-9]{20}", dv):
+            err.append(f"casting {sp}: default_voice_id {dv!r} is not an ElevenLabs voice ID (20 letters and digits)")
+        if dv in defaults:
+            err.append(f"casting {sp}: default_voice_id is also {defaults[dv]}'s")
+        defaults[dv] = sp
         for k in ("stability", "similarity_boost", "style"):
             v = c.get(k)
             if not isinstance(v, (int, float)) or not 0.0 <= v <= 1.0:
@@ -134,13 +161,14 @@ def validate(man):
         if env in envs:
             err.append(f"casting {sp}: voice_id_env {env} is also {envs[env]}'s")
         envs[env] = sp
-    prof = {}
-    for h in HEROES:
-        c = cast.get(h, {})
-        key = (c.get("stability"), c.get("style"))
-        if key in prof:
-            err.append(f"casting {h}: stability/style {key} is the same as {prof[key]}'s (the exiles must not sound alike)")
-        prof[key] = h
+    for k in ("stability", "similarity_boost", "style"):          # every speaker tuned apart from every other
+        seen = {}
+        for sp, c in cast.items():
+            v = c.get(k)
+            if v in seen:
+                err.append(f"casting {sp}: {k} {v} is the same as {seen[v]}'s (no two voices share a setting)")
+            seen[v] = sp
+    esc = {}
     ids = set()
     count = {}
     for i, ln in enumerate(lines):
@@ -175,9 +203,21 @@ def validate(man):
         if not isinstance(d, (int, float)) or not 0.5 <= d <= 20.0:
             err.append(f"line {lid}: duration_fallback_s {d!r} must be 0.5-20 s")
         w = words(ln["text"])
-        lo, hi = LONG_WORDS if is_long(cue) else BARK_WORDS
+        (lo, hi), kind = word_range(cue, sp)
         if not lo <= w <= hi:
-            err.append(f"line {lid}: {w} words, a {'long line' if is_long(cue) else 'bark'} takes {lo}-{hi}")
+            err.append(f"line {lid}: {w} words, a {kind} takes {lo}-{hi}")
+        trig = ln.get("escalation")
+        if trig is not None:
+            if trig not in ESCALATIONS:
+                err.append(f"line {lid}: escalation {trig!r} is not one of {sorted(ESCALATIONS)}")
+            elif ESCALATIONS[trig] != (sp, cue):
+                err.append(f"line {lid}: escalation {trig} belongs to {ESCALATIONS[trig][0]}'s {ESCALATIONS[trig][1]}")
+            elif trig in esc:
+                err.append(f"line {lid}: a second {trig} line (the first is {esc[trig]})")
+            else:
+                esc[trig] = lid
+        if "random" in ln and not isinstance(ln["random"], bool):
+            err.append(f"line {lid}: random must be true or false")
         count.setdefault(sp, {}).setdefault(cue, []).append(var)
     for sp, cues in EXPECTED.items():
         for cue, n in cues.items():
@@ -186,11 +226,17 @@ def validate(man):
                 err.append(f"{sp}/{cue}: variants {got}, expected 0-{n - 1}")
     if len(lines) != TOTAL_LINES:
         err.append(f"{len(lines)} lines, expected {TOTAL_LINES}")
+    for trig in ESCALATIONS:
+        if trig not in esc:
+            err.append(f"no escalation line for {trig} ({ESCALATIONS[trig][0]}'s {ESCALATIONS[trig][1]})")
+    chars = sum(len(l.get("text", "")) for l in lines if isinstance(l, dict))
+    if not CHARS[0] <= chars <= CHARS[1]:
+        err.append(f"{chars} characters, the pack takes {CHARS[0]}-{CHARS[1]}")
     return err, []
 
 
-def content_key(line, voice_id, cast):
-    blob = json.dumps([line["id"], line["text"], voice_id, cast["model_id"], cast["stability"], cast["similarity_boost"], cast["style"]])
+def content_key(line, vid, cast):
+    blob = json.dumps([line["id"], line["text"], vid, cast["model_id"], cast["stability"], cast["similarity_boost"], cast["style"]])
     return hashlib.sha256(blob.encode()).hexdigest()[:24]
 
 
@@ -228,6 +274,12 @@ def dry_run(man):
             b[0] += 1
             b[1] += len(l.get("text", ""))
     print(f"lines: {len(lines)} ({TOTAL_LINES} expected): " + ", ".join(f"{s} {n}" for s, (n, _) in by.items()))
+    triples = {(c.get("stability"), c.get("similarity_boost"), c.get("style")) for c in cast.values()}
+    distinct = len(triples) == len(cast) and not any("is the same as" in e for e in err)
+    print(f"casting: {len(cast)} speakers, {'all distinct' if distinct else 'NOT distinct'} (stability, similarity_boost, style; "
+          f"{len({c.get('default_voice_id') for c in cast.values()})} stock default voices)")
+    esc = [f"{l['escalation']} -> {l['id']}" for l in lines if isinstance(l, dict) and l.get("escalation")]
+    print(f"escalations: {len(esc)} ({', '.join(esc)})")
     print(f"characters: {chars} ({', '.join(f'{s} {c}' for s, (_, c) in by.items())}); barks {BARK_WORDS[0]}-{BARK_WORDS[1]} words, "
           f"intros, acts and boss arrivals {LONG_WORDS[0]}-{LONG_WORDS[1]}")
     print(f"estimated cost: ${chars / 1000 * PRICE_PER_1K['elevenlabs']:.2f} on ElevenLabs' API (${PRICE_PER_1K['elevenlabs']:.2f} per 1,000 "
@@ -235,7 +287,7 @@ def dry_run(man):
           f"(${len(lines) * PRICE_PER_1K['fal']:.2f} if fal bills each request as at least 1,000 characters)")
     for sp, c in cast.items():
         print(f"  {sp:9s} {c.get('voice_id_env', '?'):18s} {c.get('model_id', '?')}  stability {c.get('stability')}  similarity {c.get('similarity_boost')}  "
-              f"style {c.get('style')}  -> {c.get('bus')}  ({'set' if os.environ.get(str(c.get('voice_id_env'))) else 'not set'})")
+              f"style {c.get('style')}  -> {c.get('bus')}  (voice: {'env ' + str(c.get('voice_id_env')) if os.environ.get(str(c.get('voice_id_env'))) else 'stock ' + str(c.get('default_voice_name', c.get('default_voice_id')))})")
     present, missing, size = [], [], 0
     for l in lines:
         if not isinstance(l, dict) or "speaker" not in l:
@@ -246,7 +298,8 @@ def dry_run(man):
             size += os.path.getsize(p)
         else:
             missing.append(l["id"])
-    print(f"voice pack: {len(present)} of {len(lines)} .ogg present ({size / 1e6:.2f} MB), {len(missing)} missing (the game plays a chime for those)")
+    print(f"voice pack: {len(present)} of {len(lines)} .ogg present ({size / 1e6:.2f} MB of the {PACK_MAX_MB} MB budget), {len(missing)} missing "
+          f"(the game plays a chime for those)")
     if present and len(present) <= 12:
         print("  present: " + ", ".join(present))
     cache = load_cache()
@@ -411,13 +464,13 @@ def selftest():
 
 # ---------------------------------------------------------------- generate
 def generate(man, provider, speaker, force, max_chars, reencode_only):
+    if not shutil.which("ffmpeg"):                         # checked before anything else: no clip can be finished without it
+        print("ERROR ffmpeg is needed to trim, normalise and encode the clips (install it, then run again)")
+        return 1
     err, _ = validate(man)
     if err:
         for e in err:
             print("ERROR " + e)
-        return 1
-    if not shutil.which("ffmpeg"):
-        print("ERROR ffmpeg is needed to trim, normalise and encode the clips")
         return 1
     cast = man["casting"]
     lines = [l for l in man["lines"] if speaker in (None, l["speaker"])]
@@ -428,12 +481,11 @@ def generate(man, provider, speaker, force, max_chars, reencode_only):
     calls = cache.setdefault("calls", {})
     voice = {}
     if not reencode_only:
-        need = sorted({cast[l["speaker"]]["voice_id_env"] for l in lines})
-        missing = [e for e in need if not os.environ.get(e)]
-        if missing:
-            print("ERROR set the ElevenLabs voice IDs first: " + ", ".join(missing))
-            return 1
-        voice = {sp: os.environ[c["voice_id_env"]] for sp, c in cast.items() if os.environ.get(c["voice_id_env"])}
+        voice = {sp: voice_id(c) for sp, c in cast.items()}
+        for sp in sorted({l["speaker"] for l in lines}):
+            c = cast[sp]
+            src = f"${c['voice_id_env']}" if os.environ.get(c["voice_id_env"]) else f"the stock voice {c.get('default_voice_name', '')} ({c['default_voice_id']})"
+            print(f"  {sp}: {src}")
         if provider == "elevenlabs" and not os.environ.get("ELEVENLABS_API_KEY"):
             print("note: ELEVENLABS_API_KEY is not set; the request only works if a network proxy adds the key")
     todo, redo, keep = [], [], 0
@@ -480,8 +532,11 @@ def generate(man, provider, speaker, force, max_chars, reencode_only):
         print(f"  {os.path.relpath(out, ROOT)}  {p['duration']:.2f} s  {os.path.getsize(out) / 1024:.0f} KB")
     save_cache(cache)
     total = sum(os.path.getsize(ogg_path(l)) for l in man["lines"] if os.path.exists(ogg_path(l)))
-    print(f"voice pack: {sum(os.path.exists(ogg_path(l)) for l in man['lines'])} of {len(man['lines'])} clips, {total / 1e6:.2f} MB; "
-          f"voice spend so far ${spend(cache):.3f}. Next: python3 tools/gate_check.py")
+    print(f"voice pack: {sum(os.path.exists(ogg_path(l)) for l in man['lines'])} of {len(man['lines'])} clips, {total / 1e6:.2f} MB "
+          f"(budget {PACK_MAX_MB} MB); voice spend so far ${spend(cache):.3f}. Next: python3 tools/gate_check.py")
+    if total >= PACK_MAX_MB * 1e6:
+        print(f"ERROR the voice pack is {total / 1e6:.2f} MB, over the {PACK_MAX_MB} MB budget (lower -q:a or shorten lines)")
+        return 1
     return 0
 
 

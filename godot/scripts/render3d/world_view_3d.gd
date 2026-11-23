@@ -13,12 +13,20 @@ extends Node3D
 ## "sky" / "gnd": the hemisphere the ambient light comes from (ProceduralSkyMaterial, AMBIENT_SOURCE_SKY):
 ## a cool sky above, a dark warm ground below, so tops of things read cool and undersides warm and dim.
 const STAGE_LOOK := [
-	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3)},
-	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2)},
-	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85)},
-	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85)},
-	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85)}
+	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3),
+		"rim": Color(0.5, 0.8, 1.0)},                     # I: moon-cyan
+	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2),
+		"rim": Color(1.0, 0.6, 0.2)},                     # II: molten-amber
+	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85),
+		"rim": Color(0.74, 1.0, 0.98)},                   # III: frost-cyan
+	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85),
+		"rim": Color(0.7, 0.42, 1.0)},                    # IV: rift-violet
+	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85),
+		"rim": Color(0.2, 1.0, 0.8)}                      # V: bioluminescent-teal
 ]
+## The act's Fresnel rim (STAGE_LOOK.rim) on foes (foe.gdshader rim_col) and heroes (HeroRig.set_rim).
+const RIM_FOE := 0.45
+const RIM_HERO := 0.35
 const CHUNK := 640.0
 ## Godot's omni falloff is distance^-attenuation in world units. This world is ~60 units per hero,
 ## so the default-ish 1.0-1.6 falloff made every light ~0.002x as bright (cycle G2 finding).
@@ -30,6 +38,13 @@ const FOE_STRIDE := 20
 var w: World
 var cam: Camera3D
 var test_nudge := Vector3.ZERO      # tests/shimmer.gd moves the camera by a fraction of a pixel
+## The cold open (ColdOpen) flies the camera itself: cine_pos looking at cine_look, the hero hidden until
+## hide_hero clears. Everything that follows the camera (ground tiles, water, sun, terrain texture) follows it.
+var cine := false
+var cine_pos := Vector3.ZERO
+var cine_look := Vector3.ZERO
+var hide_hero := false
+const CINE_FOG := 0.0012
 var env: Environment
 var sun: DirectionalLight3D
 var torch: OmniLight3D
@@ -326,6 +341,8 @@ func bind(world: World) -> void:
 		fm.set_shader_parameter("eye_col", _look.eye)
 		fm.set_shader_parameter("glow_col", Content.col(s.acc))
 		fm.set_shader_parameter("colorblind", w.colorblind)
+		fm.set_shader_parameter("rim_col", _look.rim)
+		fm.set_shader_parameter("rim_k", RIM_FOE)
 	prop_mat.set_shader_parameter("glow_col", Content.col(s.acc))
 	prop_mat.set_shader_parameter("tint", Color(0.96, 0.95, 0.93))      # neutral: props keep their own colours
 	env.background_color = _look.bg
@@ -343,6 +360,7 @@ func bind(world: World) -> void:
 	add_child(hero)
 	var h: Dictionary = Content.HEROES[w.hero]
 	hero.build(String(h.id), Content.col(h.col))
+	hero.set_rim(_look.rim, RIM_HERO)
 	for u in boss_rigs: boss_rigs[u].queue_free()
 	boss_rigs.clear()
 	for e in boss_dying: (e[0] as BossRig).queue_free()
@@ -490,9 +508,14 @@ func _camera(dt: float) -> void:
 	var off := Vector3(0, sin(pitch), cos(pitch)) * dist
 	var tr := w.shake * w.shake * float(Save.opt("shake"))
 	var shake := Vector3(sin(time * 53.0), sin(time * 41.0) * 0.6, cos(time * 47.0)) * tr * 16.0
-	cam.position = _cam_target + off + shake + test_nudge
-	cam.look_at(_cam_target + shake * 0.5, Vector3.UP)
-	cam.rotate_object_local(Vector3.FORWARD, sin(time * 37.0) * tr * 0.012)
+	if cine:
+		_cam_target = cine_look
+		cam.position = cine_pos + shake
+		cam.look_at(cine_look + shake * 0.5, Vector3.UP)
+	else:
+		cam.position = _cam_target + off + shake + test_nudge
+		cam.look_at(_cam_target + shake * 0.5, Vector3.UP)
+		cam.rotate_object_local(Vector3.FORWARD, sin(time * 37.0) * tr * 0.012)
 	ground.position = Vector3(snappedf(_cam_target.x, GROUND_Q), 0, snappedf(_cam_target.z, GROUND_Q))
 	water.position = Vector3(snappedf(_cam_target.x, 64.0), w.terrain.level, snappedf(_cam_target.z, 64.0))
 	water_mat.set_shader_parameter("time", time)
@@ -533,7 +556,10 @@ func _lighting(dt: float) -> void:
 	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(AMBIENT_ENERGY, AMBIENT_FLOOR, gl), minf(1.0, dt * 2.0))
 	torch.light_energy = TORCH_ENERGY * lerpf(1.0, 1.4, gl) * flick * LIGHT_GAIN
 	torch.omni_range = TORCH_RANGE * lerpf(1.0, 0.87, gl)
-	env.fog_density = lerpf(env.fog_density, lerpf(0.0007, 0.0014, gl), minf(1.0, dt))
+	# the cold open looks far across the Hollow: thicker fog, over the sky too, so the streamed ground fades
+	# into the dark instead of ending at an edge
+	env.fog_density = lerpf(env.fog_density, CINE_FOG if cine else lerpf(0.0007, 0.0014, gl), minf(1.0, dt * (4.0 if cine else 1.0)))
+	env.fog_sky_affect = 1.0 if cine else 0.0
 
 # ================================================================= props
 ## Props are batched per 640-unit chunk and kind (optimisation pass): a cell off screen is frustum-culled
@@ -717,7 +743,7 @@ func ground_y(p: Vector2) -> float:
 ## grass scale with the tier's prop density; the solid props never do. Every prop sinks 1 unit into the
 ## ground so slopes never show a gap under it; boulders lean with the slope.
 const CLUTTER := ["bones", "bush", "grass"]          # small: they cast no shadow
-const NEAR_ONLY := ["grass", "bush"]                  # drawn in quarter-chunk batches, only near the camera
+const NEAR_ONLY := ["grass"]                          # drawn in quarter-chunk batches, only near the camera
 const NEAR_END := 950.0                               # their visibility range at the 600-unit camera
 
 func _build_cell(c: Vector2i) -> Node3D:
@@ -971,14 +997,16 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 				buf[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
 		buf[o + 17] = maxf(0.0, sw.flash[i])
 		buf[o + 18] = _status_code(i)
-		buf[o + 19] = float(f & 0xff)
+		# the Emberwitch's Burn stacks ride over the flag bits (flags + 256 x stacks <= 1535, exact as a half);
+		# foe.gdshader reads them back as burn_norm = stacks / 5 for the ember crust
+		buf[o + 19] = float(f & 0xff) + 256.0 * float(sw.burn_stacks[i])
 		n += 1
 	return n
 
 func _status_code(i: int) -> float:
 	var sw := w.sw
 	if sw.freeze_t[i] > 0.0: return 6.0
-	if sw.burn[i] > 0.0: return 1.0
+	if sw.burn[i] > 0.0 or sw.burn_stacks[i] > 0: return 1.0
 	if sw.shock_t[i] > 0.0: return 3.0
 	if sw.chill_t[i] > 0.0: return 2.0
 	if sw.pois[i] > 0.0: return 4.0
@@ -1091,7 +1119,7 @@ func _hero(dt: float) -> void:
 		"vel": w.vel.length(), "roll": (1.0 - w.roll_t / 0.26) if w.roll_t > 0.0 else -1.0, "jump": _hero_jp,
 		"hit": 1.0 if w.hit_t > 0.0 else 0.0, "dead": w.over and not w.won, "t": time}, dt)
 	hero.position.y += hero_y
-	hero.visible = not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
+	hero.visible = not hide_hero and not (w.inv_t > 0.0 and w.roll_t <= 0.0 and fmod(time, 0.12) < 0.04)
 	# contact shadow under the hero on every tier (Low has no shadow maps): it shrinks and fades as the
 	# hero rises, so a jump reads as height above the ground
 	var g := ground_y(hero_p)
@@ -1141,6 +1169,7 @@ func _exiles(dt: float) -> void:
 			add_child(rig)
 			var wid := String(w.bosses.exile_weapon)
 			rig.build({"bolt": "spark", "nova": "ember", "storm": "storm"}.get(wid, "warden"), Color("4a2a2a"))
+			rig.set_rim(_look.rim, RIM_HERO)
 			rig.scale = Vector3.ONE * 1.35
 			exile_rigs[u] = rig
 		var at := lerp_pos(w.sw.prev[i], w.sw.pos[i])
@@ -1201,10 +1230,12 @@ func _bosses(dt: float) -> void:
 			continue
 		var bp: Vector2 = e[2]
 		var yaw := r3.rotation.y
+		var total := maxf(0.001, r3.death_time() + BOSS_SINK)
 		r3.animate({"pos": bp, "face": Vector2(cos(yaw), -sin(yaw)), "hp_frac": 0.0, "flash": 0.0, "t": time, "dt": dt,
-			"attack": false, "phase": 0, "dead": true})
+			"attack": false, "phase": 0, "dead": true, "fade": float(e[1]) / total})
 		var sink := clampf((BOSS_SINK - float(e[1])) / BOSS_SINK, 0.0, 1.0)
-		r3.position.y += ground_y(bp) - sink * sink * 100.0 * r3.scale.y
+		# set, never added to: animate() put the rig at y 0, and the fall is measured from the ground under it
+		r3.position.y = ground_y(bp) - sink * sink * 100.0 * r3.scale.y
 
 # ================================================================= dynamic light pool
 func _assign_lights() -> void:

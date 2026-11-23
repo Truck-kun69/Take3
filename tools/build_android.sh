@@ -8,14 +8,20 @@
 #                                        build template and network access to Google Maven + Gradle)
 # The release APK is then repacked (tools/apk_repack.py: textures deflated, the engine library
 # zopfli-compressed when `pip install zopfli` is available), aligned and signed again with the same key.
+# On CI (CI=true, as GitHub Actions sets it) a release build needs SHARDFALL_KEYSTORE: it never falls back to
+# the shared test key there (exit 3); locally the test key still signs sideloading builds.
 # Run tools/provision.sh first. Exits non-zero if the export or the signature check fails.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MODE="${1:-release}"
+if [ "$MODE" = "release" ] && [ "${CI:-}" = "true" ] && [ -z "${SHARDFALL_KEYSTORE:-}" ]; then
+  echo "error: a CI release build needs SHARDFALL_KEYSTORE (the release key); it is empty, and CI never signs a release with the test key" >&2
+  exit 3
+fi
 TOOLS="${TOOLS:-$HOME/toolchains}"
 GODOT="$TOOLS/godot/godot"
 SDK="$TOOLS/android-sdk"
 BT="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)"
-MODE="${1:-release}"
 mkdir -p "$ROOT/build"
 cd "$ROOT/godot"
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true

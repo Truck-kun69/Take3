@@ -9,6 +9,8 @@ config/description="Survivor-like ARPG: elemental reaction cascades, linked supp
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.png"
+config/project_settings_override="user://override.cfg"
+config/quit_on_go_back=false
 
 [autoload]
 

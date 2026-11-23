@@ -93,7 +93,7 @@ func _raw(x: float, y: float) -> float:
 	if rw > 0.0:
 		var rv := absf(_river.get_noise_2d(x, y))
 		var carve := smoothstep(rw, rw * 0.35, rv)
-		h = lerpf(h, level - float(prof.get("river_depth", 26.0)), carve)
+		h = lerpf(h, level0 - float(prof.get("river_depth", 26.0)), carve)   # river beds sit under the act's starting surface: a rising tide never reshapes the ground
 	h += _detail.get_noise_2d(x, y) * float(prof.get("detail", 4.0))
 	var d := sqrt(x * x + y * y)
 	if d < flat_r + 220.0:
@@ -119,14 +119,18 @@ func chunk(c: Vector2i) -> Array:
 	ty.resize(CN * CN)
 	var cliff: float = prof.get("cliff", 1.15) * CELL
 	var deep: float = prof.get("deep", 9.0)
+	# classified against level0, the act's starting surface, never the live level: a chunk generated (or
+	# regenerated after trim()) while the Act V tide is up gets the same stored types as one generated at the
+	# start, so props placed on it (PropLayout, through prop_ok) and everything keyed on it stay deterministic.
+	# cell_type() reclassifies against the live level while the tide is on.
 	for j in CN:
 		for i in CN:
 			var k := (j + 1) * B + i + 1
 			var h := hb[k]
 			hs[j * CN + i] = h
 			var t := LAND
-			if liquid != "none" and h < level:
-				t = SHALLOW if (level - h) < deep and liquid != "void" else DEEP
+			if liquid != "none" and h < level0:
+				t = SHALLOW if (level0 - h) < deep and liquid != "void" else DEEP
 			else:
 				var s := maxf(maxf(absf(hb[k + 1] - h), absf(hb[k - 1] - h)), maxf(absf(hb[k + B] - h), absf(hb[k - B] - h)))
 				if s > cliff:
@@ -160,10 +164,13 @@ func trim(p: Vector2, keep: int = 6) -> void:
 	for c in _prop_chunks.keys():
 		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > keep:
 			_prop_chunks.erase(c)
+			_prop_tags.erase(c)
+			_prop_crystals.erase(c)
 	var per := int(CHUNK / PCELL)
 	for cell in _prop_cells.keys():
 		if maxi(absi(floori(float(cell.x) / per) - cc.x), absi(floori(float(cell.y) / per) - cc.y)) > keep:
 			_prop_cells.erase(cell)
+			_prop_cell_tags.erase(cell)
 
 # ---------------------------------------------------------------- queries
 func cell_of(p: Vector2) -> Vector2i:
@@ -200,6 +207,12 @@ func height(p: Vector2) -> float:
 	var b := lerpf(_cell_h(ix, iy + 1), _cell_h(ix + 1, iy + 1), tx)
 	return lerpf(a, b, ty)
 
+## The stored type of a cell, classified against level0 (no live tide): what prop placement reads.
+func static_type(cx: int, cy: int) -> int:
+	var c := Vector2i(floori(float(cx) / CN), floori(float(cy) / CN))
+	var ch: Array = chunk(c)
+	return (ch[1] as PackedByteArray)[(cy - c.y * CN) * CN + (cx - c.x * CN)]
+
 func type_at(p: Vector2) -> int:
 	var c := cell_of(p)
 	return cell_type(c.x, c.y)
@@ -220,10 +233,23 @@ func passable(p: Vector2) -> bool:
 
 ## Moves from `a` toward `b`, sliding along walls; anything already stuck may always move (escape).
 ## With a body radius, solid props push the body out as well (props_resolve); a push that would put it
-## on a cliff or in deep water keeps it where it was.
+## on a cliff or in deep water keeps it where it was. A step longer than the body's radius is taken in
+## sub-steps of at most that radius, so a fast body (a dash, a long tick) cannot pass through a trunk
+## whose far side it would otherwise be pushed out of.
 func move(a: Vector2, b: Vector2, body_r: float = 0.0) -> Vector2:
+	if body_r <= 0.0 or not props_on: return _move_cells(a, b)
+	var d := b - a
+	if d.length_squared() <= body_r * body_r: return _move_step(a, b, body_r)
+	var n := ceili(d.length() / body_r)
+	var p := a
+	for k in n:
+		var q := _move_step(p, p + d / n, body_r)
+		if q == p: break                                   # blocked: the rest of the step would be too
+		p = q
+	return p
+
+func _move_step(a: Vector2, b: Vector2, body_r: float) -> Vector2:
 	var q := _move_cells(a, b)
-	if body_r <= 0.0 or not props_on: return q
 	var r := props_resolve(q, body_r)
 	if r != q and not passable(r) and passable(q): return a
 	return r
@@ -238,15 +264,31 @@ func _move_cells(a: Vector2, b: Vector2) -> Vector2:
 	return a
 
 ## Swarm fast path: one cell lookup when the foe stays in its cell (the common case at 16-unit cells).
-## Shallows scale the whole step (knockback included) by 0.65. A body radius adds the solid props.
+## Shallows scale the whole step (knockback included) by 0.65. A body radius adds the solid props, with
+## move()'s guard: a prop never shoves a foe onto a cliff or into deep water. A step longer than the body's
+## radius (a charger's dash, a hard knockback) is sub-stepped like move()'s.
 func foe_move(p: Vector2, np: Vector2, body_r: float = 0.0) -> Vector2:
 	var cp := cell_of(p)
 	var t := cell_type(cp.x, cp.y)
 	if t == SHALLOW and not frozen.has(cp):
 		np = p + (np - p) * 0.65
-	var q := np if cell_of(np) == cp else _move_cells(p, np)
-	if body_r > 0.0 and props_on: q = props_resolve(q, body_r)
-	return q
+	if body_r <= 0.0 or not props_on:
+		return np if cell_of(np) == cp else _move_cells(p, np)
+	var d := np - p
+	if d.length_squared() <= body_r * body_r: return _foe_step(p, np, body_r)
+	var n := ceili(d.length() / body_r)
+	var at := p
+	for k in n:
+		var q := _foe_step(at, at + d / n, body_r)
+		if q == at: break
+		at = q
+	return at
+
+func _foe_step(p: Vector2, np: Vector2, body_r: float) -> Vector2:
+	var q := np if cell_of(np) == cell_of(p) else _move_cells(p, np)
+	var r := props_resolve(q, body_r)
+	if r != q and not passable(r) and passable(q): return p
+	return r
 
 # ---------------------------------------------------------------- solid props (PropLayout)
 ## Trees, boulders and ruins block walking, rolling and the swarm. Each chunk's obstacle circles come
@@ -258,15 +300,24 @@ const INV_PCELL := 1.0 / PCELL
 const PROP_REACH := 48.0          # the largest body radius that collides with props (swarm foes reach ~34)
 var props_on := true              # off: nothing blocks (menus, some tests)
 var _prop_chunks := {}            # Vector2i chunk -> PackedFloat32Array of its circles [x, y, r, low] x n
+var _prop_tags := {}              # Vector2i chunk -> PackedByteArray: each circle's tag (PropLayout.TAG_*)
+var _prop_crystals := {}          # Vector2i chunk -> PackedVector2Array: its crystal accents
 var _prop_cells := {}             # Vector2i PCELL cell -> PackedFloat32Array of the circles reaching it
+var _prop_cell_tags := {}         # Vector2i PCELL cell -> PackedByteArray, parallel to _prop_cells
 var _prop_test := PackedFloat32Array()
+var _prop_test_tags := PackedByteArray()
 var _prop_test_on := false
 
 func _prop_chunk(c: Vector2i) -> PackedFloat32Array:
-	if not _prop_chunks.has(c): _prop_chunks[c] = PropLayout.solids(c, stage, self)
+	if not _prop_chunks.has(c):
+		var lay := PropLayout.chunk(c, stage, self, 1.0, false)
+		_prop_chunks[c] = lay.solids
+		_prop_tags[c] = lay.solid_tags
+		_prop_crystals[c] = lay.crystals
 	return _prop_chunks[c]
 
 ## The circles [x, y, r, low] x n that a body of radius <= PROP_REACH anywhere in p's cell can touch.
+## Circles of neighbouring chunks count too: a chunk's circle can lie up to PropLayout.MAX_SPILL outside it.
 func props_near(p: Vector2) -> PackedFloat32Array:
 	if _prop_test_on: return _prop_test
 	var cell := Vector2i(floori(p.x * INV_PCELL), floori(p.y * INV_PCELL))
@@ -274,17 +325,39 @@ func props_near(p: Vector2) -> PackedFloat32Array:
 	if hit != null: return hit
 	var x0 := cell.x * PCELL
 	var y0 := cell.y * PCELL
-	var m := PROP_REACH + PropLayout.MAX_R
+	var m := PROP_REACH + PropLayout.MAX_R + PropLayout.MAX_SPILL
 	var out := PackedFloat32Array()
+	var tags := PackedByteArray()
 	for cx in range(floori((x0 - m) / CHUNK), floori((x0 + PCELL + m) / CHUNK) + 1):
 		for cy in range(floori((y0 - m) / CHUNK), floori((y0 + PCELL + m) / CHUNK) + 1):
 			var a := _prop_chunk(Vector2i(cx, cy))
+			var ta: PackedByteArray = _prop_tags[Vector2i(cx, cy)]
 			for j in range(0, a.size(), 4):
 				var reach := a[j + 2] + PROP_REACH
 				if a[j] + reach < x0 or a[j] - reach > x0 + PCELL or a[j + 1] + reach < y0 or a[j + 1] - reach > y0 + PCELL: continue
 				out.append(a[j]); out.append(a[j + 1]); out.append(a[j + 2]); out.append(a[j + 3])
+				tags.append(ta[j / 4])
 	_prop_cells[cell] = out
+	_prop_cell_tags[cell] = tags
 	return out
+
+## The tags of props_near(p)'s circles, in the same order (one byte per circle).
+func props_near_tags(p: Vector2) -> PackedByteArray:
+	if _prop_test_on: return _prop_test_tags
+	props_near(p)
+	return _prop_cell_tags[Vector2i(floori(p.x * INV_PCELL), floori(p.y * INV_PCELL))]
+
+## Crystal accents within r of p (PropLayout's own stream: the same on every tier).
+func crystals_near(p: Vector2, r: float) -> int:
+	var n := 0
+	var cc := Vector2i(floori(p.x / CHUNK), floori(p.y / CHUNK))
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var c := cc + Vector2i(dx, dy)
+			if not _prop_crystals.has(c): _prop_chunk(c)
+			for q in (_prop_crystals[c] as PackedVector2Array):
+				if q.distance_squared_to(p) <= r * r: n += 1
+	return n
 
 ## A body of radius br at p pushed out of the prop circles around it, along each circle's normal to its
 ## edge (centre + direction * (r + br)); two passes, so a body wedged between two circles settles against
@@ -295,7 +368,15 @@ func props_resolve(p: Vector2, br: float, skip_low: bool = false) -> Vector2:
 	var a := props_near(p)
 	var n := a.size()
 	if n == 0: return p
+	var cell := Vector2i(floori(p.x * INV_PCELL), floori(p.y * INV_PCELL))
 	for it in 2:
+		if it == 1:
+			# the first pass may have pushed the body into another cell, whose circles it must see now
+			var c2 := Vector2i(floori(p.x * INV_PCELL), floori(p.y * INV_PCELL))
+			if c2 != cell:
+				cell = c2
+				a = props_near(p)
+				n = a.size()
 		var moved := false
 		for j in range(0, n, 4):
 			if skip_low and a[j + 3] > 0.5: continue
@@ -336,13 +417,62 @@ func props_path_clear(a: Vector2, b: Vector2, br: float) -> bool:
 			if arr[j + 3] > 0.5: continue
 			var c := Vector2(arr[j], arr[j + 1])
 			var t := clampf((c - a).dot(ab) / l2, 0.0, 1.0)
+			# the nearest point is the start and the path leads away from the circle: a jump off a trunk the hero
+			# is touching is a jump away from it, not into it
+			if t == 0.0 and ab.dot(a - c) > 0.0: continue
 			var rr := arr[j + 2] + br
 			if c.distance_squared_to(a + ab * t) < rr * rr: return false
 	return true
 
-## Tests: exactly these circles [x, y, r, low] x n block, instead of the layout.
-func set_test_props(circles: PackedFloat32Array) -> void:
+## Every prop circle overlapping the disc (p, r): [[centre, radius, low, tag], ...] (tag PropLayout.TAG_*).
+## Whole chunks are read (cached), so this is for one-off area effects (Contagion's beacons), not per foe.
+func props_in(p: Vector2, r: float) -> Array:
+	var out: Array = []
+	if not props_on: return out
+	if _prop_test_on:
+		for j in range(0, _prop_test.size(), 4):
+			var rr := _prop_test[j + 2] + r
+			var c := Vector2(_prop_test[j], _prop_test[j + 1])
+			if c.distance_squared_to(p) < rr * rr: out.append([c, _prop_test[j + 2], _prop_test[j + 3] > 0.5, _prop_test_tags[j / 4]])
+		return out
+	var m := r + PropLayout.MAX_R
+	for cx in range(floori((p.x - m) / CHUNK), floori((p.x + m) / CHUNK) + 1):
+		for cy in range(floori((p.y - m) / CHUNK), floori((p.y + m) / CHUNK) + 1):
+			var ck := Vector2i(cx, cy)
+			var a := _prop_chunk(ck)
+			var ta: PackedByteArray = _prop_tags[ck]
+			for j in range(0, a.size(), 4):
+				var rr2 := a[j + 2] + r
+				var c2 := Vector2(a[j], a[j + 1])
+				if c2.distance_squared_to(p) < rr2 * rr2: out.append([c2, a[j + 2], a[j + 3] > 0.5, ta[j / 4]])
+	return out
+
+## Whether a body of radius br flying straight from a to b passes over a low circle (a boulder or wall it
+## clears): the Warden's vault (World._jump). Sampled like props_path_clear.
+func props_path_low(a: Vector2, b: Vector2, br: float) -> bool:
+	if not props_on: return false
+	var ab := b - a
+	var l2 := maxf(1e-6, ab.length_squared())
+	var steps := maxi(1, ceili(sqrt(l2) / (PCELL * 0.5)))
+	for k in steps + 1:
+		var arr := props_near(a + ab * (float(k) / steps))
+		for j in range(0, arr.size(), 4):
+			if arr[j + 3] < 0.5: continue
+			var c := Vector2(arr[j], arr[j + 1])
+			var t := clampf((c - a).dot(ab) / l2, 0.0, 1.0)
+			if t <= 0.0 or t >= 1.0: continue              # beside the take-off or the landing, not under the flight
+			var rr := arr[j + 2] + br
+			if c.distance_squared_to(a + ab * t) < rr * rr: return true
+	return false
+
+## Tests: exactly these circles [x, y, r, low] x n block, instead of the layout. `tags` (one per circle,
+## PropLayout.TAG_*) defaults to STONE for low circles and WOOD for high ones.
+func set_test_props(circles: PackedFloat32Array, tags: PackedByteArray = PackedByteArray()) -> void:
 	_prop_test = circles
+	if tags.size() != circles.size() / 4:
+		tags = PackedByteArray()
+		for j in range(0, circles.size(), 4): tags.append(PropLayout.TAG_STONE if circles[j + 3] > 0.5 else PropLayout.TAG_WOOD)
+	_prop_test_tags = tags
 	_prop_test_on = true
 
 func speed_mul(p: Vector2) -> float:
@@ -507,10 +637,11 @@ func set_level(l: float) -> void:
 		_lv_mark = level
 		version += 1
 
-## Prop placement rules for the renderer's scatter.
+## Prop placement rules for PropLayout (the renderer's scatter and the simulation's obstacles). Read against
+## the stored types (level0), never the live Act V tide, so a layout never depends on when it is built.
 func prop_ok(kind: String, p: Vector2) -> bool:
 	var c := cell_of(p)
-	var t := cell_type(c.x, c.y)
+	var t := static_type(c.x, c.y)
 	if t == DEEP or t == CLIFF: return false
 	if t == SHALLOW: return kind == "rock" or kind == "grass" and liquid == "water"
 	return true

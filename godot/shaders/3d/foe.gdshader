@@ -6,10 +6,15 @@ render_mode diffuse_burley, specular_schlick_ggx, cull_back;
 // colour alpha = seed / 63. Instance data is stored as 16-bit halves, so every value stays small.
 //   status: 0 none 1 burn 2 chill 3 shock 4 poison 5 bleed 6 frozen 7 CORPSE (lying, crumbling)
 //   flags: 1 elite, 2 boss, 8 exile, 16 goblin, 64 ally;  seed 0..63 varies the skin per foe
+//   custom.w = flags + 256 x Burn stacks (0..5, the Emberwitch's contagion): burn_norm = stacks / 5 drives the
+//   ember crust. 1535 at most, an exact half; the VAT frame (x), flash (y) and tint (colour) are untouched.
 uniform float time = 0.0;
 uniform vec3 eye_col : source_color = vec3(1.0, 0.8, 0.35);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
 uniform bool colorblind = false;
+// the act's Fresnel rim (WorldView3D STAGE_LOOK.rim): moon-cyan, molten-amber, frost-cyan, rift-violet, teal
+uniform vec3 rim_col : source_color = vec3(0.0);
+uniform float rim_k = 0.0;
 // Vertex animation texture (Models.foe_vat, SVA3): row = frame, column = vertex (UV.x). INSTANCE_CUSTOM.x is
 // then the frame coordinate into it (the CPU picks the clip and time), blended between two rows. Positions
 // are RGBA8, 10 bits per axis over the clip set's box (vat_min + q / 1023 * vat_ext: RGB the top 8 bits,
@@ -180,6 +185,20 @@ void fragment() {
 	base = mix(base, base * vec3(0.5, 0.25, 0.22), vein * 0.6);
 	}
 
+	// ember crust (contagion): the hide chars and the noise's ridges crack open, glowing and flickering
+	// hotter with every stack. Plain texture/trig math only (GLES3 and Mali safe: no inverse(), no loops).
+	float burn_n = clamp(floor(v_custom.w / 256.0 + 0.001) * 0.2, 0.0, 1.0);
+	vec3 crust = vec3(0.0);
+	if (burn_n > 0.0 && !corpse) {
+		// thin cracks (the noise's 0.5 crossings) widen a little with the stacks; the char darkens the hide
+		// between them, so the glow reads as lines of fire on a black crust, not a white blob
+		float crack = smoothstep(0.035 + 0.035 * burn_n, 0.0, abs(nz.g - 0.5));
+		float flick = 0.75 + 0.25 * sin(time * 13.0 + seed * 2.3 + v_mpos.y * 3.0) * sin(time * 7.3 + seed);
+		base *= 1.0 - 0.8 * burn_n;
+		rough = mix(rough, 0.9, burn_n * 0.6);
+		vec3 fire = mix(vec3(0.9, 0.16, 0.02), vec3(1.0, 0.42, 0.06), burn_n);
+		crust = fire * (crack * (0.5 + 1.0 * burn_n) + 0.05 * burn_n) * flick;
+	}
 	bool elite = mod(flags, 2.0) >= 1.0;
 	bool exile = mod(floor(flags / 8.0), 2.0) >= 1.0;
 	bool ally = mod(floor(flags / 64.0), 2.0) >= 1.0;
@@ -195,8 +214,10 @@ void fragment() {
 	vec3 sc = status_col(v_custom.z);
 	if (v_custom.z > 0.5 && !corpse) {
 		if (v_custom.z > 5.5) { base = mix(base, vec3(0.62, 0.8, 0.95), 0.6); rough = 0.45; }   // frosted, not mirror: rough 0.1 threw a sun glint off every facet (speckle)
-		em += sc * (0.16 + fres * 0.6) * (0.85 + 0.15 * sin(time * 9.0));
+		em += sc * (0.16 + fres * 0.6) * (0.85 + 0.15 * sin(time * 9.0)) * (1.0 - 0.6 * burn_n);   // the crust shows Burn
 	}
+	em += crust;
+	if (!corpse) em += rim_col * fres * rim_k;
 	if (elite) em += vec3(1.0, 0.75, 0.25) * fres * 1.4;
 	if (exile) em += vec3(1.0, 0.45, 0.15) * fres * 3.0;
 	if (ally) { base *= 0.4; em += vec3(0.6, 0.45, 1.0) * (0.6 + fres * 2.0); }

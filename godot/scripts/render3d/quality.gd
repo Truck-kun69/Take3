@@ -57,9 +57,12 @@ static func device_class() -> int:
 static func high() -> bool:
 	return tier() >= 2 and on("high_detail")
 
-## Prop count multiplier for the chunked scatter.
+## Prop count multiplier for the chunked scatter (bushes and grass only: the solid props never scale). Low
+## draws under half of Medium's clutter: ~105-135 instances a chunk instead of ~160, the Mali-G52's (Galaxy
+## A05) worst per-pixel cost in a field of grass.
+const DENSITY := [0.45, 1.0, 1.3]
 static func prop_density() -> float:
-	return [0.7, 1.0, 1.3][tier()]
+	return DENSITY[tier()]
 
 ## Ground grid spacing in world units (vertex density of the displaced terrain).
 static func ground_q() -> float:
@@ -67,3 +70,67 @@ static func ground_q() -> float:
 
 static func lights() -> int:
 	return [4, 8, 14][tier()] if on("lights") else 0
+
+# ---------------------------------------------------------------- renderer: Vulkan or OpenGL Safe Mode
+## Options > Graphics > Renderer: "Vulkan" (the Mobile renderer) or "OpenGL Safe Mode" (Compatibility). The
+## choice lives in the project-settings override file (project.godot: application/config/
+## project_settings_override), which the engine reads before it starts a driver: it applies on the next launch.
+##
+## Crash sentinel (Galaxy A05: a Mali-G52 Vulkan driver fault can kill the app mid-session). A process cannot
+## change its own driver, so the fallback is armed in advance: on phones, while the app is in the foreground
+## on Vulkan, the override file already asks for Compatibility and carries the sentinel. Every clean end of the
+## session (the app sent to the background, which is how Android apps close, or quit) disarms it again, and a
+## resume re-arms it: the same lifecycle as Diag's "== exit" / "== background" lines. If the app dies on
+## Vulkan, the armed file stays: the next launch boots on Compatibility, finds the sentinel, and makes Safe
+## Mode the saved choice (the crash report says so; Options > Graphics > Renderer switches back).
+const OVERRIDE := "user://override.cfg"
+static var override_path := OVERRIDE
+const API_VULKAN := 0
+const API_GL := 1
+static var safe_fell_back := false      # this launch came up in Safe Mode because the last run crashed
+
+static func api_is_gl() -> bool:
+	return RenderingServer.get_current_rendering_method() == "gl_compatibility"
+
+## Writes the override file: Compatibility (gl true) or none (Vulkan), optionally armed as the sentinel.
+static func write_api(gl: bool, sentinel: bool = false) -> void:
+	if not gl:
+		if FileAccess.file_exists(override_path): DirAccess.remove_absolute(ProjectSettings.globalize_path(override_path))
+		return
+	var cf := ConfigFile.new()
+	cf.set_value("rendering", "renderer/rendering_method", "gl_compatibility")
+	cf.set_value("rendering", "renderer/rendering_method.mobile", "gl_compatibility")
+	if sentinel: cf.set_value("shardfall", "sentinel", true)
+	cf.save(override_path)
+
+## What the override file asks for: {"gl": bool, "sentinel": bool}.
+static func read_api() -> Dictionary:
+	var cf := ConfigFile.new()
+	if not FileAccess.file_exists(override_path) or cf.load(override_path) != OK: return {"gl": false, "sentinel": false}
+	return {"gl": String(cf.get_value("rendering", "renderer/rendering_method.mobile", "")) == "gl_compatibility",
+		"sentinel": bool(cf.get_value("shardfall", "sentinel", false))}
+
+## The player's choice (Options): Safe Mode now and on every launch, or Vulkan from the next launch.
+static func set_api(api: int) -> void:
+	Save.set_opt("gfx_api", api)
+	write_api(api == API_GL)
+
+## The session is in the foreground: arm the sentinel (phones on Vulkan only; force: tests on a desktop).
+static func arm_sentinel(force: bool = false) -> bool:
+	if not force and (not OS.has_feature("mobile") or api_is_gl()): return false
+	if int(Save.opt("gfx_api")) != API_VULKAN: return false
+	write_api(true, true)
+	return true
+
+## The session ended cleanly (or the app left the foreground): back to what the player chose.
+static func disarm_sentinel() -> void:
+	if not read_api().sentinel: return
+	write_api(int(Save.opt("gfx_api")) == API_GL)
+
+## On launch: an armed sentinel means the last run died mid-fight. Safe Mode becomes the saved choice.
+static func check_sentinel() -> bool:
+	if not read_api().sentinel: return false
+	Save.set_opt("gfx_api", API_GL)
+	write_api(true)
+	safe_fell_back = true
+	return true

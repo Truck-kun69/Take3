@@ -21,6 +21,7 @@ const MARK_CAP := 96
 const MARK_LIFT := 0.4             # marks lie this far above the ground (clear of its depth, under decals at 0.5)
 const ESHOT_RING := Color(1.0, 0.08, 0.46)      # enemy shots' ring: magenta-crimson
 const DECAL_POOL := 110
+static var _headless := DisplayServer.get_name() == "headless"
 
 var glow_mm: MultiMeshInstance3D
 var _gb := PackedFloat32Array()
@@ -176,6 +177,7 @@ void fragment() {
 
 func bind(world: World) -> void:
 	w = world
+	_shards.clear()
 	d_n = 0
 	s_n = 0
 	_marks.clear()
@@ -190,6 +192,8 @@ func step(dt: float) -> void:
 	(beam_mm.material_override as ShaderMaterial).set_shader_parameter("time", time)
 	decal_mat.set_shader_parameter("time", time)
 	_consume_feed()
+	_step_shards(dt)
+	_echo_shards()
 	_sim_debris(dt)
 	_sim_sparks(dt)
 	var gn := 0
@@ -207,6 +211,7 @@ func step(dt: float) -> void:
 	if gn > 0: mm.buffer = _gb          # nothing to draw: skip the upload
 	mm.visible_instance_count = gn
 	_debris_upload()
+	_contagion(dt)
 	_lightning()
 	_decals()
 	_event_props(dt)
@@ -233,10 +238,24 @@ func light_candidates() -> Array:
 		if pc >= 3: break
 		out.append([Vector3(p.pos.x, view.ground_y(p.pos) + 16.0, p.pos.y), p.col, 1.2, 90.0])
 		pc += 1
+	for e in w.rift_echoes:
+		if not e.taken:
+			var ep: Vector2 = e.pos
+			out.append([Vector3(ep.x, view.ground_y(ep) + 45.0, ep.y), Color(0.7, 0.5, 1.0), 1.0, 180.0])
+	var cg := w.contagion
+	if cg != null:
+		for b in cg.beacons.slice(0, 2):                  # burning trunks: a low, flickering glow
+			var bp: Vector2 = b.pos
+			out.append([Vector3(bp.x, view.ground_y(bp) + 70.0, bp.y), Color(1.0, 0.52, 0.2), 0.6 + 0.15 * sin(time * 9.0 + bp.x), 200.0])
 	# nearer and brighter first: weight by distance to the hero
 	for c in out:
 		var d: float = Vector2(c[0].x, c[0].z).distance_to(w.pp)
 		c[2] = c[2] * clampf(1.4 - d / 900.0, 0.2, 1.4)
+	# the blaze: one light over the hottest burning cluster, only while 3+ foes burn, never brighter than the
+	# torch (1.6) or a boss's own light (0.85): it is the first of the pool to go when lights run short
+	if cg != null and cg.hot_heat > 0:
+		var e := clampf(0.3 + 0.012 * cg.hot_heat, 0.3, 0.8)
+		out.append([Vector3(cg.hot.x, view.ground_y(cg.hot) + 42.0, cg.hot.y), Color(1.0, 0.5, 0.18), e * (0.9 + 0.1 * sin(time * 11.0)), 260.0])
 	return out
 
 ## A transient light at world position p (ground height included).
@@ -277,6 +296,29 @@ func _consume_feed() -> void:
 			"ring": add_light(p3, f.col, 3.5, maxf(120.0, float(f.max) * 1.2), f.life)
 			"zap": add_light(Vector3(f.pos.x, g3 + 60.0, f.pos.y), f.col, 5.0, 200.0, 0.22); _mark(f.pos, f.r * 0.9, 1)
 			"arc": add_light(p3, f.col, 2.0, 120.0, 0.15)
+			"incinerate":                    # the Emberwitch's detonation: a scorch, a flash, a spray of embers
+				_mark(f.pos, float(f.r) * 0.95, 1)
+				add_light(Vector3(f.pos.x, g3 + 40.0, f.pos.y), f.col, 5.0, float(f.r) * 3.0, 0.4)
+				for i in 14:
+					var a := randf() * TAU
+					_spark(Vector3(f.pos.x, g3 + 8.0, f.pos.y), Vector3(cos(a) * randf_range(60, 200), randf_range(160, 420), sin(a) * randf_range(60, 200)), Color(1.0, randf_range(0.35, 0.7), 0.12), randf_range(0.4, 0.9), randf_range(3.0, 6.0))
+			"conflag":                       # a burning foe goes up: a bigger flash and a ring of fire
+				_mark(f.pos, float(f.r) * 0.8, 1)
+				add_light(Vector3(f.pos.x, g3 + 40.0, f.pos.y), f.col, 6.0, 300.0, 0.45)
+				for i in 22:
+					var a2 := TAU * i / 22.0
+					_spark(Vector3(f.pos.x, g3 + 12.0, f.pos.y), Vector3(cos(a2) * 320.0, randf_range(80, 260), sin(a2) * 320.0), Color(1.0, randf_range(0.45, 0.8), 0.18), randf_range(0.35, 0.6), randf_range(4.0, 7.0))
+			"beacon": add_light(Vector3(f.pos.x, g3 + 90.0, f.pos.y), f.col, 4.0, 240.0, 0.5)
+			"crater":                        # the Warden's vault slam
+				_mark(f.pos, float(f.r) * 0.85, 2)
+				add_light(p3, f.col, 4.0, 240.0, 0.3)
+				for i in 16:
+					var a3 := randf() * TAU
+					_debris(Vector3(f.pos.x + cos(a3) * 30.0, g3 + 6.0, f.pos.y + sin(a3) * 30.0), Vector3(cos(a3) * randf_range(120, 260), randf_range(220, 420), sin(a3) * randf_range(120, 260)), Color(0.36, 0.31, 0.26), randf_range(4.0, 9.0))
+			"spark_burst":                   # a Rime Bolt glancing off stone
+				add_light(p3, f.col, 1.6, 110.0, 0.15)
+				for i in 10:
+					_spark(Vector3(f.pos.x, g3 + 18.0, f.pos.y), Vector3(randf_range(-1, 1), randf_range(0.2, 1.2), randf_range(-1, 1)) * 300.0, f.col.lightened(0.3), randf_range(0.15, 0.3), randf_range(2.0, 3.5))
 	for z in w.teles:
 		if z.arm > 0.0 and z.arm <= 0.05 and z.col.a > 0.01 and z.hostile:
 			_mark(z.pos, z.r * 0.8 if z.shape == 0 else 40.0, 2)
@@ -541,11 +583,98 @@ func _ribbon(pts: PackedVector3Array, width: float, col: Color) -> void:
 		bolt_mesh.surface_set_uv(Vector2(1, 1)); bolt_mesh.surface_add_vertex(b + side)
 		bolt_mesh.surface_set_uv(Vector2(1, 0)); bolt_mesh.surface_add_vertex(b - side)
 
+# ================================================================= the cold open's Rift Shard
+## A Rift Shard (ColdOpen): it streaks from `from` (high in the sky) to `to` on the ground over `life` seconds,
+## a white-violet head with a trail of sparks and a ribbon behind it, then strikes: a flash, a shockwave, a
+## scorch, a spray of rubble, and the rift's glow lingering where it landed. Heights are world heights.
+var _shards: Array = []           # {from, to, t, life, hit, glow}
+signal shard_struck(at: Vector3)
+func shard(from: Vector3, to: Vector3, life: float) -> void:
+	_shards.append({"from": from, "to": to, "t": 0.0, "life": maxf(0.1, life), "hit": false, "glow": 0.0})
+
+func shard_head(s: Dictionary) -> Vector3:
+	var k := clampf(float(s.t) / float(s.life), 0.0, 1.0)
+	return (s.from as Vector3).lerp(s.to, pow(k, 1.6))    # accelerating down out of the sky
+
+func _step_shards(dt: float) -> void:
+	for s in _shards:
+		s.t += dt
+		var to: Vector3 = s.to
+		if not s.hit:
+			var h := shard_head(s)
+			ext_glow.append([h, 46.0, Color(0.92, 0.85, 1.0), 0.0])
+			ext_glow.append([h, 120.0, Color(0.6, 0.35, 1.0, 0.5), 0.0])
+			for i in 3:
+				_spark(h, Vector3(randf_range(-60, 60), randf_range(-20, 80), randf_range(-60, 60)), Color(0.8, 0.6, 1.0), randf_range(0.4, 0.9), randf_range(4.0, 8.0))
+			add_light(h, Color(0.75, 0.55, 1.0), 4.0, 500.0, 0.05)
+			if float(s.t) >= float(s.life):
+				s.hit = true
+				_shard_strike(to)
+		else:
+			s.glow = minf(1.0, float(s.glow) + dt * 0.8)
+			ext_glow.append([to + Vector3(0, 40, 0), 90.0 + 12.0 * sin(time * 3.0), Color(0.55, 0.3, 1.0, 0.55 * float(s.glow)), 0.0])
+			if randf() < 0.5:
+				_spark(to + Vector3(randf_range(-30, 30), 5.0, randf_range(-30, 30)), Vector3(randf_range(-15, 15), randf_range(90, 220), randf_range(-15, 15)), Color(0.7, 0.5, 1.0), randf_range(0.6, 1.2), randf_range(3.0, 6.0))
+
+func _shard_strike(to: Vector3) -> void:
+	var p := Vector2(to.x, to.z)
+	add_light(to + Vector3(0, 80, 0), Color(0.8, 0.6, 1.0), 12.0, 900.0, 1.4)
+	_mark(p, 140.0, 1)
+	for i in 50:
+		var a := randf() * TAU
+		_debris(to + Vector3(cos(a) * 20.0, 8.0, sin(a) * 20.0), Vector3(cos(a) * randf_range(150, 420), randf_range(280, 620), sin(a) * randf_range(150, 420)), Color(0.3, 0.27, 0.32), randf_range(5.0, 14.0), randf_range(1.2, 2.2))
+	for i in 90:
+		var a2 := randf() * TAU
+		_spark(to + Vector3(0, 12, 0), Vector3(cos(a2) * randf_range(200, 620), randf_range(60, 520), sin(a2) * randf_range(200, 620)), Color(0.85, 0.7, 1.0).lerp(Color.WHITE, randf() * 0.5), randf_range(0.5, 1.3), randf_range(4.0, 9.0))
+	if w != null:
+		w.fx.append({"k": "ring", "pos": p, "r": 0.0, "max": 300.0, "col": Color(0.75, 0.5, 1.0), "life": 0.9, "t": 0.0})
+	shard_struck.emit(to)
+
+func clear_shards() -> void:
+	_shards.clear()
+
+## The act's Rift Echoes (World.rift_echoes) until taken: a violet crystal of light hovering at chest height,
+## breathing, shedding motes upward (and a light candidate, in light_candidates).
+func _echo_shards() -> void:
+	if w == null: return
+	for e in w.rift_echoes:
+		if e.taken: continue
+		var p: Vector2 = e.pos
+		var gy := view.ground_y(p)
+		var br := 0.5 + 0.5 * sin(time * 2.2 + float(e.k) * 1.7)
+		ext_glow.append([Vector3(p.x, gy + 38.0 + 4.0 * sin(time * 1.3), p.y), 26.0 + 6.0 * br, Color(0.9, 0.82, 1.0), 0.0])
+		ext_glow.append([Vector3(p.x, gy + 38.0, p.y), 70.0 + 14.0 * br, Color(0.6, 0.35, 1.0, 0.45), 0.0])
+		if randf() < 0.25:
+			_spark(Vector3(p.x + randf_range(-14, 14), gy + 20.0, p.y + randf_range(-14, 14)), Vector3(randf_range(-10, 10), randf_range(60, 140), randf_range(-10, 10)), Color(0.75, 0.6, 1.0), randf_range(0.6, 1.1), randf_range(2.0, 4.0))
+
+## The Emberwitch's fire between events: embers rising off every Incineration zone, flames off every lit
+## trunk (Contagion.zones, beacons). Fewer on the Low tier.
+func _contagion(_dt: float) -> void:
+	var cg := w.contagion
+	if cg == null: return
+	var per := 1 if Quality.tier() == 0 else 3
+	for z in cg.zones:
+		var zp: Vector2 = z.pos
+		var zr: float = z.r
+		for i in per:
+			var a := randf() * TAU
+			var q := zp + Vector2(cos(a), sin(a)) * zr * sqrt(randf())
+			_spark(Vector3(q.x, view.ground_y(q) + 4.0, q.y), Vector3(randf_range(-20, 20), randf_range(240, 420), randf_range(-20, 20)), Color(1.0, randf_range(0.3, 0.65), 0.1), randf_range(0.5, 1.0), randf_range(2.5, 5.0))
+	for b in cg.beacons:
+		var bp: Vector2 = b.pos
+		var br: float = b.r
+		for i in per:
+			var a2 := randf() * TAU
+			var h := randf_range(30.0, 120.0)
+			_spark(Vector3(bp.x + cos(a2) * br * 0.8, view.ground_y(bp) + h, bp.y + sin(a2) * br * 0.8), Vector3(randf_range(-25, 25), randf_range(180, 340), randf_range(-25, 25)), Color(1.0, randf_range(0.35, 0.7), 0.12), randf_range(0.4, 0.8), randf_range(3.0, 6.0))
+
 func _lightning() -> void:
 	bolt_mesh.clear_surfaces()
 	var any := false
 	for f in w.fx:
-		if f.k == "zap" or f.k == "arc": any = true
+		if f.k == "zap" or f.k == "arc" or f.k == "fire_arc": any = true
+	for s in _shards:
+		if not s.hit: any = true
 	if not any: return
 	bolt_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, bolt_mat)
 	for f in w.fx:
@@ -571,6 +700,27 @@ func _lightning() -> void:
 					var m := (src[i] + src[i + 1]) * 0.5
 					pts2.append(Vector3(m.x + randf_range(-10, 10), 24.0 + randf_range(-6, 6), m.y + randf_range(-10, 10)))
 			_ribbon(pts2, 5.0, col)
+		elif f.k == "fire_arc":          # fire leaping from a burning foe to its neighbour: a low ember arc
+			var a0: Vector2 = f.pos
+			var b0: Vector2 = f.to
+			var lift := 18.0 + 0.3 * a0.distance_to(b0)
+			var pts3 := PackedVector3Array()
+			for s in 7:                   # heights over the ground: the ribbon shader drapes them (th())
+				var u := s / 6.0
+				var q := a0.lerp(b0, u)
+				pts3.append(Vector3(q.x, 16.0 + 4.0 * lift * u * (1.0 - u), q.y))
+			_ribbon(pts3, 4.0 * k + 1.5, col)
+			_ribbon(pts3, 1.5, Color(1.0, 0.9, 0.6, k))
+	for s in _shards:                    # the Rift Shard's trail: heights over the ground, as the ribbon shader wants
+		if s.hit: continue
+		var head := shard_head(s)
+		var dir := ((s.from as Vector3) - (s.to as Vector3)).normalized()
+		var trail := PackedVector3Array()
+		for q in 6:
+			var tp: Vector3 = head + dir * (q * 55.0)
+			trail.append(Vector3(tp.x, tp.y - view.ground_y(Vector2(tp.x, tp.z)), tp.z))
+		_ribbon(trail, 16.0, Color(0.7, 0.45, 1.0, 0.85))
+		_ribbon(trail, 5.0, Color(1.0, 0.95, 1.0, 1.0))
 	bolt_mesh.surface_end()
 
 # ================================================================= ground decals
@@ -581,6 +731,7 @@ func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: flo
 	Diag.first("decal kind %d" % int(kind))
 	d.visible = true
 	d.transform = Transform3D(xform_basis, Vector3(pos.x, y, pos.y))
+	if _headless: return                 # the dummy renderer keeps no materials: setting their instance uniforms only logs errors
 	d.set_instance_shader_parameter("col", col)
 	d.set_instance_shader_parameter("kind", kind)
 	d.set_instance_shader_parameter("prog", prog)
@@ -617,6 +768,12 @@ func _decals() -> void:
 	for f in w.fx:
 		if f.k == "ring": rings += 1
 	var ring_dim := 1.0 if rings <= 4 else maxf(0.35, sqrt(4.0 / rings))
+	var cg := w.contagion
+	if cg != null:
+		for z in cg.zones:                                 # Incineration: burning ground and its edge
+			var fade := clampf((Contagion.ZONE_TIME - float(z.t)) / 0.4, 0.0, 1.0)
+			_circle(z.pos, z.r, 5, Color(1.0, 0.42, 0.1, 0.3 * fade), 1.0)
+			_circle(z.pos, z.r, 1, Color(1.0, 0.58, 0.2, 0.7 * fade), 1.0, 0.95)
 	for f in w.fx:
 		if f.k == "ring":
 			var k: float = clampf(f.t / f.life, 0, 1)

@@ -31,6 +31,8 @@ var _yaw := 0.0
 var _ph := 0.0
 var _atk := 0.0
 var _died := false
+var _die_t := 0.0                  # seconds since the die clip started
+var death_k := 1.0                 # 1 alive .. 0: the boss's light and glow fade out over the fall and the sink
 
 ## The boss's own light, x LIGHT_GAIN: LIGHT_E steady plus up to LIGHT_PULSE with its heartbeat
 ## (was 2.0 + 2.5: with the sun at 1.2 and the glow threshold at 1.25 it washed out the boss and the
@@ -228,6 +230,22 @@ func pick_clip(dead: bool, attack: bool, busy: bool, flinch: bool, speed: float)
 func death_time() -> float:
 	return anim.get_animation("die").length if anim != null and anim.has_animation("die") else 0.0
 
+## A fallen boss: its own light and every glowing material fade smoothly to nothing across the die clip and
+## the sink (WorldView3D.BOSS_SINK). The view may pass "fade" (1 .. 0, the fall and sink still to come);
+## without it (tests) the rig times the fade itself.
+func _death_fade(st: Dictionary, dt: float) -> void:
+	_die_t += dt
+	var total := maxf(0.1, death_time() + WorldView3D.BOSS_SINK)
+	var k := clampf(1.0 - _die_t / total, 0.0, 1.0)
+	if st.has("fade"): k = minf(k, clampf(float(st.fade), 0.0, 1.0))
+	death_k = k
+	var e := k * k                                           # eased: the glow dies away rather than cutting
+	light.light_energy = LIGHT_E * WorldView3D.LIGHT_GAIN * e
+	light.visible = e > 0.001
+	for g in _glow_over:
+		(g[0] as BaseMaterial3D).emission_energy_multiplier = float(g[1]) * e
+	_over_flash.set_shader_parameter("flash", 0.0)
+
 ## st: {pos, face, hp_frac, flash, t, dt, attack (bool, set on telegraph/burst), phase, dead (optional)}
 func animate(st: Dictionary) -> void:
 	var p: Vector2 = st.pos
@@ -257,8 +275,10 @@ func animate(st: Dictionary) -> void:
 			if want == "die":
 				if not _died:                                        # once; LOOP_NONE holds the last pose
 					_died = true
+					_die_t = 0.0
 					anim.play("die", 0.15)
 				anim.speed_scale = 1.0
+				_death_fade(st, dt)
 				return
 			if anim.has_animation(want) and (anim.current_animation != want or not anim.is_playing()): anim.play(want, 0.2)
 			# the walk cadence follows the ground speed where the stride was measured (retargeted clips)

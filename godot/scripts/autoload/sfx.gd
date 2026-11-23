@@ -186,12 +186,105 @@ func start_ambience(stage: int) -> void:
 	if ov == null:
 		ov = _ambience_loop(stage)
 	ambience.stream = ov
-	ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("volume")) * 0.35))
+	ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("music_volume")) * 0.35))   # Master is the bus
 	Diag.first("ambience %d" % stage)
 	ambience.play()
 
 func stop_ambience() -> void:
 	ambience.stop()
+	fire_stop()
+
+# ---------------------------------------------------------------- the Emberwitch's blaze (Contagion)
+const FIRE_FULL := 40.0            # foes burning at which the wildfire rumble has fully taken over
+var _fire_crackle: AudioStreamPlayer
+var _fire_rumble: AudioStreamPlayer
+var fire_k := 0.0                  # smoothed blaze size: clampf(burning / FIRE_FULL, 0, 1)
+var _fire_on := 0.0                # smoothed presence: 1 while anything burns
+## Every frame of a run (main): a crackle under the first burning foes, crossfading at equal power into a
+## wildfire rumble as the blaze grows (crackle cos, rumble sin of fire_k x 90 degrees). Silent with nothing
+## burning, with sound off and on the Safe sound engine; the loops are baked on first use.
+func fire_bed(burning: int, dt: float) -> void:
+	var want := 1.0 if burning > 0 and bool(Save.opt("sound")) and not bool(Save.opt("sfx_safe")) else 0.0
+	_fire_on = move_toward(_fire_on, want, dt * 2.0)
+	fire_k = move_toward(fire_k, clampf(burning / FIRE_FULL, 0.0, 1.0), dt * 1.5)
+	if _fire_on <= 0.001:
+		if _fire_crackle != null and _fire_crackle.playing: fire_stop()
+		return
+	if _fire_crackle == null:
+		_fire_crackle = _fire_player(_fire_loop("fire_crackle", 4.0, false))
+		_fire_rumble = _fire_player(_fire_loop("fire_rumble", 6.0, true))
+	var vol := float(Save.opt("sfx_volume")) * _fire_on
+	_fire_crackle.volume_db = linear_to_db(maxf(0.0001, vol * 0.5 * cos(fire_k * PI * 0.5)))
+	_fire_rumble.volume_db = linear_to_db(maxf(0.0001, vol * 0.6 * sin(fire_k * PI * 0.5)))
+	if not _fire_crackle.playing:
+		Diag.first("sound fire bed")
+		_fire_crackle.play()
+		_fire_rumble.play()
+
+func fire_stop() -> void:
+	if _fire_crackle != null:
+		_fire_crackle.stop()
+		_fire_rumble.stop()
+	_fire_on = 0.0
+	fire_k = 0.0
+
+func _fire_player(st: AudioStream) -> AudioStreamPlayer:
+	var p := AudioStreamPlayer.new()
+	p.stream = st
+	p.bus = &"SFX"
+	add_child(p)
+	return p
+
+## The two fire loops: crackle (sparse pops over a faint hiss) and rumble (low roaring noise and a 38 Hz
+## growl under slow swells). The last quarter second crossfades into the first, so each loops seamlessly.
+func _fire_loop(key: String, secs: float, rumble: bool) -> AudioStream:
+	var ov := _override("res://audio/sfx/" + key)
+	if ov != null: return ov
+	if streams.has(key): return streams[key]
+	var n := int(RATE * secs)
+	var fade := int(RATE * 0.25)
+	var buf := PackedFloat32Array()
+	buf.resize(n + fade)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7103 if rumble else 7101
+	var y := 0.0
+	var y2 := 0.0
+	for i in n + fade:
+		var t := float(i) / RATE
+		var loop := TAU * t / secs
+		if rumble:
+			y = y * 0.996 + rng.randf_range(-1, 1) * 0.004
+			y2 = y2 * 0.97 + y * 0.03
+			var swell := 0.65 + 0.35 * sin(loop * 2.0) * sin(loop * 3.0 + 0.7)
+			buf[i] = clampf(y2 * 14.0 * swell + sin(TAU * 38.0 * t + sin(loop * 5.0)) * 0.16 * swell, -1.0, 1.0)
+		else:
+			y = y * 0.6 + rng.randf_range(-1, 1) * 0.4
+			buf[i] = y * 0.05
+	if not rumble:
+		var at := 0.0
+		while at < secs:
+			at += rng.randf_range(0.012, 0.09)
+			var i0 := int(at * RATE)
+			var amp := rng.randf_range(0.25, 1.0)
+			var dec := rng.randf_range(0.002, 0.008) * RATE
+			for k in int(dec * 5.0):
+				if i0 + k >= n + fade: break
+				buf[i0 + k] += amp * exp(-k / dec) * rng.randf_range(-1, 1)
+	var bytes := PackedByteArray()
+	bytes.resize(n * 2)
+	for i in n:
+		var v := buf[i]
+		if i < fade: v = buf[i] * (float(i) / fade) + buf[n + i] * (1.0 - float(i) / fade)
+		bytes.encode_s16(i * 2, int(clampf(v, -1.0, 1.0) * 32767.0 * 0.8))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = RATE
+	w.data = bytes
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	w.loop_begin = 0
+	w.loop_end = n - 2
+	streams[key] = w
+	return w
 
 func _ambience_loop(stage: int) -> AudioStreamWAV:
 	var key := "amb%d" % stage
@@ -248,7 +341,7 @@ func play(name: String, pitch: float = 1.0, gain: float = 1.0) -> void:
 	Diag.first("sound " + name)
 	var p: AudioStreamPlayer = players[name]
 	p.pitch_scale = _pitch(name, pitch, now)
-	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")) * gain)), -60.0, 6.0)
+	p.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("sfx_volume")) * gain)), -60.0, 6.0)
 	p.play()
 
 ## Pitch for one play: a semitone climb for chained pickups, a small random spread for the rest.
@@ -264,8 +357,9 @@ func _pitch(name: String, pitch: float, now: int) -> float:
 	ps = clampf(ps, 0.5, 2.5)
 	return ps if is_finite(ps) else 1.0
 
-## Option change: polyphony follows the Safe setting.
+## Option change: polyphony follows the Safe setting; the ambience follows Music.
 func apply_options() -> void:
+	if ambience.playing: ambience.volume_db = linear_to_db(maxf(0.001, float(Save.opt("music_volume")) * 0.35))
 	for k in players: players[k].max_polyphony = _voices(k, bool(Save.opt("sfx_safe")))
 	if Save.opt("sfx_safe") or not Save.opt("sound"): ambience.stop()
 
@@ -305,6 +399,6 @@ func play_at(name: String, at: Vector2, pitch: float = 1.0) -> void:
 	var sp: AudioStreamPlayer2D = pool[pick]
 	sp.global_position = at
 	sp.pitch_scale = _pitch(name, pitch, now)
-	sp.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("volume")))), -60.0, 6.0)
+	sp.volume_db = clampf(linear_to_db(maxf(0.001, float(Save.opt("sfx_volume")))), -60.0, 6.0)
 	Diag.first("sound " + name)
 	sp.play()

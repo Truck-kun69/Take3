@@ -14,11 +14,14 @@ const DEFAULT_OPTIONS := {
 	"colorblind": false, "reduce_flash": false, "haptics": true, "aim": 0,   # 0 nearest, 1 strongest, 2 facing
 	"joy_mode": 0, "left_handed": false, "auto_equip": true, "loot_filter": 0,   # 0 all, 1 hide normal, 2 rare+
 	"show_fps": false, "quality": 1, "gfx": 0, "gpu_crowd": 0, "ambient": true, "sfx_safe": false, "frame_cap": 0, "gfx_off": [], "ui_scale": 1.0, "force_touch_ui": false, "renderer": 0, "render_scale": 0,
+	"gfx_api": 0,                                   # 0 Vulkan (Mobile renderer), 1 OpenGL Safe Mode (Compatibility); applies on launch
+	"music_volume": 1.0, "sfx_volume": 1.0,         # Options > Audio: volume = the Master bus, voice_volume = the Voice bus,
+	                                                # music_volume and sfx_volume scale those players (apply_audio)
 }
 
 func _ready() -> void:
 	load_profile()
-	apply_voice_volume()
+	apply_audio()
 
 func defaults() -> Dictionary:
 	var cur := {}
@@ -38,9 +41,10 @@ func defaults() -> Dictionary:
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
 		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0, "champions": 0},
 		"unlocked": [],                                  # weapon ids earned on the unlock track (Content.UNLOCKS)
-		"selftest": {}, "bench": {},
-		"prophecy": {"offers": [], "active": {}, "done": 0},
-		"daily": {"best": {}, "claimed": ""},            # best: code -> score (newest 30); claimed: date of the last first-clear reward   # offers: [[id, [reward ids]]], active: {id, reward}          # graphics self-test progress (survives a crash), last benchmark
+		"selftest": {}, "bench": {},                     # graphics self-test progress (survives a crash), last benchmark
+		"prophecy": {"offers": [], "active": {}, "done": 0},   # offers: [[id, [reward ids]]], active: {id, reward}
+		"daily": {"best": {}, "claimed": ""},            # best: code -> score (newest 30); claimed: date of the last first-clear reward
+		"rift_echoes": [],                               # Story.echo_key of every Rift Echo found (the Codex's Story page)
 	}
 
 func load_profile() -> void:
@@ -218,16 +222,23 @@ func opt(k: String):
 func set_opt(k: String, v) -> void:
 	data.options[k] = v
 	mark_dirty()
-	if k == "voice_volume": apply_voice_volume()
+	if k == "volume" or k == "voice_volume": apply_audio()
 
-## Options > Voice volume sets the Voice bus (VoiceBank's lines play on VoiceHero, VoiceNarrator and VoiceBoss,
-## which all feed it); 0 mutes it.
+## Options > Audio. Master and Voice are bus levels (VoiceBank's lines play on VoiceHero, VoiceNarrator and
+## VoiceBoss, which all feed Voice); 0 mutes the bus. Music and SFX are not: VoiceBank ducks those two buses
+## under a line and returns them to 0 dB, so their sliders scale the players instead (Sfx: the ambience by
+## music_volume, every effect and the fire bed by sfx_volume).
+func apply_audio() -> void:
+	for b in [["Master", "volume"], ["Voice", "voice_volume"]]:
+		var i := AudioServer.get_bus_index(b[0])
+		if i < 0: continue
+		var v := clampf(float(opt(b[1])), 0.0, 1.0)
+		AudioServer.set_bus_mute(i, v <= 0.001)
+		AudioServer.set_bus_volume_db(i, linear_to_db(maxf(v, 0.001)))
+
+## The Voice bus alone (kept for the voice tests and callers from 0.10.0's first pass).
 func apply_voice_volume() -> void:
-	var i := AudioServer.get_bus_index("Voice")
-	if i < 0: return
-	var v := clampf(float(opt("voice_volume")), 0.0, 1.0)
-	AudioServer.set_bus_mute(i, v <= 0.001)
-	AudioServer.set_bus_volume_db(i, linear_to_db(maxf(v, 0.001)))
+	apply_audio()
 
 func add_currency(id: String, n: int = 1) -> void:
 	data.currency[id] = int(data.currency.get(id, 0)) + n

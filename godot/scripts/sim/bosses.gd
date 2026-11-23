@@ -48,7 +48,8 @@ func spawn_stage_boss(twin: bool) -> void:
 		bstate[u] = {"bt": 2.0 + k, "sm": 6.0, "sl": 8.0 + k * 2.0}
 		w.boss_max += w.sw.mhp[i]
 	w.boss_uids = stage_uids
-	w.banner.emit(s.boss + (" x2" if twin else ""), "The tyrant of " + s.name, Content.col(s.boss_col))
+	var story := Story.act(w.stage)                  # the nameplate and the boss's taunt (Story)
+	w.banner.emit(String(story.boss_name) + (" x2" if twin else ""), "\u201c%s\u201d" % story.boss_taunt, Content.col(s.boss_col))
 	w.moment.emit("boss_spawn", {"boss": "tyrant", "name": String(s.boss)})
 	w.shake = 0.8
 	Sfx.play("boss")

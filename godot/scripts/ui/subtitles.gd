@@ -2,7 +2,7 @@ class_name Subtitles
 extends Control
 ## The subtitle banner: each voice line's speaker and text (VoiceBank.line_started), above the action bar while
 ## a run is being played and along the top otherwise (menus, and the level-up, pause and end screens, whose
-## cards and buttons fill the middle and bottom), held for VoiceBank.subtitle_seconds(duration) = max(2.0, duration + 0.35)
+## cards and buttons fill the middle and bottom), held for VoiceBank.subtitle_seconds(duration) = duration + 0.35
 ## s, so a clip is never cut off mid-sentence on screen. A line said with "subtitle": false (the intro's own
 ## narration) or a line that is stopped clears it.
 
@@ -75,6 +75,23 @@ func _on_line(info: Dictionary) -> void:
 	_left = float(info.get("subtitle_s", VoiceBank.subtitle_seconds(float(info.get("duration", 0.0)))))
 	_layout()
 
+## Written lines with no voice clip (a Rift Echo's hero/narrator exchange): each [name, colour, text, seconds],
+## shown one after another in this banner, never blocking play. A voice line arriving cuts in as usual; the
+## exchange carries on after it.
+var _queue: Array = []
+func exchange(lines: Array) -> void:
+	_queue.append_array(lines)
+	if _left <= 0.0: _next_written()
+
+func _next_written() -> void:
+	if _queue.is_empty(): return
+	var ln: Array = _queue.pop_front()
+	var col: Color = ln[1]
+	_shown = String(ln[2])
+	_text.text = "[b][color=#%s]%s[/color][/b]   %s" % [col.to_html(false), String(ln[0]).to_upper(), _shown.replace("[", "[lb]")]
+	_left = float(ln[3])
+	_layout()
+
 func _on_end(info: Dictionary) -> void:
 	if bool(info.get("stopped", false)): _left = 0.0     # cut off or stopped: the line that cut in shows its own
 
@@ -82,7 +99,9 @@ func _process(dt: float) -> void:
 	if not manual_clock: step(dt)
 
 func step(dt: float) -> void:
+	var was := _left
 	_left = maxf(0.0, _left - dt)
+	if was > 0.0 and _left <= 0.0 and not _queue.is_empty(): _next_written()
 	_alpha = move_toward(_alpha, 1.0 if _left > 0.0 else 0.0, dt / FADE_S)
 	if _panel != null:
 		_panel.modulate.a = _alpha
