@@ -19,6 +19,9 @@ uniform float flash = 0.0;
 uniform vec3 flash_col : source_color = vec3(1.0, 0.15, 0.1);
 uniform float grime = 0.4;
 uniform float time = 0.0;
+// the act's Fresnel rim (HeroRig.set_rim, WorldView3D STAGE_LOOK.rim)
+uniform vec3 rim_col : source_color = vec3(0.0);
+uniform float rim_k = 0.0;
 varying vec3 opos;
 
 float h31(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -72,7 +75,7 @@ void fragment() {
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	METALLIC = metal;
-	EMISSION = em + flash_col * flash;
+	EMISSION = em + flash_col * flash + rim_col * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0) * rim_k;
 	RIM = 0.55;
 	RIM_TINT = 0.35;
 }

@@ -33,6 +33,7 @@ class Proj:
 	var age := 0.0
 	var aux := 0.0            # mine/totem: blast radius or fire interval; glaive: 1 once it has turned back
 	var tick := 0.0
+	var bounces := 0          # Sparkcaller bolts: ricochets off stone so far (World._ricochet)
 
 class Tele:
 	var shape := 0            # 0 circle, 1 ring, 2 line (pos -> pos + dir * len), 3 cone
@@ -104,6 +105,8 @@ var stats := Stats.new()
 var buffs: Buffs
 var director: Director
 var bosses: Bosses
+var contagion: Contagion           # the Emberwitch's fire (inert for the other heroes)
+var hero_id := ""                  # Content.HEROES[hero].id
 var crowd: CrowdCompute = null
 
 # ---------------------------------------------------------------- player
@@ -140,6 +143,7 @@ var jump_cd := 0.0
 var jump_buffer := 0.0
 var jump_from := Vector2.ZERO
 var jump_to := Vector2.ZERO
+var jump_vaulted := false        # the Warden's flight crosses a boulder or wall: the landing is a crater
 var in_jump := false
 var vel := Vector2.ZERO            # walking velocity (the roll moves the hero directly)
 const ACCEL_T := 0.06
@@ -270,8 +274,10 @@ func setup(cfg: Dictionary) -> void:
 	director = Director.new(self)
 	bosses = Bosses.new(self)
 	var h: Dictionary = Content.HEROES[hero]
+	hero_id = String(h.id)
 	weapons[h.weapon] = {"lv": 1, "evo": false, "t": 0.0, "gems": []}
 	wlocal[h.weapon] = Stats.new()
+	contagion = Contagion.new(self)
 	flasks = [{"id": "life", "c": 40.0, "max": 60.0, "cost": 20.0}, {"id": Content.UTIL_FLASKS[rng.randi_range(0, 3)], "c": 30.0, "max": 40.0, "cost": 20.0}]
 	_apply_meta()
 	max_hp = stats.value("max_hp", float(h.hp))
@@ -446,6 +452,7 @@ func _step(dt: float) -> void:
 	_step_eshots(dt)
 	_step_teles(dt)
 	_step_dots(dt)
+	if contagion != null: contagion.step(dt)
 	_resolve_reactions()
 	director.step(dt)
 	bosses.step(dt)
@@ -592,6 +599,7 @@ func _jump(mvv: Vector2) -> void:
 	var dir := mvv.normalized() if mvv.length() > 0.1 else face
 	jump_from = pp
 	jump_to = jump_landing(pp, dir)
+	jump_vaulted = hero_id == "warden" and terrain.props_path_low(jump_from, jump_to, HERO_R)
 	jump_t = JUMP_TIME
 	jump_cd = JUMP_CD
 	face = dir
@@ -633,6 +641,33 @@ func _step_jump(dt: float, spd: float) -> void:
 		fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 70.0, "col": Color(0.85, 0.8, 0.7, 0.6), "life": 0.3, "t": 0.0})
 		shake = minf(1.0, shake + 0.08)
 		Sfx.play("impact", 0.8, 0.7)
+		if jump_vaulted:
+			jump_vaulted = false
+			_vault_slam(pp)
+
+## The Warden's vault slam (0.10.0): a jump that clears a boulder or wall (Terrain.props_path_low) comes
+## down in a crater VAULT_R across, for VAULT_K x her blades' damage, hurling the pack back.
+const VAULT_R := 110.0
+const VAULT_K := 1.5
+const VAULT_KB := 420.0
+func _vault_slam(at: Vector2) -> void:
+	var base := weapon_damage_base()
+	if weapons.has("orbit"): base = float(_wstat("orbit").dmg) * _dmg_scale("orbit")
+	var em := elmask("orbit") if weapons.has("orbit") else 0
+	grid.build(sw)                                     # this runs before the tick's own build: foes were reaped since
+	var c := grid.query(at, VAULT_R, sw)
+	var hl := grid.results.slice(0, c)
+	for q in hl.size():
+		var i := hl[q]
+		if i >= sw.n or (sw.flags[i] & Swarm.F_ALLY) != 0: continue
+		hit(i, base * VAULT_K, em, (sw.pos[i] - at).normalized(), VAULT_KB, 0)
+	shatter(at, VAULT_R)
+	fx.append({"k": "crater", "pos": at, "r": VAULT_R, "col": Color("f0b94d"), "life": 0.5, "t": 0.0})
+	fx.append({"k": "ring", "pos": at, "r": 0.0, "max": VAULT_R, "col": Color("ffd27a"), "life": 0.35, "t": 0.0})
+	shake = minf(1.0, shake + 0.22)
+	hitstop = maxf(hitstop, 0.05)
+	metrics.warden_vaults = int(metrics.get("warden_vaults", 0)) + 1
+	Sfx.play("explode", 0.9, 0.8)
 
 func _roll(mvv: Vector2) -> void:
 	roll_dir = mvv.normalized() if mvv.length() > 0.1 else face
@@ -1289,6 +1324,17 @@ func _bolt(s: Dictionary, mul: float) -> bool:
 	return true
 
 func _nova(s: Dictionary, mul: float) -> bool:
+	if contagion != null and contagion.on:
+		# the Emberwitch: Incineration on the densest cluster in range, and the fire it starts (Contagion)
+		var power := float(s.dmg) * _dmg_scale("nova") * mul
+		if not contagion.cast(power): return false
+		_cast(contagion.last_at - pp)
+		_nova_t = t
+		if _fused_pair("nova", "bolt"):                              # Glacial Nova: frost bolts burst from the blaze
+			_bolt_ring(contagion.last_at, 8, float(s.dmg) * 0.45 * _dmg_scale("bolt") * mul, rng.randf() * TAU)
+		Sfx.play("nova")
+		Sfx.play("fire", 1.0, 0.7)
+		return true
 	var r := float(s.rad) * stats.value("area", 1.0, wlocal["nova"])
 	if grid.nearest(pp, r + 40.0, sw) < 0:
 		return false
@@ -1326,6 +1372,9 @@ func _storm(s: Dictionary, mul: float) -> bool:
 	for k in int(s.n):
 		var i := picks_i[rng.randi_range(0, cands - 1)]
 		if i >= sw.n: continue
+		if hero_id == "storm" and conducts(sw.pos[i]):
+			_conduct(i, r, dmg, em)
+			continue
 		strike_at(sw.pos[i], r, dmg, em)
 		if _fused_pair("storm", "bolt"):                             # Hailstorm
 			_bolt_ring(sw.pos[i] if i < sw.n else pp, 4, dmg * 0.3, rng.randf() * TAU, 360.0)
@@ -1334,6 +1383,37 @@ func _storm(s: Dictionary, mul: float) -> bool:
 	Sfx.play("thunder")
 	shake = minf(1.0, shake + 0.05)
 	return true
+
+## The Stormwright's conduction (0.10.0): a strike into shallow water or within CONDUCT_CRYSTAL of a crystal
+## spreads: twice the radius, and BRANCHES arcs leap from it to the foes just outside the blast.
+const CONDUCT_CRYSTAL := 60.0
+const BRANCHES := 3
+const BRANCH_REACH := 150.0
+func conducts(at: Vector2) -> bool:
+	if terrain.liquid == "water" and terrain.type_at(at) == Terrain.SHALLOW and not terrain.is_frozen(at): return true
+	return terrain.crystals_near(at, CONDUCT_CRYSTAL) > 0
+
+func _conduct(i: int, r: float, dmg: float, em: int) -> void:
+	var at := sw.pos[i]
+	var r2 := r * 2.0
+	strike_at(at, r2, dmg, em)
+	var c := grid.query(at, r2 + BRANCH_REACH, sw)
+	var outer: Array = []
+	for q in c:
+		var j := grid.results[q]
+		if j >= sw.n or (sw.flags[j] & Swarm.F_ALLY) != 0 or sw.hp[j] <= 0.0: continue
+		var d2 := at.distance_squared_to(sw.pos[j])
+		if d2 > r2 * r2: outer.append([d2, j])
+	outer.sort()
+	var n := 0
+	for e in outer:
+		if n >= BRANCHES: break
+		var j2: int = e[1]
+		var mid := at.lerp(sw.pos[j2], 0.5) + Vector2(randf_range(-18, 18), randf_range(-18, 18))
+		fx.append({"k": "arc", "pos": at, "col": Color("d9c8ff"), "life": 0.22, "t": 0.0, "pts": PackedVector2Array([at, mid, sw.pos[j2]])})
+		hit(j2, dmg * 0.5, em, Vector2.ZERO, 0.0, 1)
+		n += 1
+	metrics.storm_conducts = int(metrics.get("storm_conducts", 0)) + 1
 
 func strike_at(at: Vector2, r: float, dmg: float, em: int) -> void:
 	shatter(at, r)
@@ -1737,6 +1817,7 @@ func _step_dots(dt: float) -> void:
 func _new_proj() -> Proj:
 	var p: Proj = _pool.pop_back() if not _pool.is_empty() else Proj.new()
 	p.dead = false
+	p.bounces = 0
 	p.hits.clear()
 	p.pierce = 0
 	p.chain = 0
@@ -1763,6 +1844,7 @@ func _step_projs(dt: float) -> void:
 				continue
 		if not breakables.is_empty() and shatter(p.pos, p.r):
 			p.dead = p.pierce <= 0
+		if p.wid == "bolt" and hero_id == "spark" and not p.dead: _ricochet(p)
 		if p.life <= 0.0:
 			p.dead = true
 		else:
@@ -1792,6 +1874,39 @@ func _step_projs(dt: float) -> void:
 			projs.pop_back()
 		else:
 			k += 1
+
+## The Sparkcaller's ricochet (0.10.0): a Rime Bolt that meets a STONE prop (rock, wall, pillar:
+## PropLayout.TAG_STONE) glances off it, RICOCHET_MAX times at most, each bounce RICOCHET_K x its damage and
+## a spark burst; the next stone it meets shatters it.
+const RICOCHET_MAX := 2
+const RICOCHET_K := 1.25
+func _ricochet(p: Proj) -> void:
+	var arr := terrain.props_near(p.pos)
+	if arr.is_empty(): return
+	var tags := terrain.props_near_tags(p.pos)
+	for j in range(0, arr.size(), 4):
+		if tags[j / 4] != PropLayout.TAG_STONE: continue
+		var c := Vector2(arr[j], arr[j + 1])
+		var rr := arr[j + 2] + p.r
+		var d := p.pos - c
+		if d.length_squared() >= rr * rr: continue
+		var nrm := d.normalized() if d.length_squared() > 1e-6 else -p.vel.normalized()
+		if p.vel.dot(nrm) >= 0.0: continue                # already flying out of it
+		if p.bounces >= RICOCHET_MAX:
+			p.dead = true
+			_burst(p.pos, Color("bff1ff"), 4, 120.0)
+			return
+		p.vel = p.vel.bounce(nrm)
+		p.pos = c + nrm * (rr + 0.5)
+		p.dmg *= RICOCHET_K
+		p.bounces += 1
+		p.hits.clear()                                     # the glancing bolt can strike again
+		p.life = maxf(p.life, 0.5)
+		metrics.spark_ricochets = int(metrics.get("spark_ricochets", 0)) + 1
+		fx.append({"k": "spark_burst", "pos": p.pos, "col": Color("aef4ff"), "life": 0.25, "t": 0.0})
+		_burst(p.pos, Color("d8fbff"), 6, 170.0)
+		Sfx.play_at("ice", p.pos, 1.4)
+		return
 
 ## Mines, glaives, wisps and totems. Returns true when the shot handled its own collisions this frame.
 func _step_special(p: Proj, dt: float) -> bool:
@@ -2162,6 +2277,7 @@ func _on_kill(i: int) -> void:
 	var at := sw.pos[i]
 	if (f & Swarm.F_ALLY) != 0:
 		return
+	if contagion != null: contagion.on_kill(i)
 	kills += 1
 	var kid: String = Content.ENEMIES[k].id
 	bestiary_run[kid] = int(bestiary_run.get(kid, 0)) + 1
@@ -2276,6 +2392,10 @@ func _text(at: Vector2, v: float, col: Color, tier: int, u: int, label: String =
 	texts.append(e2)
 	if u >= 0: _agg[u] = e2
 	metrics.texts += 1
+
+## A damage-over-time number (Contagion's Burn ticks share _step_dots' colour and tier).
+func text_dot(at: Vector2, v: float, u: int) -> void:
+	_text(at, v, Color("ff8a3c"), 4, u)
 
 func _step_feed(dt: float) -> void:
 	var k := texts.size() - 1
@@ -2653,6 +2773,8 @@ func shatter(at: Vector2, r: float) -> bool:
 
 ## Breaks the World <-> Director/Bosses reference cycle so RefCounted can free the run.
 func dispose() -> void:
+	if contagion != null: contagion.w = null
+	contagion = null
 	if director != null: director.w = null
 	if bosses != null: bosses.w = null
 	director = null

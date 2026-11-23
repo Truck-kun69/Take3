@@ -59,6 +59,10 @@ func _ready() -> void:
 	# level of detail switches a little earlier than the 1 px default: the camera is high above the
 	# battlefield, so the coarser meshes are indistinguishable (optimisation pass: -4% triangles)
 	Quality.load_saved()
+	# OpenGL Safe Mode: a Vulkan session that crashed left the sentinel armed, so this launch already runs on
+	# Compatibility; make that the saved choice. Then arm it for this session (phones on Vulkan only).
+	if Quality.check_sentinel(): Diag.mark("safe mode: the last Vulkan session crashed, now on OpenGL (Compatibility)")
+	if Quality.arm_sentinel(): Diag.mark("safe-mode sentinel armed (Vulkan session)")
 	_render_scale()
 	_ui_scale()
 	_menu()
@@ -307,6 +311,7 @@ func _on_end(win: bool) -> void:
 func _pause() -> void:
 	if state != "play": return
 	state = "pause"
+	Sfx.fire_stop()
 	screens.show_pause(world)
 
 func _resume() -> void:
@@ -460,6 +465,10 @@ func _st_finish() -> void:
 	Save.mark_dirty(); Save.flush()
 	Diag.mark("selftest done bad=%s" % str(_st.bad))
 	Quality.load_saved()
+	# OpenGL Safe Mode: a Vulkan session that crashed left the sentinel armed, so this launch already runs on
+	# Compatibility; make that the saved choice. Then arm it for this session (phones on Vulkan only).
+	if Quality.check_sentinel(): Diag.mark("safe mode: the last Vulkan session crashed, now on OpenGL (Compatibility)")
+	if Quality.arm_sentinel(): Diag.mark("safe-mode sentinel armed (Vulkan session)")
 	_render_scale()
 	var res: Dictionary = _st.duplicate(true)
 	_menu()
@@ -550,10 +559,16 @@ func _process(dt: float) -> void:
 		if Input.is_action_just_pressed("pause"): _pause(); return
 		if Input.is_action_just_pressed("gear"): state = "pause"; screens.show_stash(true); return
 		_sim(dt)
+		if world != null: Sfx.fire_bed(world.contagion.burning if world.contagion != null else 0, dt)
 	elif state == "pause" and Input.is_action_just_pressed("pause"):
 		_resume()
 
 func _notification(what: int) -> void:
+	# the safe-mode sentinel follows Diag's clean-end lifecycle: disarmed in the background and on quit
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		Quality.disarm_sentinel()
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		Quality.arm_sentinel()
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		_pause()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:      # Android back button

@@ -722,21 +722,27 @@ func _gate_p01_tests() -> void:
 	var fc3 := FixedStep.new()
 	ok(fc3.advance(0.5) == FixedStep.MAX_STEPS and fc3.acc == 0.0, "a 500 ms hitch runs two ticks and drops the backlog (no spiral)")
 	ok(fc3.advance(0.0) == 0, "and does not catch up afterwards")
-	# arcane orbs: same cadence at 60 Hz and when dt doubles
+	# arcane orbs: same cadence at 60 Hz and when dt doubles. Props stay on (0.10.0: substepped, guarded
+	# movement); only the elite's own orbs are counted (violet, 6 s), never the wave spitters' shots, whose
+	# paths round the props differ by dt and are not what this measures. A pooled shot re-armed as an orb
+	# counts as new: its life jumps up.
 	var counts: Array[int] = []
 	for dt in [1.0 / 60.0, 1.0 / 30.0]:
 		var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 31})
-		w.terrain.props_on = false                   # the cadence, not the path: sliding round a prop differs by dt
 		w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
 		w.weapons.clear()
 		var i := w.spawn_foe(Content.E.BRUTE, w.pp + Vector2(300, 0), 1, 0, 50.0)
 		w.sw.affix[i] = Content.Aff.ARCANE
 		var shots := 0
+		var life := {}
 		var steps := int(35.0 / dt)
 		for k in steps:
-			var before := w.eshots.size()
 			w.step(dt)
-			shots += maxi(0, w.eshots.size() - before)
+			var now := {}
+			for e: World.Proj in w.eshots:
+				if e.col == Color("d070ff") and (not life.has(e) or e.life > float(life[e]) + 1e-4): shots += 1
+				now[e] = e.life
+			life = now
 		counts.append(shots)
 	ok(counts[0] == counts[1] and counts[0] >= 8, "an arcane elite fires on a fixed cadence at any dt (%s orbs in 35 s)" % str(counts))
 	# thunderdome works without a conduit pylon

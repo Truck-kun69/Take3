@@ -14,6 +14,8 @@ const DEFAULT_OPTIONS := {
 	"colorblind": false, "reduce_flash": false, "haptics": true, "aim": 0,   # 0 nearest, 1 strongest, 2 facing
 	"joy_mode": 0, "left_handed": false, "auto_equip": true, "loot_filter": 0,   # 0 all, 1 hide normal, 2 rare+
 	"show_fps": false, "quality": 1, "gfx": 0, "gpu_crowd": 0, "ambient": true, "sfx_safe": false, "frame_cap": 0, "gfx_off": [], "ui_scale": 1.0, "force_touch_ui": false, "renderer": 0, "render_scale": 0,
+	"gfx_api": 0,                                   # 0 Vulkan (Mobile renderer), 1 OpenGL Safe Mode (Compatibility); applies on launch
+	"music_volume": 1.0, "sfx_volume": 1.0,         # the Music and SFX buses ("volume" is the Master bus, "voice_volume" the Voice bus)
 }
 
 func _ready() -> void:

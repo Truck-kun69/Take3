@@ -116,11 +116,21 @@ func _prepare_override(n: Node) -> void:
 		_build_tree()
 	if _flash_shader == null:
 		_flash_shader = Shader.new()
-		_flash_shader.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform float flash = 0.0; void fragment(){ ALBEDO = vec3(1.0, 0.22, 0.12) * flash; }"
+		# the hit flash, plus the act's Fresnel rim (set_rim): additive over the authored PBR materials
+		_flash_shader.code = "shader_type spatial; render_mode unshaded, blend_add, depth_draw_never; uniform float flash = 0.0; uniform vec3 rim_col : source_color = vec3(0.0); uniform float rim_k = 0.0; void fragment(){ ALBEDO = vec3(1.0, 0.22, 0.12) * flash + rim_col * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0) * rim_k; }"
 	var fm := ShaderMaterial.new()
 	fm.shader = _flash_shader
 	_mats.append(fm)
 	_tag_meshes(n, fm)
+
+## The act's Fresnel rim colour (WorldView3D STAGE_LOOK.rim) at strength k: on the procedural rig's materials
+## (char.gdshader) and on an authored model's hit-flash overlay, which draws additively over its PBR.
+var rim_col := Color.BLACK
+func set_rim(c: Color, k: float) -> void:
+	rim_col = c
+	for m in _mats:
+		m.set_shader_parameter("rim_col", c)
+		m.set_shader_parameter("rim_k", k)
 
 var _glow_over: Array = []          # [material, base emission energy]
 func _tag_meshes(n: Node, fm: ShaderMaterial) -> void:
@@ -471,6 +481,7 @@ var _roll_k := 0.0
 var _jump_k := 0.0
 var _spd := 0.0
 var _was_hit := false
+var _cast_fading := false           # a fade-out of the full-body cast was requested (once); clears when it ends
 
 ## role -> clip name, matched case-insensitively against the model's own clips.
 func _map_clips() -> Dictionary:
@@ -599,10 +610,16 @@ func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 		tree.set("parameters/rate/scale", loco_rate(_spd))
 		_cast_vis_cd = maxf(0.0, _cast_vis_cd - dt)
 		var age := float(st.cast_age)
-		# a full-body cast freezes the legs: once the hero moves it fades out (and the same cast is not
-		# replayed on the upper body); a cast that starts while moving takes the upper-body layer
-		if _spd > _v_walk * CAST_MOVE_K and bool(tree.get("parameters/cast_full/active")):
-			tree.set("parameters/cast_full/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FADE_OUT)
+		var jp := float(st.get("jump", -1.0))
+		# a full-body cast freezes the legs: once the hero moves, rolls, jumps or dies it fades out, requested
+		# once (not every frame while it fades), and the same cast is not replayed on the upper body; a cast that
+		# starts while moving takes the upper-body layer
+		if bool(tree.get("parameters/cast_full/active")):
+			if not _cast_fading and (_spd > _v_walk * CAST_MOVE_K or roll >= 0.0 or jp >= 0.0 or bool(st.dead)):
+				tree.set("parameters/cast_full/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FADE_OUT)
+				_cast_fading = true
+		else:
+			_cast_fading = false
 		if age < _last_cast_age and age < 0.3 and roll < 0.0 and not st.dead and _cast_vis_cd <= 0.0:
 			var layer := "up" if _spd > _v_walk * CAST_MOVE_K else "full"
 			if not bool(tree.get("parameters/cast_up/active")) and not bool(tree.get("parameters/cast_full/active")):
@@ -616,7 +633,6 @@ func _animate_override(st: Dictionary, dt: float = 0.016) -> void:
 		if roll >= 0.0:
 			tree.set("parameters/roll_seek/seek_request", clampf(roll, 0.0, 0.98) * anim.get_animation(_clips.roll).length)
 		# the jump clip follows the simulation's jump progress (World.jump_progress); the view lifts the body
-		var jp := float(st.get("jump", -1.0))
 		_jump_k = move_toward(_jump_k, 1.0 if jp >= 0.0 else 0.0, dt * 14.0)
 		tree.set("parameters/jump/blend_amount", _jump_k)
 		if jp >= 0.0:

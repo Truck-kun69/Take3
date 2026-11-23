@@ -3,14 +3,16 @@ extends Node
 ##   godot --headless --path godot res://tests/gate_chunk.tscn
 ## - each generated prop and foe resolves (on the High tier) to its own PBR model at its height
 ## - one 640 x 640 chunk dressed per act and chunk on each tier (WorldView3D._build_cell): Medium and High
-##   hold >= 150 prop instances, Low >= 100 and fewer than Medium; the solid props (PropLayout) are the same
+##   hold >= 150 prop instances, Low 80-145 (Quality.DENSITY 0.45: ~105 on average, the Galaxy A05's budget)
+##   and fewer than Medium; the solid props (PropLayout) are the same
 ##   on every tier (they collide); bones, bushes and grass cast no shadow; grass and bushes stop at the near
 ##   range with no fade; imported PBR props draw their own materials (no material_override)
 ## - High-tier phones render 3D at native resolution (Main.auto_render_scale)
 ## Exits 0 when everything holds, 1 otherwise.
 const CHUNKS := [Vector2i(1, 1), Vector2i(-2, 1), Vector2i(0, 0)]
 const MIN_INSTANCES := 150
-const MIN_LOW := 100
+const MIN_LOW := 80                 # Low (density 0.45) is never bare ...
+const MAX_LOW := 145                # ... and never over the Mali-G52's per-chunk budget
 # the generated models (tools/fal_assets.py) as the game resolves them on this tier (props_hi, foes_hi and act
 # variants included): drawn with their own PBR maps, at their heights (tools/verify_assets.py ranges)
 const GEN_PROPS := {"tree": [115.0, 145.0], "tree_dead": [115.0, 145.0], "arch": [114.0, 126.0], "wall": [61.0, 69.0],
@@ -79,16 +81,17 @@ func _ready() -> void:
 				if not counts.has(key): counts[key] = {}
 				counts[key][gfx] = total
 				var floor_n := MIN_LOW if gfx == 1 else MIN_INSTANCES
-				var ok := total >= floor_n
-				print("GATE chunk %-6s stage %d %s: %d prop instances %s, grass and bushes to %.0f units %s" % [TIERS[gfx], stage, c, total, JSON.stringify(by), v._near_end, "ok" if ok else "FAIL (< %d)" % floor_n])
+				var ok: bool = total >= floor_n and (gfx != 1 or total <= MAX_LOW)
+				print("GATE chunk %-6s stage %d %s: %d prop instances %s, grass and bushes to %.0f units %s" % [TIERS[gfx], stage, c, total, JSON.stringify(by), v._near_end,
+					"ok" if ok else ("FAIL (< %d)" % floor_n if total < floor_n else "FAIL (> %d)" % MAX_LOW)])
 				if not ok: bad += 1
 				cell.free()
 			# the solid props are the same on every tier: they block movement
 			if gfx == 3:
 				for c in CHUNKS:
-					var s_lo: PackedFloat32Array = PropLayout.chunk(c, stage, w.terrain, 0.7).solids
-					var s_md: PackedFloat32Array = PropLayout.chunk(c, stage, w.terrain, 1.0).solids
-					var s_hi: PackedFloat32Array = PropLayout.chunk(c, stage, w.terrain, 1.3).solids
+					var s_lo: PackedFloat32Array = PropLayout.chunk(c, stage, w.terrain, Quality.DENSITY[0]).solids
+					var s_md: PackedFloat32Array = PropLayout.chunk(c, stage, w.terrain, Quality.DENSITY[1]).solids
+					var s_hi: PackedFloat32Array = PropLayout.chunk(c, stage, w.terrain, Quality.DENSITY[2]).solids
 					var same := s_lo == s_md and s_md == s_hi and s_md == PropLayout.solids(c, stage, w.terrain)
 					print("GATE solids stage %d %s: %d obstacle circles, identical on every tier %s" % [stage, c, s_md.size() / 4, "ok" if same else "FAIL"])
 					if not same: bad += 1

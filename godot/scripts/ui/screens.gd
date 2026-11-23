@@ -709,7 +709,8 @@ func show_options(back: String = "menu") -> void:
 			if back == "menu": v.add_child(UIKit.button("Replay intro", func(): act.emit("intro", null), 46))
 		1:
 			_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
-			_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
+			_renderer_row(v, back)
+			_cycle(v, "View", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
 			_cycle(v, "3D resolution", "render_scale", ["Auto", "100%", "75%", "50%"], back)
 			_cycle(v, "Frame rate cap", "frame_cap", ["Auto (%s)" % ("60" if OS.has_feature("mobile") else "none"), "30 (cool, saves battery)", "60", "None"], back)
 			_cycle(v, "GPU crowd simulation", "gpu_crowd", ["Auto (%s)" % ("Off" if OS.has_feature("mobile") else "On"), "On", "Off"], back)
@@ -740,6 +741,20 @@ func show_options(back: String = "menu") -> void:
 			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.add_child(info)
 	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null)))
+
+## Options > Graphics > Renderer: Vulkan (the Mobile renderer) or OpenGL Safe Mode (Compatibility). The
+## engine picks its driver before any script runs, so a change applies on the next launch (Quality.set_api).
+func _renderer_row(v: VBoxContainer, back: String) -> void:
+	var api := int(Save.opt("gfx_api"))
+	_opt_row(v, "Renderer", ["Vulkan", "OpenGL Safe Mode"][clampi(api, 0, 1)], func():
+		Quality.set_api(Quality.API_GL if api == Quality.API_VULKAN else Quality.API_VULKAN)
+		show_options(back), api == Quality.API_VULKAN)
+	var running := RenderingServer.get_current_rendering_method()
+	var note := ""
+	if Quality.safe_fell_back: note = "Switched to OpenGL Safe Mode: the last session crashed on Vulkan."
+	elif running in ["forward_plus", "mobile", "gl_compatibility"] and (api == Quality.API_GL) != Quality.api_is_gl():
+		note = "Applies on the next launch (running %s now)." % ("OpenGL" if Quality.api_is_gl() else "Vulkan")
+	if note != "": v.add_child(UIKit.label(note, 15, Color("e0b85a"), true, "italic"))
 
 ## The Daily Rift: today's seeded run (act, exile, two modifiers), its share code, your best scores,
 ## and a field to enter a friend's code.
@@ -847,6 +862,8 @@ func show_prophecies() -> void:
 func show_crash(lines: PackedStringArray) -> void:
 	var v := _open(1100)
 	_title(v, "The last session ended unexpectedly", "Please screenshot this and send it over. It shows what the game was doing when it stopped.")
+	if Quality.safe_fell_back:
+		v.add_child(UIKit.label("The game now runs in OpenGL Safe Mode. Options > Graphics > Renderer switches back to Vulkan.", 16, Color("e0b85a"), true, "italic"))
 	var t := UIKit.label("\n".join(lines), 12, Color("d8d0c0"), true, "body")
 	t.add_theme_font_override("font", SystemFont.new())
 	var sc := _scroll(t, "crash")
@@ -1056,6 +1073,16 @@ func show_pause(w: World) -> void:
 	var bl := UIKit.label(build.strip_edges(), 16, UIKit.DIM, true, "italic")
 	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(bl)
+	var cl := UIKit.label(contagion_line(w), 16, Color("ffa15a"), true, "italic")
+	cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if cl.text != "": v.add_child(cl)
+
+## The Emberwitch's contagion so far this run (World.metrics), for the pause menu; empty for other heroes.
+static func contagion_line(w: World) -> String:
+	if w.contagion == null or not w.contagion.on: return ""
+	var m := w.metrics
+	return "Contagion: %d ignited  \u00b7  %d spread  \u00b7  %d conflagrations  \u00b7  %d trees alight" % [
+		int(m.get("ember_ignitions", 0)), int(m.get("ember_spreads", 0)), int(m.get("ember_conflagrations", 0)), int(m.get("ember_beacons", 0))]
 
 ## The real sky: tonight's Moon (drawn to its true phase) and any calendar omen, with what they change.
 func _sky_row() -> HBoxContainer:
