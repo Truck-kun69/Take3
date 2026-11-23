@@ -2,7 +2,7 @@ class_name Subtitles
 extends Control
 ## The subtitle banner: each voice line's speaker and text (VoiceBank.line_started), above the action bar while
 ## a run is being played and along the top otherwise (menus, and the level-up, pause and end screens, whose
-## cards and buttons fill the middle and bottom), held for VoiceBank.subtitle_seconds(duration) = max(2.0, duration + 0.35)
+## cards and buttons fill the middle and bottom), held for VoiceBank.subtitle_seconds(duration) = duration + 0.35
 ## s, so a clip is never cut off mid-sentence on screen. A line said with "subtitle": false (the intro's own
 ## narration) or a line that is stopped clears it.
 

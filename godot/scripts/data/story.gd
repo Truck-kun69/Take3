@@ -61,7 +61,7 @@ const ACTS := [
 ## screen and the Codex's Exiles page).
 const HEROES := {
 	"warden": {"title": "The Last Shieldwall",
-		"bio": "Once captain of a shieldwall that held a pass for nine days, the Warden walked out of the rift with three shard-forged blades orbiting her like loyal hounds. She does not talk about the other ninety-nine.",
+		"bio": "Once captain of a shieldwall that held a pass for nine days, the Warden walked out of the rift with three shard-forged blades orbiting him like loyal hounds. He does not talk about the other ninety-nine.",
 		"mechanic": "Vault Slam", "mechanic_d": "Jump over a boulder or a low wall and come down in a crater: a 110-wide slam for 1.5x your blades' damage that hurls the pack back."},
 	"spark": {"title": "Frost in the Veins",
 		"bio": "A court mage's apprentice who touched a cold shard on a dare. The frost never left her hands; neither did the habit of firing first.",
@@ -70,7 +70,7 @@ const HEROES := {
 		"bio": "The Emberwitch tended the foundry bell's fire until the bell itself melted. She carries what was left of that fire in her ribs, and it is always hungry.",
 		"mechanic": "Contagion", "mechanic_d": "Incineration lands on the densest pack and leaves the ground burning. Burn stacks to five and ramps; burning foes pass the fire on, the dying go up in conflagrations, and trees catch like beacons."},
 	"storm": {"title": "The Weather's Debt",
-		"bio": "A drowned sailor the storm refused to keep. The Stormwright bargained his last breath for the sky's attention, and the sky has been collecting ever since.",
+		"bio": "Forty years the Stormwright measured the sky from his tower, until a shard fell through its roof. Now the tempest takes his dictation, and he has never once let it forget who is speaking.",
 		"mechanic": "Conduction", "mechanic_d": "Skyfall striking shallow water or near a rift crystal spreads: twice the radius, and arcs branch to the foes just outside the blast."},
 }
 
@@ -79,7 +79,7 @@ const ECHO_REPLIES := {
 	"warden": ["Another voice the rift kept. I'll carry it.", "Old words. Still sharper than most blades."],
 	"spark": ["Cold. Like someone's still holding it.", "Huh. The rift remembers more than I do."],
 	"ember": ["Still warm. Someone loved this place.", "Ash and memory. I know the taste."],
-	"storm": ["The tide gives back what it takes. Eventually.", "Listen. The echo's still ringing."],
+	"storm": ["Fascinating. The rift keeps records.", "Another specimen for the archive. Note it."],
 }
 
 static func act(i: int) -> Dictionary:

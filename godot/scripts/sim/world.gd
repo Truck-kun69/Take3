@@ -13,7 +13,7 @@ signal ended(win: bool)
 signal merchant_open
 signal whisper_open          # the hero touched the Whisperer: whisper_offer holds two bargain ids
 signal item_found(item: Dictionary, upgrade: bool)
-signal moment(kind: String, info: Dictionary)   # voice cues: boss_spawn, boss_die, ult (VoiceDirector)
+signal moment(kind: String, info: Dictionary)   # boss_spawn, boss_die, ult, ricochet, conduct (VoiceDirector); echo (main)
 
 class Proj:
 	var pos := Vector2.ZERO
@@ -1473,6 +1473,7 @@ func _conduct(i: int, r: float, dmg: float, em: int) -> void:
 		hit(j2, dmg * 0.5, em, Vector2.ZERO, 0.0, 1)
 		n += 1
 	metrics.storm_conducts = int(metrics.get("storm_conducts", 0)) + 1
+	moment.emit("conduct", {})
 
 func strike_at(at: Vector2, r: float, dmg: float, em: int) -> void:
 	shatter(at, r)
@@ -1962,6 +1963,7 @@ func _ricochet(p: Proj) -> void:
 		p.hits.clear()                                     # the glancing bolt can strike again
 		p.life = maxf(p.life, 0.5)
 		metrics.spark_ricochets = int(metrics.get("spark_ricochets", 0)) + 1
+		if p.bounces == RICOCHET_MAX: moment.emit("ricochet", {"bounces": p.bounces})
 		fx.append({"k": "spark_burst", "pos": p.pos, "col": Color("aef4ff"), "life": 0.25, "t": 0.0})
 		_burst(p.pos, Color("d8fbff"), 6, 170.0)
 		Sfx.play_at("ice", p.pos, 1.4)

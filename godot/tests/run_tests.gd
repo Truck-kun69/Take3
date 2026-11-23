@@ -1317,7 +1317,7 @@ func _voice_tests() -> void:
 		for c in ["spawn", "die"]:
 			if vb.variants(b, c) != 1: miss.append("%s/%s" % [b, c])
 	ok(miss.is_empty(), "each exile resolves its 7 cues (12 lines), the narrator 4 intro beats and 5 act openings, both bosses spawn and die%s" % ("" if miss.is_empty() else ": missing " + str(miss)))
-	var rules := {"cast": [0, 7.0], "kill_streak": [1, 10.0], "low_hp": [2, 15.0], "ult": [2, 4.0], "boss_spawn": [3, 0.0], "death": [3, 0.0], "spawn": [3, 0.0], "die": [3, 0.0], "intro": [4, 0.0]}
+	var rules := {"cast": [0, 7.0], "kill_streak": [1, 10.0], "low_hp": [2, 15.0], "ult": [2, 4.0], "boss_spawn": [3, 0.0], "death": [3, 0.0], "spawn": [3, 0.0], "die": [3, 0.0], "intro": [3, 0.0]}
 	var off: Array = []
 	for id in vb.entries:
 		var e: Dictionary = vb.entries[id]
@@ -1365,11 +1365,15 @@ func _voice_tests() -> void:
 	# cooldowns: per cue, and a 2.8 s gap after any line before the next priority 0-1 bark
 	var cb := _voice_bank()
 	var fired := 0
+	var first_len := 0.0
 	for k in 20:
-		if bool(cb.say("storm", "cast").played): fired += 1
+		var rr := cb.say("storm", "cast")
+		if bool(rr.played):
+			fired += 1
+			first_len = float(rr.duration)
 		cb.step(0.3)
 	ok(fired == 1, "rapid casts fire once and are held back through the 7 s cooldown (%d fired in 6 s)" % fired)
-	cb.step(1.2)
+	cb.step(maxf(7.0, first_len + VoiceBank.GLOBAL_GAP_S) - 6.0 + 0.05)      # past the cooldown and the 2.8 s gap after the line
 	ok(bool(cb.say("storm", "cast").played), "and fire again once it has passed")
 	cb.queue_free()
 	var gb := _voice_bank()
@@ -1452,7 +1456,7 @@ func _voice_tests() -> void:
 	Save.set_opt("voice_volume", 1.0 if vv0 == null else vv0)
 	ok(vv0 != null and absf(half_db - linear_to_db(0.5)) < 0.01 and muted and vi >= 0 and not AudioServer.is_bus_mute(vi), "Options > Voice volume sets the Voice bus (50%% = %.1f dB; 0 mutes it)" % half_db)
 	# subtitles: up for max(2.0, duration + 0.35) s
-	ok(is_equal_approx(VoiceBank.subtitle_seconds(1.0), 2.0) and is_equal_approx(VoiceBank.subtitle_seconds(4.0), 4.35), "a subtitle stays up for max(2.0, duration + 0.35) s")
+	ok(is_equal_approx(VoiceBank.subtitle_seconds(1.0), 1.35) and is_equal_approx(VoiceBank.subtitle_seconds(4.0), 4.35), "a subtitle stays up for its line's length + 0.35 s")
 	var sb := _voice_bank()
 	var subs := Subtitles.new()
 	subs.manual_clock = true

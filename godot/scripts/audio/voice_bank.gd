@@ -6,14 +6,16 @@ extends Node
 ## synthesise them). A line plays its .ogg when the file exists: drop a clip at the line's "file" path and the
 ## next build uses it, timed to its real length, with no script edits. Otherwise a short chime of the speaker's
 ## own (made here, below) stands in and the line is held for the manifest's duration_fallback_s. Either way the
-## line speaks for that long: the subtitle stays up max(2.0, duration + 0.35) s, Music ducks 6 dB and SFX 3 dB
-## (in over 0.12 s, back over 0.25 s), and the intro waits for it.
+## line speaks for that long: the subtitle stays up duration + 0.35 s, Music ducks 6 dB and SFX 3 dB
+## (in over 0.12 s, back over 0.25 s), and the cold open waits for it.
 ##
 ## Rules (say): one line at a time. A higher priority cuts the current line off with a quick fade; an equal or
 ## lower one is refused while a line plays ("busy"). Each cue has its own cooldown_s, counted from its start
 ## ("cooldown"), and priority 0-1 barks also wait GLOBAL_GAP_S since the last line ended, or since the current
-## one started ("gap"). Priorities: 0 cast, 1 kill_streak, 2 low_hp and ult, 3 boss_spawn, death, the act
-## openings and the bosses' lines, 4 intro.
+## one started ("gap"). Priorities: intro, boss_spawn, death, the act openings and the bosses' lines 3 > ult and
+## low_hp 2 > kill_streak 1 > cast 0. An escalation line ("escalation": its trigger) answers a moment of its own
+## (VoiceDirector asks for it by variant); "random": false keeps it out of its cue's ordinary picks.
+## stop_all() is immediate: every player stops, the ducking is cancelled and Music and SFX are back at 0 dB.
 ##
 ## Memory: at most LRU_MAX clips stay loaded (a 4 GB phone shares its RAM with the GPU).
 ## Android: a player's stream is only set while it is stopped (swapping the stream of a playing player crashed
@@ -33,7 +35,6 @@ const DUCK_SFX_DB := -3.0
 const DUCK_ATTACK_S := 0.12
 const DUCK_RELEASE_S := 0.25
 const LRU_MAX := 16
-const SUBTITLE_MIN_S := 2.0
 const SUBTITLE_PAD_S := 0.35
 const STOP_FADE_S := 0.08
 const PLAYERS := 3
@@ -71,11 +72,12 @@ static func play(speaker: String, cue: String, variant: int = -1, opts: Dictiona
 	if current == null: return {"played": false, "reason": "no voice bank"}
 	return current.say(speaker, cue, variant, opts)
 
-static func stop_all(fade: float = STOP_FADE_S) -> void:
-	if current != null: current.stop(fade)
+## Stops every voice at once (the fade argument is kept for old callers and ignored): see stop_now().
+static func stop_all(_fade: float = 0.0) -> void:
+	if current != null: current.stop_now()
 
 static func subtitle_seconds(duration: float) -> float:
-	return maxf(SUBTITLE_MIN_S, duration + SUBTITLE_PAD_S)
+	return maxf(0.0, duration) + SUBTITLE_PAD_S
 
 func _enter_tree() -> void:
 	if current == null: current = self
@@ -222,6 +224,31 @@ func preview_hero(hero_id: String) -> Dictionary:
 func stop(fade: float = STOP_FADE_S) -> void:
 	_end_line(true, fade)
 
+## Everything silent now: the line ends (stopped), every player stops (fading ones too), the ducking is cancelled
+## and the Music and SFX buses are set back to 0 dB.
+func stop_now() -> void:
+	_end_line(true, 0.0)
+	for p in _players: p.stop()
+	_fades.clear()
+	_duck = 0.0
+	_duck_applied = 0.0
+	for i in _base:
+		_base[i][0] = 0.0
+		AudioServer.set_bus_volume_db(i, 0.0)
+
+## The variant of speaker's cue that answers `trigger` (an escalation line), or -1.
+func escalation_variant(speaker: String, trigger: String) -> int:
+	for e in _cues.get(_escalation_cue(speaker, trigger), []):
+		if String(e.get("escalation", "")) == trigger: return int(e.variant)
+	return -1
+
+func _escalation_cue(speaker: String, trigger: String) -> String:
+	for key in _cues:
+		if not String(key).begins_with(speaker + "/"): continue
+		for e in _cues[key]:
+			if String(e.get("escalation", "")) == trigger: return key
+	return ""
+
 func is_speaking() -> bool:
 	return not _cur.is_empty()
 
@@ -302,6 +329,12 @@ func _free_player() -> AudioStreamPlayer:
 	return q
 
 func _pick(key: String, list: Array) -> Dictionary:
+	var open := list.filter(func(e): return bool(e.get("random", true)))     # escalation-only lines wait for their moment
+	if not open.is_empty() and open.size() < list.size():
+		list = open
+		var last0 := int(_last_variant.get(key, -1))
+		var others := list.filter(func(e): return int(e.variant) != last0)
+		return others[_rng.randi_range(0, others.size() - 1)] if not others.is_empty() else list[0]
 	if list.size() == 1: return list[0]
 	var last := int(_last_variant.get(key, -1))
 	if last < 0: return list[_rng.randi_range(0, list.size() - 1)]
