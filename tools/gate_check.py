@@ -24,8 +24,9 @@
    resolves them; chunk dressing strictly Low < Medium < High with Low <= 145; solids the same on every
    tier; grass to NEAR_END x the view scale; render scale on all three tiers); the unit tests
    (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation, 0.10.0 voice and 0.10.0 alpha groups
-   printed, and the 0.10.1 group (the version from one setting, Copy report, Copy save / Paste save); neither
-   gate_chunk nor the unit run leaves an object alive at exit
+   printed, and the 0.10.1 group (the version from one setting, Copy report, Copy save / Paste save, and the S22
+   fit: at 2340x1080 and 1080x2340 every page's Back and main buttons on screen); neither gate_chunk nor the
+   unit run leaves an object alive at exit
 6. voice (godot/data/voice_manifest.json, tools/gen_voices.py; nothing calls ElevenLabs or fal): the dry run exits 0
    with the network shut off and leaves the fal spend at $18.904; 61 lines, a valid schema, every speaker's
    casting distinct (stability, similarity boost, style, default voice); the validator refuses nine broken

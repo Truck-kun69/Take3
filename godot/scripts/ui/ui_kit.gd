@@ -144,6 +144,7 @@ static func title(txt: String, size: int = 40) -> VBoxContainer:
 	var v := vbox(2)
 	var l := label(txt.to_upper(), size, GOLD, false, "display_heavy")
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART      # a long title wraps on a phone held upright
 	v.add_child(l)
 	v.add_child(divider())
 	return v
@@ -254,27 +255,51 @@ static func sheet(parent: Control, max_w: int = 980) -> VBoxContainer:
 	dim.color = Color(0.02, 0.015, 0.02, 0.78)
 	parent.add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var vs := parent.get_viewport_rect().size
+	var band := sub_band(vs)
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
 		m.add_theme_constant_override("margin_" + side, 14)
-	m.add_theme_constant_override("margin_top", 14 + SUB_BAND)        # the subtitle banner's band (Subtitles, menus)
+	m.add_theme_constant_override("margin_top", 14 + int(band))         # the subtitle banner's band (Subtitles, menus)
 	parent.add_child(m)
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var cc := CenterContainer.new()
 	m.add_child(cc)
-	var vs := parent.get_viewport_rect().size
 	var p := PanelContainer.new()
 	p.custom_minimum_size = Vector2(mini(max_w, int(vs.x) - 28), 0)
 	cc.add_child(p)
+	var col := vbox(12)                       # the body, which scrolls, over the foot, which never does
+	p.add_child(col)
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	p.add_child(sc)
+	col.add_child(sc)
 	var v := vbox(12)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(v)
-	var maxh := float(vs.y) - 120.0 - SUB_BAND          # the panel hugs its content and scrolls only when taller than the screen
-	v.minimum_size_changed.connect(func(): sc.custom_minimum_size.y = minf(v.get_combined_minimum_size().y, maxh))
+	var ft := vbox(10)
+	ft.name = "Foot"
+	ft.visible = false
+	col.add_child(ft)
+	var maxh := float(vs.y) - 120.0 - band     # the panel hugs its content and scrolls only when taller than the screen
+	var fit := func():
+		var room := maxh - (ft.get_combined_minimum_size().y + 12.0 if ft.visible else 0.0)
+		sc.custom_minimum_size.y = minf(v.get_combined_minimum_size().y, maxf(120.0, room))
+	v.minimum_size_changed.connect(fit)
+	ft.minimum_size_changed.connect(fit)
 	return v
+
+## A sheet's foot: the row under its scrolling body that stays on screen however long the body is (Back, and a
+## screen's main actions: on a phone held sideways the UI is 720 units tall, and a long sheet would scroll them
+## out of sight).
+static func foot(v: VBoxContainer) -> VBoxContainer:
+	var ft: VBoxContainer = v.get_parent().get_parent().get_node("Foot")
+	ft.visible = true
+	return ft
+
+## The room a sheet leaves at the top for the subtitle banner (Subtitles._layout): the safe area's top inset
+## (a camera cutout) plus the banner's offset and two lines in landscape, three in portrait, where it is narrower.
+static func sub_band(vs: Vector2) -> float:
+	return safe_margins(vs).y + float(SUB_BAND) + (30.0 if vs.y > vs.x else 0.0)
 
 static func clear(n: Node) -> void:
 	for c in n.get_children():

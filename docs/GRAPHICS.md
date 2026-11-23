@@ -190,6 +190,36 @@ xvfb-run -a godot --path godot --rendering-method mobile --resolution 720x1280 r
 
 The logo ships at 1400 px, and unused font weights were dropped.
 
+### The S22 check (0.10.1)
+
+The Galaxy S22 is the test phone: 2340x1080 with a camera hole. `SHOT_SAFE` (left, top, right, bottom,
+in UI units) stands in for the hole's safe-area inset; 80 px is 53 units held sideways (a 1560x720 UI)
+and 50 held upright (the UI scaled up 1.9x by `main._ui_scale`). The screen is larger than Xvfb's default,
+so give it one that fits:
+
+```bash
+SHOT_SAFE=53,0,0,0 xvfb-run -a -s "-screen 0 2400x2400x24" godot --path godot --rendering-method mobile --resolution 2340x1080 res://tests/ui_shots.tscn -- /tmp/s22 L_ 1
+SHOT_SAFE=0,50,0,0 xvfb-run -a -s "-screen 0 2400x2400x24" godot --path godot --rendering-method mobile --resolution 1080x2340 res://tests/ui_shots.tscn -- /tmp/s22 P_ 1
+```
+
+The tour also covers Options' Game and Diagnostics tabs, Paste save and the crash report. What it found,
+and the fixes:
+
+- Held sideways the UI is 720 units tall, and 0.10.0's subtitle band (`UIKit.SUB_BAND`, 92 units) left a
+  sheet 508 units of body: the end of a long run (bargains, unlocks, happenings, loot) scrolled Play again
+  and Return to menu out of sight, and the crash report, the benchmark and Options did the same to their
+  buttons. A sheet now has a foot (`UIKit.foot`) under its scrolling body that never scrolls: Back (through
+  `_back`) and each page's main actions live there, and the stash puts the selected item's Equip, Salvage
+  and Cube: extract beside Back.
+- Held upright, the crash report's title did not wrap and pushed the page past the screen's right edge,
+  Continue with it. Titles wrap now.
+- Held upright with the camera hole, a three-line subtitle covered the top of a tall page (the stash). The
+  band a sheet leaves is `UIKit.sub_band`: the safe area's top inset plus two lines of banner sideways,
+  three upright.
+
+The unit group "0.10.1" checks the same at 2340x1080 and 1080x2340: every button named is inside the screen
+and inside every scroll area around it (`_fit_tests`).
+
 ## Optimisation pass (render benchmark)
 
 `tests/render_bench.tscn` plays a real run with the full 3D view at 150, 300 and 500 foes and reports

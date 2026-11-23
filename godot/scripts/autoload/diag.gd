@@ -5,7 +5,8 @@ extends Node
 ## fault, the OS killing the app) still leaves the last thing the game did on disk. A session
 ## that ends cleanly (or is sent to the background, which is how Android apps usually "close")
 ## writes a closing line; if the previous trail has none, the menu shows a crash report with the
-## trail's tail plus the engine's own errors from that session (Godot's file log), to screenshot.
+## trail's tail plus the engine's own errors from that session (Godot's file log); Copy report puts it on the
+## clipboard with the device, settings and last benchmark (report_text).
 
 const PATH := "user://diag.txt"
 const PREV := "user://diag_prev.txt"

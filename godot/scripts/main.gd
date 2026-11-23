@@ -156,7 +156,7 @@ func _crowd_setup() -> void:
 ## Portrait phones: the 1280x720 design base shrinks the UI to ~0.56x; scale the 2D canvas back up.
 ## (content_scale_factor only affects 2D, the 3D camera handles portrait framing itself.)
 func _ui_scale() -> void:
-	var vs := DisplayServer.window_get_size()
+	var vs := get_window().size                 # the root window: the screen on a phone, and settable in the tests
 	var f := 1.0
 	if vs.y > vs.x: f = clampf(float(vs.y) / float(vs.x), 1.0, 1.9)
 	get_window().content_scale_factor = f * float(Save.opt("ui_scale"))

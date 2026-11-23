@@ -3,8 +3,9 @@
 ## What is built where
 
 `.github/workflows/build.yml` runs on every push to `main` and to `claude/**` branches (and by hand
-from the Actions tab). It provisions the toolchain (`tools/provision.sh`), runs the unit tests, and
-builds:
+from the Actions tab). It provisions the toolchain (`tools/provision.sh`), runs the release gate without
+its build step (`python3 tools/gate_check.py --no-apk`: the assets, the code rules, the unit tests and leak
+checks, the voice checks and the combat render smoke under Xvfb), and only when the gate passes builds:
 
 | File | What it is |
 |---|---|
@@ -12,6 +13,30 @@ builds:
 | `shardfall-release.aab` | The Play Store bundle. Built only when the release key is configured. |
 
 The files are attached to the workflow run as the `shardfall-android` artifact for 30 days.
+
+## The version
+
+One setting holds it: `application/config/version` in `godot/project.godot` (0.10.1-alpha). The title
+screen, Options and every copied report show it (`Diag.version()`), and the APK's versionName follows it
+because the preset's `version/name` is left empty. The gate fails if the built APK says anything else.
+
+`version/code` in `godot/export_presets.cfg` (13 from 0.10.1) is the number Android compares: it must go
+up for every build testers install over the last one, or the phone refuses the update.
+
+## Moving a save to a new install
+
+A save lives in the app's own storage, so uninstalling deletes it. The switch to the release key below
+forces one uninstall. Before it, testers open Options > Game > Copy save from the main menu and keep the
+text somewhere safe (a note, or a message to themselves). After installing the new build, they copy that
+text again and tap Options > Game > Paste save, which shows the gold and stash it holds before replacing
+anything.
+
+The text is one line: `SHARDFALL-SAVE:1:<size>:<checksum>:<base64 of the gzipped JSON>`. Spaces and line
+breaks a chat app adds are ignored; a cut-off or edited copy is refused with a message and changes nothing.
+The profile it replaces is kept beside the new one as `profile_before_paste.json`. Three things never
+travel with a save and stay as the phone has them: the graphics self-test results, the benchmark result and
+`purchases` (kept for the store purchases planned for a later version, which belong to the Google account,
+not to a copied text).
 
 ## APK size
 
@@ -64,8 +89,8 @@ Then add three repository secrets under GitHub > Settings > Secrets and variable
 
 The next push builds signed APKs and the bundle.
 
-A release-signed APK will not install over a test-key APK: testers uninstall the old build once
-(their save is lost unless they stay on test-key builds until the switch).
+A release-signed APK will not install over a test-key APK: testers uninstall the old build once.
+Their progress comes across with Copy save and Paste save (see "Moving a save to a new install" above).
 
 ## Play Console (not set up yet)
 

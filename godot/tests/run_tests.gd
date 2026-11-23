@@ -46,12 +46,14 @@ func _ready() -> void:
 		_voice_tests()
 		await _alpha10_tests()
 		_ops_tests()
+		await _fit_tests()
 	elif "voice" in args:
 		_voice_tests()
 	elif "alpha10" in args:
 		await _alpha10_tests()
 	elif "ops" in args:
 		_ops_tests()
+		await _fit_tests()
 	if "voice_dropin" in args: _voice_dropin_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
@@ -1685,6 +1687,95 @@ func _ops_tests() -> void:
 	ok(diag_tab.has("Copy report") and crash.has("Copy report") and bench_b.has("Copy report"), "Copy report is in Options > Diagnostics, on the crash report and on the benchmark result")
 	mn.queue_free()
 	sv.data = keep
+
+## 0.10.1, the S22 check: held sideways a phone's UI is 720 units tall, and a page's Back and main actions sit in
+## its sheet's foot, on screen however long the page gets (the end of a run with bargains, unlocks, happenings and
+## loot; a 60-line crash report; Options; the benchmark). Held upright (1080x2340, the UI scaled 1.9x as main does)
+## a long title wraps instead of pushing the crash report off the screen's right edge.
+func _fit_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size                       # headless: 64x64
+	win.size = Vector2i(2340, 1080)             # the S22 held sideways: a 1560x720 UI
+	await get_tree().process_frame
+	var vs: Vector2 = mn.screens.get_viewport_rect().size
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 2})
+	w.bargains = ["ember_pact", "blood_price", "long_night"]
+	w.new_unlocks = ["glaive", "wisp"]
+	w.director.history = [[30.0, "breach"], [90.0, "goblin"], [150.0, "eclipse"], [210.0, "ritual"]]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for k in 6: w.loot_run.append(Items.make(Content.SLOTS[k % 4], Content.Rarity.RARE + k % 2, 20, rng))
+	mn.screens.show_end(w)
+	var end_r := await _off_screen(mn.screens, ["Play again", "Return to menu"])
+	var trail: Array = []
+	for i in 60: trail.append("[%d.0] line %d of the session's trail" % [i, i])
+	mn.screens.show_crash(PackedStringArray(trail))
+	var crash_r := await _off_screen(mn.screens, ["Copy report", "Continue"])
+	mn.screens._opt_tab = Screens.OPT_TABS.find("Game")
+	mn.screens.show_options("menu")
+	var opt_r := await _off_screen(mn.screens, ["Back"])
+	mn.screens._opt_tab = 0
+	mn.screens.show_bench({"fps": 57.6, "ms": 17.4, "low1": 41.0, "foes": 400, "draws": 212, "ktris": 610, "tier": "High", "scale": 100,
+		"res": "2340x1080", "device": "SM-S901B", "gpu": "Adreno (TM) 730", "renderer": "mobile"})
+	var bench_r := await _off_screen(mn.screens, ["Copy report", "Run again", "Back"])
+	var srng := RandomNumberGenerator.new()
+	srng.seed = 5
+	for k in 8: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, srng))
+	var leg := -1
+	for k in sv.data.stash.size():
+		if String(sv.data.stash[k].get("leg", "")) != "": leg = k
+	var stash_want := ["Equip", "Salvage", "Back"] + (["Cube: extract"] if leg >= 0 else [])
+	mn.screens._sel_item = leg if leg >= 0 else 2
+	mn.screens.show_stash(false)
+	var stash_r := await _off_screen(mn.screens, stash_want)
+	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again and Return to menu on screen%s" % [vs.x, vs.y, end_r])
+	ok(crash_r == "" and opt_r == "" and bench_r == "", "and so do the crash report's Copy report and Continue, Options' Back and the benchmark's buttons%s%s%s" % [crash_r, opt_r, bench_r])
+	ok(stash_r == "", "the stash keeps the selected item's %s on screen with Back%s" % [" / ".join(stash_want.slice(0, stash_want.size())), stash_r])
+	# held upright: the S22's 1080x2340, which main._ui_scale answers by scaling the UI up 1.9x
+	win.size = Vector2i(1080, 2340)
+	await get_tree().process_frame
+	var pv: Vector2 = mn.screens.get_viewport_rect().size
+	mn.screens.show_crash(PackedStringArray(trail.slice(0, 8)))
+	var up_r := await _off_screen(mn.screens, ["Copy report", "Continue"])
+	var title_lines := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if String(l.text) == "THE LAST SESSION ENDED UNEXPECTEDLY": title_lines = (l as Label).get_line_count()
+	mn.screens.show_stash(false)
+	up_r += await _off_screen(mn.screens, stash_want)
+	win.size = size0
+	await get_tree().process_frame
+	ok(pv.x < 700.0 and up_r == "" and title_lines >= 2, "held upright (%dx%d UI), the crash report's title wraps (%d lines) and its buttons, and the stash's, stay on screen%s" % [pv.x, pv.y, title_lines, up_r])
+	mn.queue_free()
+	sv.data = keep
+
+## "" when every button named is visible, inside the screen and inside every scroll area around it; else what is not.
+func _off_screen(root: Control, labels: Array) -> String:
+	await get_tree().create_timer(0.35).timeout          # the sheet's 0.22 s settle
+	var vr := root.get_viewport_rect().grow(0.5)
+	var bad: Array = []
+	for want in labels:
+		var found := false
+		for b in root.find_children("*", "Button", true, false):
+			if String(b.text) != want or not (b as Control).is_visible_in_tree(): continue
+			found = true
+			var r := (b as Control).get_global_rect()
+			var why := ""
+			if not vr.encloses(r): why = "off the screen at %s" % str(r)
+			var n := b.get_parent()
+			while n != null and why == "":
+				if n is ScrollContainer and not (n as Control).get_global_rect().grow(0.5).encloses(r): why = "scrolled out of sight"
+				n = n.get_parent()
+			if why != "": bad.append("%s %s" % [want, why])
+		if not found: bad.append(want + " missing")
+	return "" if bad.is_empty() else "  (" + "; ".join(bad) + ")"
 
 func _texts(root: Node, cls: String) -> Array:
 	var out: Array = []

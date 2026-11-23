@@ -49,7 +49,7 @@ func _title(v: VBoxContainer, t: String, sub: String = "") -> void:
 		v.add_child(l)
 
 func _back(v: VBoxContainer, what: String = "menu") -> void:
-	v.add_child(UIKit.button("Back", func(): act.emit(what, null)))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): act.emit(what, null)))
 
 func _grid(cols: int, sep: int = 10) -> GridContainer:
 	var g := GridContainer.new()
@@ -542,6 +542,7 @@ func show_stash(in_run: bool = false) -> void:
 	v.add_child(_resources(Save.data))                     # the crafting shards you hold
 	var list := _gear_list()
 	var portrait := get_viewport_rect().size.x < 820.0
+	var foot_acts: Array = []                              # the selected item's actions, kept on screen beside Back
 	var cols: BoxContainer = UIKit.vbox(14) if portrait else UIKit.hbox(18)
 	v.add_child(cols)
 	var left := UIKit.vbox(6)
@@ -594,14 +595,11 @@ func show_stash(in_run: bool = false) -> void:
 		cp.add_theme_stylebox_override("panel", UIKit.nine("card", 46, Vector4(26, 26, 26, 24), Color(0.78, 0.76, 0.74).lerp(rc2, 0.5)))
 		cp.add_child(card)
 		right.add_child(cp)
-		var acts := UIKit.hbox()
-		acts.alignment = BoxContainer.ALIGNMENT_CENTER
 		if not sel.eq:
-			acts.add_child(UIKit.button("Equip", func(): act.emit("equip", it); show_stash(in_run), 50))
-			acts.add_child(UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 50))
+			foot_acts.append(UIKit.button("Equip", func(): act.emit("equip", it); show_stash(in_run), 50))
+			foot_acts.append(UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 50))
 			if String(it.leg) != "":
-				acts.add_child(UIKit.button("Cube: extract", func(): act.emit("extract", it); _sel_item = -1; show_stash(in_run), 50))
-		right.add_child(acts)
+				foot_acts.append(UIKit.button("Cube: extract", func(): act.emit("extract", it); _sel_item = -1; show_stash(in_run), 50))
 		right.add_child(_section("Craft"))
 		var grid := _grid(2, 8)
 		for c in Content.CURRENCY_IDS:
@@ -620,7 +618,16 @@ func show_stash(in_run: bool = false) -> void:
 		var hint := UIKit.label("Select an item to inspect, equip or craft.", 19, UIKit.DIM, true, "italic")
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		right.add_child(hint)
-	_back(v, "resume_pause" if in_run else "menu")
+	var back_to := "resume_pause" if in_run else "menu"
+	if foot_acts.is_empty():
+		_back(v, back_to)
+	else:                       # one row held sideways; upright, four buttons go two by two
+		foot_acts.append(UIKit.button("Back", func(): act.emit(back_to, null), 50))
+		var fr := _grid(foot_acts.size() if (foot_acts.size() <= 3 or not portrait) else 2, 10)
+		for b in foot_acts:
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			fr.add_child(b)
+		UIKit.foot(v).add_child(fr)
 
 # ================================================================= codex
 # ================================================================= the Shard Web (passive tree)
@@ -893,7 +900,7 @@ func show_options(back: String = "menu") -> void:
 				["budget", "mid-range", "flagship"][Quality.device_class()], Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "overridden"], 14, UIKit.DIM, true, "italic")
 			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.add_child(info)
-	v.add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null), 52))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null), 52))
 
 ## Graphics > UI scale: the canvas scale on top of the automatic one (main._ui_scale), in four steps.
 func _ui_scale_row(v: VBoxContainer, back: String) -> void:
@@ -974,7 +981,7 @@ func show_daily(msg: String = "") -> void:
 		var hv := UIKit.label(hl.strip_edges(), 16, UIKit.DIM, true, "body")
 		hv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(hv)
-	v.add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
 
 ## Prophecies: three offers, each with three rewards to choose from; the active one can be abandoned.
 func show_prophecies() -> void:
@@ -1019,7 +1026,7 @@ func show_prophecies() -> void:
 	var dn := UIKit.label("Prophecies fulfilled: %d" % int(P.done), 15, UIKit.DIM, true, "italic")
 	dn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(dn)
-	v.add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
 
 ## Shown on launch after a session that ended without closing cleanly: the tail of its breadcrumb
 ## trail and the engine's errors. Copy report puts the whole report (Diag.report_text) on the clipboard.
@@ -1031,13 +1038,13 @@ func show_crash(lines: PackedStringArray) -> void:
 	var t := UIKit.label("\n".join(lines), 12, Color("d8d0c0"), true, "body")
 	t.add_theme_font_override("font", SystemFont.new())
 	var sc := _scroll(t, "crash")
-	sc.custom_minimum_size = Vector2(0, 400)
+	sc.custom_minimum_size = Vector2(0, clampf(get_viewport_rect().size.y - 470.0, 160.0, 400.0))
 	v.add_child(sc)
 	var cr := _grid(2, 10)
 	for b in [_copy_button("Copy report", func(): return Diag.report_text(), "Copied: paste it into a message", 50), UIKit.button("Continue", func(): show_menu(), 50)]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cr.add_child(b)
-	v.add_child(cr)
+	UIKit.foot(v).add_child(cr)
 
 ## After a crash (or a background) during the self-test: what crashed, and resume.
 func show_selftest_resume(st: Dictionary, crashed: bool) -> void:
@@ -1059,7 +1066,7 @@ func show_selftest_resume(st: Dictionary, crashed: bool) -> void:
 			act.emit(pair[1], null), 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(b)
-	v.add_child(row)
+	UIKit.foot(v).add_child(row)
 
 func show_selftest(st: Dictionary) -> void:
 	var v := _open(860)
@@ -1072,7 +1079,7 @@ func show_selftest(st: Dictionary) -> void:
 	for b in [_copy_button("Copy report", func(): return Diag.report_text(), "Copied: paste it into a message", 54), UIKit.button("Back", func(): act.emit("menu", null), 54)]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sr.add_child(b)
-	v.add_child(sr)
+	UIKit.foot(v).add_child(sr)
 
 func _selftest_rows(outer: VBoxContainer, st: Dictionary) -> void:
 	var v := UIKit.vbox(2)
@@ -1104,7 +1111,7 @@ func show_bench(r: Dictionary) -> void:
 		h.add_child(k)
 		h.add_child(UIKit.label(row[1], 18, UIKit.TEXT, false, "body"))
 		v.add_child(h)
-	var tip := UIKit.label("Tap Copy report and send it over. Try Options > Graphics Medium / High and 3D resolution to compare.", 15, UIKit.DIM, true, "italic")
+	var tip := UIKit.label("Tap Copy report and send it over. To compare, change Options > Graphics > Graphics tier or 3D scale and run it again.", 15, UIKit.DIM, true, "italic")
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tip)
 	var row2 := _grid(3, 10)
@@ -1115,7 +1122,7 @@ func show_bench(r: Dictionary) -> void:
 		var b := UIKit.button(pair[0], func(): act.emit(pair[1], null), 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row2.add_child(b)
-	v.add_child(row2)
+	UIKit.foot(v).add_child(row2)
 
 ## A button that puts text on the clipboard and says so on itself.
 func _copy_button(label: String, text_fn: Callable, done: String, h: int) -> Button:
@@ -1133,7 +1140,7 @@ func show_paste_save(back: String) -> void:
 	var got = Save.decode_save(txt)
 	if typeof(got) == TYPE_STRING:
 		_title(v, "Paste save", String(got) if txt.strip_edges() != "" else "Nothing on the clipboard. Copy the save text first, then come back here.")
-		v.add_child(UIKit.button("Back", func(): show_options(back), 50))
+		UIKit.foot(v).add_child(UIKit.button("Back", func(): show_options(back), 50))
 		return
 	_title(v, "Replace your progress?", "The pasted save has %d gold and %d items in the stash. Your current progress (%d gold) is replaced; a backup of it stays on this phone." % [int(got.get("gold", 0)), (got.get("stash", []) as Array).size(), int(Save.data.gold)])
 	var row := _grid(2, 10)
@@ -1146,12 +1153,12 @@ func show_paste_save(back: String) -> void:
 	for b in [rep, cancel]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(b)
-	v.add_child(row)
+	UIKit.foot(v).add_child(row)
 
 func show_paste_done(err: String, back: String) -> void:
 	var v := _open(760)
 	_title(v, "Save restored" if err == "" else "Paste save", "Your progress is back." if err == "" else err)
-	v.add_child(UIKit.button("Back", func(): show_options(back), 50))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): show_options(back), 50))
 
 ## One option row: name on the left in Garamond, its value as a bronze button on the right.
 func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: bool = true) -> void:
@@ -1324,7 +1331,7 @@ func show_build(w: World) -> void:
 		var l := UIKit.label(ln, 16, Color("cfc5b0"), true, "italic")
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(l)
-	v.add_child(UIKit.button("Back", func(): show_pause(w), 52))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): show_pause(w), 52))
 
 ## A yes/no question over the current page (Restart Run, Main Menu): `what` goes to main as an action on yes;
 ## no (or Back) returns to the pause menu.
@@ -1489,7 +1496,7 @@ func show_end(w: World) -> void:
 		var bt := UIKit.button(pair[0], func(): act.emit(pair[1], null), 58)
 		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(bt)
-	v.add_child(row)
+	UIKit.foot(v).add_child(row)
 
 func show_merchant(w: World) -> void:
 	var v := _open(700)

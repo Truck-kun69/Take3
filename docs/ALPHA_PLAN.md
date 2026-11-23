@@ -8,7 +8,7 @@ in a cited source. Anything not yet verified is marked **unverified**.
 
 | Milestone | State | What was done | What is still open |
 |---|---|---|---|
-| M0 Measure | Done, except device numbers | Clip filmstrips (`tests/model_view` modes `foe`, `strip`); `tests/shimmer`; `tests/view_bench` | Benchmark screenshots from the S22 and A05 on this build |
+| M0 Measure | Done, except device numbers | Clip filmstrips (`tests/model_view` modes `foe`, `strip`); `tests/shimmer`; `tests/view_bench` | The S22's benchmark result on this build (Options > Diagnostics > Run benchmark, then Copy report). The Galaxy A05 is no longer a test phone (0.10.1) |
 | M1 Animation | Done | Foes play the packs' own clips from vertex animation textures. Heroes and the Act V boss play CC0 KayKit clips retargeted in Blender (`tools/blender/retarget.py`), through an `AnimationTree`: speed-matched idle/walk/run, attacks while running, dodge, hit, death | Meshy rigging was not usable: fal's synchronous endpoint times out after 30 s and the queue endpoint is not authorised for this session's key. The three older procedural bosses (acts I to IV) still use sine-wave clips. No fingers or foot IK |
 | M2 Image | Done | Mipmapped CC0 ground textures per act, broad grass, contact shadows, native resolution + MSAA on flagship phones | Heroes are realistic and foes low-poly: the style gap remains. The shimmer metric read the same before and after (0.30 vs 0.35), so on this software renderer the old ground was dark and low-contrast rather than aliased; whether phones still shimmer needs a screen recording |
 | M3 Performance | Partly | Measured: 3.3 ms simulation + 2.2 ms view at 680 foes on the build server. Grunt cut from 1,130 to 703 triangles. Cheaper ground shader | No C++ extension and no sprite impostors: the measurements did not show the CPU as the limit, and the GPU side cannot be measured here. Decide from device numbers |
@@ -103,7 +103,7 @@ critique it against the last milestone, fix. Device numbers are part of every cr
 
 ### M0. Measure first
 
-1. Benchmark screenshots from the S22 and the A05 (both on the one APK; Shardfall Lite was retired in 0.9.9), with Show FPS on.
+1. The benchmark result from the S22 (the one APK; Shardfall Lite was retired in 0.9.9), with Show FPS on. From 0.10.1 the result is sent with Copy report rather than a screenshot, and the Galaxy A05 is no longer a test phone.
 2. Add two automated checks to the test suite:
    - a shimmer metric: render two frames one pixel apart and compare them;
    - an animation filmstrip per character.

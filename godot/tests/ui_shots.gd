@@ -1,6 +1,8 @@
 extends Node
 ## UI tour: every menu screen without a long bot run, for theme critiques. Works at any window size:
 ##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 720x1280 res://tests/ui_shots.tscn -- <outdir> [prefix]
+## A phone with a camera cutout (the S22, 2340x1080): SHOT_SAFE=left,top,right,bottom insets in pixels, e.g.
+##   SHOT_SAFE=96,0,0,0 ... --resolution 2340x1080 (landscape, the cutout on the left; portrait: 0,96,0,0)
 var main: Node
 var out := "user://ui_shots"
 var pre := ""
@@ -49,28 +51,37 @@ func _process(dt: float) -> void:
 		0: await _snap("u1_menu"); main._on_act("heroes", null)
 		1: await _snap("u1b_heroes"); main.screens.show_codex("menu")
 		2: await _snap("u2_codex"); main.screens.show_options("menu")
-		3: await _snap("u3_options"); main.screens._sel_item = 2; main.screens.show_stash(false)
-		4:
+		3: await _snap("u3_options"); main.screens._opt_tab = 2; main.screens.show_options("menu")
+		4: await _snap("u3b_options_game"); main.screens._opt_tab = 3; main.screens.show_options("menu")
+		5:
+			await _snap("u3c_options_diag")
+			DisplayServer.clipboard_set(Save.export_text())     # what Copy save leaves on the clipboard
+			main.screens.show_paste_save("menu")
+		6:
+			await _snap("u3d_paste_save"); main.screens._opt_tab = 0
+			main.screens.show_crash(PackedStringArray(["[12.4] run: act 1, 212 foes, 3D High", "[12.9] boss: The Tyrant spawned", "ERROR: vk::Queue::submit failed (device lost)"]))
+		7: await _snap("u3e_crash"); main.screens._sel_item = 2; main.screens.show_stash(false)
+		8:
 			await _snap("u4_stash")
 			main.start({"mode": "campaign", "stage": 0})
 			main.world.stats.set_source("shot", [["max_hp", "add", 400.0]])
-		5:
+		9:
 			for k in 90: main.world.step(0.033)
 			main.world.pending = 1; main._on_level()
-		6: await _snap("u5_levelup"); main.screens.close(); main.state = "play"; main.world.pending = 0
-		7:
+		10: await _snap("u5_levelup"); main.screens.close(); main.state = "play"; main.world.pending = 0
+		11:
 			for k in 60: main.world.step(0.033)
 			main.world.light = 0.12               # show the lantern below the Engulfed line
 			await _snap("u6_hud")
 			main._pause()
-		8: await _snap("u7_pause"); main._on_act("build", null)
-		9: await _snap("u7c_build"); main.screens.show_pause(main.world); main.screens.confirm("Leave this run?", "You keep the gold and Echoes it has earned so far. The run itself ends here.", "Leave", "leave")
-		10:
+		12: await _snap("u7_pause"); main._on_act("build", null)
+		13: await _snap("u7c_build"); main.screens.show_pause(main.world); main.screens.confirm("Leave this run?", "You keep the gold and Echoes it has earned so far. The run itself ends here.", "Leave", "leave")
+		14:
 			await _snap("u7d_confirm"); main._resume()
 			main.world.whisper_offer = ["blood_price", "long_night"]; main.state = "whisper"; main.screens.show_whisper(main.world)
-		11:
+		15:
 			await _snap("u7b_whisper"); main._on_act("bargain", "ember_pact"); main.world.end_run(false)
-		12: pass
-		13: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
-		14: await _snap("u9_web"); get_tree().quit()
+		16: pass
+		17: await _snap("u8_end"); main._menu(); main.screens._sel_passive = "a6"; main.screens.show_web()
+		18: await _snap("u9_web"); get_tree().quit()
 	step += 1
