@@ -44,8 +44,11 @@ func _ready() -> void:
 		_look_tests()
 		_remediation_tests()
 		_voice_tests()
+		_ops_tests()
 	elif "voice" in args:
 		_voice_tests()
+	elif "ops" in args:
+		_ops_tests()
 	if "voice_dropin" in args: _voice_dropin_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
@@ -1576,6 +1579,104 @@ func _voice_tests() -> void:
 	mn.queue_free()
 	VoiceBank.stop_all(0.0)
 	sv.data = keep
+
+## 0.10.1: the version on screen and in reports comes from one setting; "Copy report" puts the device, settings,
+## last benchmark and session trails on the clipboard as text; "Copy save" / "Paste save" carry a profile across a
+## reinstall (the release-key switch): one checksummed line that survives a chat app's wrapping, never carrying
+## this phone's diagnostics or (from the next iteration) purchases, which only Google Play can restore.
+func _ops_tests() -> void:
+	print("== 0.10.1 report and save transfer")
+	var ver := String(ProjectSettings.get_setting("application/config/version", ""))
+	ok(ver != "" and Diag.version() == ver and RegEx.create_from_string("^\\d+\\.\\d+\\.\\d+").search(ver) != null, "the version comes from application/config/version (%s)" % ver)
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	var bench := {"fps": 57.6, "ms": 17.4, "low1": 41.0, "foes": 400, "draws": 212, "ktris": 610, "tier": "High", "scale": 100, "res": "2340x1080",
+		"device": "SM-S901B", "gpu": "Adreno (TM) 730", "renderer": "mobile"}
+	sv.data.bench = bench
+	var had_prev := FileAccess.file_exists(Diag.PREV)
+	var prev_text := FileAccess.get_file_as_string(Diag.PREV) if had_prev else ""
+	var pf := FileAccess.open(Diag.PREV, FileAccess.WRITE)
+	pf.store_string("  1.00 == boot\n  2.00 start campaign\n  9.50 run t=7.0 foes=212 TEST-PREV-TAIL\n")
+	pf.close()
+	var rep := Diag.report_text()
+	if had_prev:
+		var rf := FileAccess.open(Diag.PREV, FileAccess.WRITE)
+		rf.store_string(prev_text)
+		rf.close()
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(Diag.PREV))
+	ok(rep.begins_with("Shardfall " + ver) and rep.contains("device:") and rep.contains("gpu:") and rep.contains("graphics:"), "Copy report opens with the version, the device, the GPU and the graphics settings")
+	ok(rep.contains("58 FPS") and rep.contains("610k"), "it carries the last benchmark")
+	ok(rep.contains("TEST-PREV-TAIL"), "and the previous session's trail (the crash trail, after a crash)")
+	ok(rep.length() < 20000, "and stays short enough to paste into a message (%d characters)" % rep.length())
+	# Copy save / Paste save
+	sv.data = sv.defaults()
+	sv.data.gold = 1234
+	sv.data.echoes = 9
+	sv.data.passives = ["start", "m1", "m3"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for k in 40: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 30, rng))
+	sv.data.selftest = {"results": [{"f": "base", "fps": 60}]}
+	sv.data.bench = {"fps": 61.0}
+	var token: String = sv.export_text()
+	ok(token.begins_with("SHARDFALL-SAVE:1:") and not token.contains("\n"), "Copy save makes one line of text (%d characters with 40 items in the stash)" % token.length())
+	ok(token.length() < 65536, "short enough for one chat message (under 65,536 characters)")
+	sv.data = sv.defaults()
+	sv.data.gold = 7
+	sv.data.selftest = {"results": [{"f": "base", "fps": 33}]}
+	sv.data.bench = {"fps": 33.0}
+	var wrapped := ""
+	for i in range(0, token.length(), 60): wrapped += token.substr(i, 60) + "\n "
+	var err: String = sv.import_text(wrapped)
+	ok(err == "" and int(sv.data.gold) == 1234 and sv.data.stash.size() == 40 and sv.data.passives == ["start", "m1", "m3"] and int(sv.data.echoes) == 9,
+		"Paste save restores the profile, even after a chat app wraps the text (%s)" % (err if err != "" else "ok"))
+	ok(is_equal_approx(float(sv.data.bench.get("fps", 0.0)), 33.0) and int(sv.data.selftest.results[0].fps) == 33, "this phone's own benchmark and self-test results stay")
+	var bk := String(sv.path).get_basename() + "_before_paste.json"
+	ok(FileAccess.file_exists(bk) and FileAccess.get_file_as_string(bk).contains("\"gold\":7"), "the profile it replaced is kept in %s" % bk.get_file())
+	var before := JSON.stringify(sv.data)
+	var at := token.length() - 10
+	var flipped := token.substr(0, at) + ("A" if token[at] != "A" else "B") + token.substr(at + 1)
+	var e1: String = sv.import_text(flipped)
+	var e2: String = sv.import_text(token.substr(0, token.length() - 40))
+	var e3: String = sv.import_text("hello there")
+	ok(e1 != "" and e2 != "" and e3 != "" and JSON.stringify(sv.data) == before, "a damaged, cut-short or foreign paste is refused and changes nothing (%s | %s | %s)" % [e1, e2, e3])
+	sv.data["purchases"] = {"from_google_play": true}
+	var forged: String = sv.encode_save({"version": 2, "gold": 5, "purchases": {"starter_pack": true}})
+	var e4: String = sv.import_text(forged)
+	ok(e4 == "" and int(sv.data.gold) == 5 and sv.data.get("purchases", {}) == {"from_google_play": true}, "a pasted save never brings purchases: the phone keeps its own (%s)" % str(sv.data.get("purchases", {})))
+	sv.data.erase("purchases")
+	# the buttons, and the version on the title screen
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var on_title := _texts(mn.screens, "Label").any(func(s): return s.contains(ver))
+	mn.screens._opt_tab = 0
+	mn.screens.show_options("menu")
+	var game_tab := _texts(mn.screens, "Button")
+	mn.screens._opt_tab = 2
+	mn.screens.show_options("menu")
+	var diag_tab := _texts(mn.screens, "Button")
+	mn.screens.show_crash(PackedStringArray(["one", "two"]))
+	var crash := _texts(mn.screens, "Button")
+	mn.screens.show_bench(bench)
+	var bench_b := _texts(mn.screens, "Button")
+	mn.screens._opt_tab = 0
+	ok(on_title, "the title screen shows the version")
+	ok(game_tab.has("Copy save") and game_tab.has("Paste save"), "Options has Copy save and Paste save")
+	ok(diag_tab.has("Copy report") and crash.has("Copy report") and bench_b.has("Copy report"), "Copy report is in Options > Diagnostics, on the crash report and on the benchmark result")
+	mn.queue_free()
+	sv.data = keep
+
+func _texts(root: Node, cls: String) -> Array:
+	var out: Array = []
+	for c in root.find_children("*", cls, true, false):
+		out.append(String(c.text))
+	return out
 
 ## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
 ## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.

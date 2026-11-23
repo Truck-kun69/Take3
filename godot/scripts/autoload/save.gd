@@ -155,6 +155,63 @@ func check_unlocks() -> Array:
 	if not got.is_empty(): mark_dirty()
 	return got
 
+# ---------------------------------------------------------------- moving a profile (Copy save / Paste save)
+## Options > Copy save / Paste save carry a profile across a reinstall: a change of signing key (the release key,
+## with the Play Store) means uninstalling, and that wipes the app's data. The profile travels as one line of text:
+##   SHARDFALL-SAVE:1:<JSON size>:<checksum>:<base64 of the gzipped JSON>
+## The checksum catches a paste that was cut short or mangled; spaces and line breaks a chat app adds are ignored.
+## NOT_TRANSFERRED stays with the phone: its own benchmark and self-test results, and purchases (from the next
+## iteration), which only Google Play can restore, so a pasted save can never grant one.
+const SAVE_TAG := "SHARDFALL-SAVE"
+const NOT_TRANSFERRED := ["selftest", "bench", "purchases"]
+
+static func encode_save(d: Dictionary) -> String:
+	var raw := JSON.stringify(d).to_utf8_buffer()
+	var b64 := Marshalls.raw_to_base64(raw.compress(FileAccess.COMPRESSION_GZIP))
+	return "%s:1:%d:%s:%s" % [SAVE_TAG, raw.size(), b64.sha256_text().left(12), b64]
+
+func export_text() -> String:
+	var d := data.duplicate(true)
+	for k in NOT_TRANSFERRED: d.erase(k)
+	return encode_save(d)
+
+## The profile inside a pasted text, or why there is none (a String).
+static func decode_save(text: String) -> Variant:
+	var t := text.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
+	var parts := t.split(":")
+	if parts.size() != 5 or parts[0] != SAVE_TAG: return "That is not a Shardfall save."
+	if parts[1] != "1": return "That save comes from a newer version of the game."
+	var size := int(parts[2])
+	if parts[4].sha256_text().left(12) != parts[3] or size <= 0 or size > 50000000:
+		return "The save is incomplete or damaged: copy all of it and try again."
+	var raw := Marshalls.base64_to_raw(parts[4]).decompress(size, FileAccess.COMPRESSION_GZIP)
+	var parsed = JSON.parse_string(raw.get_string_from_utf8()) if raw.size() == size else null
+	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("version"): return "The save is damaged."
+	return parsed
+
+## Replaces the profile with a pasted one: "" when done, else why it was refused (and nothing changed). The
+## profile it replaces is kept beside it (<profile>_before_paste.json).
+func import_text(text: String) -> String:
+	var got = decode_save(text)
+	if typeof(got) == TYPE_STRING: return got
+	var keep := {}
+	for k in NOT_TRANSFERRED:
+		if data.has(k): keep[k] = data[k]
+	var bk := FileAccess.open(path.get_basename() + "_before_paste.json", FileAccess.WRITE)
+	if bk != null:
+		bk.store_string(JSON.stringify(data))
+		bk.close()
+	var base := defaults()
+	data = defaults()
+	_merge(data, got)
+	_normalise()
+	for k in NOT_TRANSFERRED:
+		if keep.has(k): data[k] = keep[k]
+		elif base.has(k): data[k] = base[k]
+		else: data.erase(k)
+	flush()
+	return ""
+
 func opt(k: String):
 	return data.options.get(k, DEFAULT_OPTIONS.get(k))
 

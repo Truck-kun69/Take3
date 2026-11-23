@@ -1,5 +1,6 @@
 name: build
-# Tests the game and builds the Android packages on every push.
+# Runs the release gate (tools/gate_check.py: asset and code checks, a headless boot, the chunk dressing, the unit
+# tests, the voice manifest and drop-in, and the APK build) and builds the Play bundle, on every push.
 # Signing: with the repository secrets below the APKs and the Play bundle are signed with the
 # release key; without them the APKs are signed with the shared test key in tools/keys (fine for
 # sideloading) and no bundle is built. See docs/RELEASE.md.
@@ -40,16 +41,17 @@ jobs:
         with:
           path: /home/runner/apk-repack-cache
           key: apk-repack-${{ hashFiles('tools/provision.sh') }}
-      - name: Install zopfli
-        run: python3 -m pip install --user zopfli
+      # zopfli for the APK repack; numpy and Pillow for the gate's model and texture checks; ffmpeg for the voice
+      # pipeline's selftest and the drop-in check (installed only if the runner lacks it)
+      - name: Install the gate's tools
+        run: |
+          python3 -m pip install --user zopfli numpy pillow
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libvorbis
       - name: Import assets
         run: ~/toolchains/godot/godot --headless --path godot --import || true
       - name: Parse check (every script compiles)
         run: ~/toolchains/godot/godot --headless --path godot res://tests/parse_all.tscn
-      - name: Unit tests
-        run: |
-          ~/toolchains/godot/godot --headless --path godot res://tests/tests.tscn -- unit | tee test.log
-          grep -q ", 0 failed ==" test.log
       - name: Release key (if configured)
         env:
           KEY_B64: ${{ secrets.SHARDFALL_KEYSTORE_B64 }}
@@ -58,11 +60,11 @@ jobs:
             echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "SHARDFALL_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           fi
-      - name: Build APK
+      - name: Release gate (every check, then the APK)
         env:
           SHARDFALL_KEYSTORE_USER: ${{ secrets.SHARDFALL_KEYSTORE_USER }}
           SHARDFALL_KEYSTORE_PASS: ${{ secrets.SHARDFALL_KEYSTORE_PASS }}
-        run: bash tools/build_android.sh
+        run: python3 tools/gate_check.py
       - name: Build Play bundle (release key only)
         if: env.SHARDFALL_KEYSTORE != ''
         env:

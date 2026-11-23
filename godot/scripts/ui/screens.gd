@@ -151,6 +151,10 @@ func show_menu() -> void:
 		blk.position = Vector2(bx, vs.y - m.w - 26.0 - bh)
 		blk.size = Vector2(blk_w, bh)
 		_hero_plate(Content.HEROES[int(d.hero)], x0 + col_w + 24.0, bx - 24.0, vs.y - m.w - 18.0)
+	var ver := UIKit.label("v" + Diag.version(), 13, UIKit.DIM, false, "body")
+	ver.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(ver)
+	ver.position = Vector2(vs.x - m.z - 12.0 - ver.get_combined_minimum_size().x, m.y + 6.0)
 
 ## The act pill (previous, the act, next; tapping the act steps through the open ones) over PLAY.
 func _play_block(d: Dictionary) -> VBoxContainer:
@@ -680,7 +684,7 @@ var _opt_tab := 0
 ## had grown to ~25 rows with the graphics and test tools below the fold.
 func show_options(back: String = "menu") -> void:
 	var v := _open(900)
-	_title(v, "Options")
+	_title(v, "Options", "Shardfall " + Diag.version())
 	var tabs := _grid(3, 8)
 	for i in 3:
 		var tb := UIKit.button(["Game", "Graphics", "Diagnostics"][i], func(): _opt_tab = i; show_options(back), 46)
@@ -706,7 +710,18 @@ func show_options(back: String = "menu") -> void:
 			_toggle(v, "Auto-equip upgrades", "auto_equip", back)
 			_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
 			_toggle(v, "Always show touch buttons", "force_touch_ui", back)
-			if back == "menu": v.add_child(UIKit.button("Replay intro", func(): act.emit("intro", null), 46))
+			if back == "menu":
+				v.add_child(UIKit.button("Replay intro", func(): act.emit("intro", null), 46))
+				var sr := _grid(2, 10)
+				var cs := _copy_button("Copy save", func(): return Save.export_text(), "Save copied: keep it somewhere safe", 46)
+				var ps := UIKit.button("Paste save", func(): show_paste_save(back), 46)
+				for b in [cs, ps]:
+					b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					sr.add_child(b)
+				v.add_child(sr)
+				var sh := UIKit.label("Moving to a new install? Copy your save, keep the text somewhere safe (a note or a message to yourself), then paste it after reinstalling.", 14, UIKit.DIM, true, "italic")
+				sh.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				v.add_child(sh)
 		1:
 			_cycle(v, "Graphics", "gfx", ["Auto (%s)" % Quality.NAMES[Quality.tier()] if int(Save.opt("gfx")) == 0 else "Auto", "Low", "Medium", "High"], back)
 			_cycle(v, "Renderer", "renderer", ["3D (PoE-style)", "Classic 2D"], back)
@@ -724,6 +739,7 @@ func show_options(back: String = "menu") -> void:
 				nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				v.add_child(nl)
 			else:
+				v.add_child(_copy_button("Copy report", func(): return Diag.report_text(), "Report copied: paste it into a message to us", 50))
 				v.add_child(UIKit.button("Graphics self-test (finds crashing features)", func(): Save.flush(); act.emit("selftest", null), 50))
 				var bb := UIKit.button("Run benchmark (23 s)", func(): Save.flush(); act.emit("bench", null), 50)
 				bb.tooltip_text = "A fixed 400-foe scene; screenshot the result to compare graphics settings."
@@ -846,13 +862,17 @@ func show_prophecies() -> void:
 ## trail and the engine's errors, small enough to fit one screenshot.
 func show_crash(lines: PackedStringArray) -> void:
 	var v := _open(1100)
-	_title(v, "The last session ended unexpectedly", "Please screenshot this and send it over. It shows what the game was doing when it stopped.")
+	_title(v, "The last session ended unexpectedly", "Tap Copy report and paste it into a message to us: it shows what the game was doing when it stopped.")
 	var t := UIKit.label("\n".join(lines), 12, Color("d8d0c0"), true, "body")
 	t.add_theme_font_override("font", SystemFont.new())
 	var sc := _scroll(t, "crash")
 	sc.custom_minimum_size = Vector2(0, 400)
 	v.add_child(sc)
-	v.add_child(UIKit.button("Continue", func(): show_menu(), 50))
+	var cr := _grid(2, 10)
+	for b in [_copy_button("Copy report", func(): return Diag.report_text(), "Copied: paste it into a message", 50), UIKit.button("Continue", func(): show_menu(), 50)]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cr.add_child(b)
+	v.add_child(cr)
 
 ## After a crash (or a background) during the self-test: what crashed, and resume.
 func show_selftest_resume(st: Dictionary, crashed: bool) -> void:
@@ -878,12 +898,16 @@ func show_selftest_resume(st: Dictionary, crashed: bool) -> void:
 
 func show_selftest(st: Dictionary) -> void:
 	var v := _open(860)
-	_title(v, "Self-test complete", ("Crashing features are switched off: " + ", ".join(st.bad.map(func(x): return Quality.FEATURE_NAMES.get(x, x)))) if not st.bad.is_empty() else "Nothing crashed. Screenshot this and send it over.")
+	_title(v, "Self-test complete", ("Crashing features are switched off: " + ", ".join(st.bad.map(func(x): return Quality.FEATURE_NAMES.get(x, x)))) if not st.bad.is_empty() else "Nothing crashed. Tap Copy report and send it over.")
 	_selftest_rows(v, st)
 	var tip := UIKit.label("FPS after each feature is switched on (400 foes). Big drops show what is expensive on this phone.", 15, UIKit.DIM, true, "italic")
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tip)
-	v.add_child(UIKit.button("Back", func(): act.emit("menu", null), 54))
+	var sr := _grid(2, 10)
+	for b in [_copy_button("Copy report", func(): return Diag.report_text(), "Copied: paste it into a message", 54), UIKit.button("Back", func(): act.emit("menu", null), 54)]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sr.add_child(b)
+	v.add_child(sr)
 
 func _selftest_rows(outer: VBoxContainer, st: Dictionary) -> void:
 	var v := UIKit.vbox(2)
@@ -915,15 +939,54 @@ func show_bench(r: Dictionary) -> void:
 		h.add_child(k)
 		h.add_child(UIKit.label(row[1], 18, UIKit.TEXT, false, "body"))
 		v.add_child(h)
-	var tip := UIKit.label("Screenshot this and send it over. Try Options > Graphics Medium / High and 3D resolution to compare.", 15, UIKit.DIM, true, "italic")
+	var tip := UIKit.label("Tap Copy report and send it over. Try Options > Graphics Medium / High and 3D resolution to compare.", 15, UIKit.DIM, true, "italic")
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tip)
-	var row2 := _grid(2, 10)
+	var row2 := _grid(3, 10)
+	var cb := _copy_button("Copy report", func(): return Diag.report_text(), "Copied", 54)
+	cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row2.add_child(cb)
 	for pair in [["Run again", "bench"], ["Back", "menu"]]:
 		var b := UIKit.button(pair[0], func(): act.emit(pair[1], null), 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row2.add_child(b)
 	v.add_child(row2)
+
+## A button that puts text on the clipboard and says so on itself.
+func _copy_button(label: String, text_fn: Callable, done: String, h: int) -> Button:
+	var b := UIKit.button(label, func(): pass, h)
+	b.pressed.connect(func():
+		DisplayServer.clipboard_set(String(text_fn.call()))
+		b.text = done)
+	return b
+
+## Paste save: what is on the clipboard, checked before anything changes; Replace keeps the old profile in a
+## backup file beside the new one.
+func show_paste_save(back: String) -> void:
+	var v := _open(760)
+	var txt := DisplayServer.clipboard_get()
+	var got = Save.decode_save(txt)
+	if typeof(got) == TYPE_STRING:
+		_title(v, "Paste save", String(got) if txt.strip_edges() != "" else "Nothing on the clipboard. Copy the save text first, then come back here.")
+		v.add_child(UIKit.button("Back", func(): show_options(back), 50))
+		return
+	_title(v, "Replace your progress?", "The pasted save has %d gold and %d items in the stash. Your current progress (%d gold) is replaced; a backup of it stays on this phone." % [int(got.get("gold", 0)), (got.get("stash", []) as Array).size(), int(Save.data.gold)])
+	var row := _grid(2, 10)
+	var rep := UIKit.button("Replace", func():
+		var err := Save.import_text(txt)
+		Quality.load_saved()
+		act.emit("options_changed", null)
+		show_paste_done(err, back), 54)
+	var cancel := UIKit.button("Cancel", func(): show_options(back), 54)
+	for b in [rep, cancel]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	v.add_child(row)
+
+func show_paste_done(err: String, back: String) -> void:
+	var v := _open(760)
+	_title(v, "Save restored" if err == "" else "Paste save", "Your progress is back." if err == "" else err)
+	v.add_child(UIKit.button("Back", func(): show_options(back), 50))
 
 ## One option row: name on the left in Garamond, its value as a bronze button on the right.
 func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: bool = true) -> void:

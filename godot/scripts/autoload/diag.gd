@@ -108,6 +108,50 @@ func beat(w: World, dt: float, label: String = "run") -> void:
 ## Set by WorldView3D each frame (its own CPU cost), read by beat().
 var view_us := 0.0
 
+## The game's version: application/config/version, which is also the APK's versionName (the Android export
+## preset leaves version/name empty, so the build takes this one).
+static func version() -> String:
+	return String(ProjectSettings.get_setting("application/config/version", "dev"))
+
+## "Copy report": what a bug report needs, as plain text for a message: the version, the device, the GPU, the
+## graphics and sound settings, the last benchmark and self-test, the last crashed session's trail (diag_prev.txt)
+## and the end of this session's.
+func report_text() -> String:
+	var r := PackedStringArray()
+	r.append("Shardfall %s report, %s" % [version(), Time.get_datetime_string_from_system()])
+	var mem := OS.get_memory_info()
+	r.append("device: %s | %s %s | %d cpus | %.1f GB RAM" % [OS.get_model_name(), OS.get_name(), OS.get_version(), OS.get_processor_count(), float(mem.get("physical", 0)) / 1.0e9])
+	r.append("gpu: %s | %s | %s renderer" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_api_version(), RenderingServer.get_current_rendering_method()])
+	var ws := DisplayServer.window_get_size()
+	r.append("screen: %dx%d window, UI scale %.2f" % [ws.x, ws.y, float(Save.opt("ui_scale"))])
+	var off: Array = Save.opt("gfx_off")
+	r.append("graphics: %s tier (option %s, device class %s) | 3D resolution option %s | frame cap option %s | switched off: %s" % [Quality.NAMES[Quality.tier()],
+		["Auto", "Low", "Medium", "High"][clampi(int(Save.opt("gfx")), 0, 3)], ["budget", "mid-range", "flagship"][Quality.device_class()],
+		["Auto", "100%", "75%", "50%"][clampi(int(Save.opt("render_scale")), 0, 3)], ["Auto", "30", "60", "None"][clampi(int(Save.opt("frame_cap")), 0, 3)],
+		"none" if off.is_empty() else ", ".join(off)])
+	r.append("sound: %s, volume %d%%, voices %d%%, safe engine %s" % ["on" if Save.opt("sound") else "off", roundi(float(Save.opt("volume")) * 100.0),
+		roundi(float(Save.opt("voice_volume")) * 100.0), "on" if Save.opt("sfx_safe") else "off"])
+	var b: Dictionary = Save.data.get("bench", {})
+	if not b.is_empty():
+		r.append("last benchmark: %d FPS, %.1f ms a frame, 1%% low %d FPS, %s foes, %s draw calls, %sk triangles (%s graphics, 3D at %s%%, %s)" % [roundi(float(b.get("fps", 0.0))),
+			float(b.get("ms", 0.0)), roundi(float(b.get("low1", 0.0))), b.get("foes", "?"), b.get("draws", "?"), b.get("ktris", "?"), b.get("tier", "?"), b.get("scale", "?"), b.get("res", "?")])
+	var st: Dictionary = Save.data.get("selftest", {})
+	if not st.get("results", []).is_empty():
+		var parts := PackedStringArray()
+		for x in st.results: parts.append("%s %s" % [x.get("f", "?"), "CRASHED" if x.get("crash", false) else "%s FPS" % x.get("fps", "?")])
+		r.append("self-test: %s%s" % [", ".join(parts), "" if st.get("bad", []).is_empty() else "; switched off: " + ", ".join(st.bad)])
+	if FileAccess.file_exists(PREV):
+		r.append("-- the last session that crashed%s --" % (" (the one before this)" if crashed_last else ""))
+		r.append_array(_tail(FileAccess.get_file_as_string(PREV), 60))
+	if FileAccess.file_exists(PATH):
+		r.append("-- this session --")
+		r.append_array(_tail(FileAccess.get_file_as_string(PATH), 40))
+	return "\n".join(r)
+
+static func _tail(text: String, n: int) -> PackedStringArray:
+	var lines := text.strip_edges().split("\n")
+	return lines.slice(maxi(0, lines.size() - n))
+
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_PREDELETE: mark("== exit")

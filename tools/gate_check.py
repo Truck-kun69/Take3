@@ -20,6 +20,7 @@
    resolves them, chunk dressing on Low, Medium and High, solids the same on every tier); the unit tests
    (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation and 0.10.0 voice groups printed; neither
    gate_chunk nor the unit run leaves an object alive at exit (an undisposed World is a reference cycle)
+   The unit tests include the 0.10.1 group: the version from one setting, Copy report, Copy save / Paste save.
 6. voice (godot/data/voice_manifest.json, tools/gen_voices.py; nothing calls ElevenLabs or fal): the dry run exits 0
    with the network shut off; 61 lines, a valid schema, the 4 exiles on distinct voices and distinct
    stability/style; the validator refuses six broken copies of the manifest; no line's text is repeated in a
@@ -29,7 +30,7 @@
 7. the single Android APK, the only build: export_presets.cfg holds one preset, Android
    (com.shardfall.riftsurvivors: no Web, no Lite); no web build tools (tools/build_web.sh, pack_web.py) and
    no web renderer override in project.godot; tools/build_android.sh has no lite mode; built, its size and
-   the .ctex bytes inside printed, the voice manifest inside it
+   the .ctex bytes inside printed, the voice manifest inside it; its versionName is project.godot's config/version
 """
 import glob
 import io
@@ -210,7 +211,7 @@ def main(build_apk=True):
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
     lines = out.splitlines()
-    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice"):
+    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.1 report and save transfer"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:
@@ -310,6 +311,10 @@ def main(build_apk=True):
         tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if not l.startswith("Picked up JAVA_TOOL_OPTIONS")][-4:]
         for l in tail: print("      " + l)
         ok = r.returncode == 0 and os.path.exists(apk)
+        ver = re.search(r'(?m)^config/version="([^"]*)"', open(os.path.join(GD, "project.godot")).read())
+        vn = re.search(r"versionName='([^']*)'", r.stdout + r.stderr)
+        check(ver is not None and vn is not None and vn.group(1) == ver.group(1) and re.search(r'(?m)^version/name=""$', pre) is not None,
+              f"one version: the APK's versionName {vn.group(1) if vn else '?'} is project.godot's config/version {ver.group(1) if ver else '?'} (the preset's version/name is left empty)")
         if ok:
             z = zipfile.ZipFile(apk)
             ct = [i for i in z.infolist() if i.filename.endswith(".ctex")]
