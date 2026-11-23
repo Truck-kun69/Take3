@@ -41,10 +41,10 @@ func defaults() -> Dictionary:
 		"nemesis": {}, "gr_key": 1, "gr_best": 0, "atlas": {}, "herald_kills": 0,
 		"stats": {"runs": 0, "kills": 0, "deaths": 0, "playtime": 0.0, "best_combo": 0, "champions": 0},
 		"unlocked": [],                                  # weapon ids earned on the unlock track (Content.UNLOCKS)
-		"selftest": {}, "bench": {},
-		"prophecy": {"offers": [], "active": {}, "done": 0},
-		"daily": {"best": {}, "claimed": ""},
-		"rift_echoes": [],                               # Story.echo_key of every Rift Echo found (the Codex's Story page)            # best: code -> score (newest 30); claimed: date of the last first-clear reward   # offers: [[id, [reward ids]]], active: {id, reward}          # graphics self-test progress (survives a crash), last benchmark
+		"selftest": {}, "bench": {},                     # graphics self-test progress (survives a crash), last benchmark
+		"prophecy": {"offers": [], "active": {}, "done": 0},   # offers: [[id, [reward ids]]], active: {id, reward}
+		"daily": {"best": {}, "claimed": ""},            # best: code -> score (newest 30); claimed: date of the last first-clear reward
+		"rift_echoes": [],                               # Story.echo_key of every Rift Echo found (the Codex's Story page)
 	}
 
 func load_profile() -> void:

@@ -1225,9 +1225,11 @@ func show_pause(w: World) -> void:
 		b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row2.add_child(b2)
 	v.add_child(row2)
-	var cl := UIKit.label(contagion_line(w), 16, Color("ffa15a"), true, "italic")
-	cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if cl.text != "": v.add_child(cl)
+	var ctext := contagion_line(w)
+	if ctext != "":                                  # made only when shown: a label outside the tree is never freed
+		var cl := UIKit.label(ctext, 16, Color("ffa15a"), true, "italic")
+		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(cl)
 
 ## Pause > Build & Stats: the weapons and their links, the perks, and how the run is going (and the
 ## Emberwitch's contagion, the Warden's vaults, the Sparkcaller's ricochets, the Stormwright's conductions).

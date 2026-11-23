@@ -554,11 +554,18 @@ func _build_tree() -> void:
 		prev = "cast_" + layer
 	bt.add_node("roll_clip", _clip("roll"))
 	bt.add_node("roll_seek", AnimationNodeTimeSeek.new()); bt.connect_node("roll_seek", 0, "roll_clip")
-	bt.add_node("roll", AnimationNodeBlend2.new())
+	# sync on the roll and jump blends and on the life transition: the casts under them keep advancing while
+	# a roll, a jump or death covers them, so a cast's requested fade-out completes there instead of freezing
+	# at full weight until the cover lifts (0.10.0: cast_full aborts on roll, jump and death)
+	var rb := AnimationNodeBlend2.new()
+	rb.sync = true
+	bt.add_node("roll", rb)
 	bt.connect_node("roll", 0, prev); bt.connect_node("roll", 1, "roll_seek")
 	bt.add_node("jump_clip", _clip("jump"))
 	bt.add_node("jump_seek", AnimationNodeTimeSeek.new()); bt.connect_node("jump_seek", 0, "jump_clip")
-	bt.add_node("jump", AnimationNodeBlend2.new())
+	var jb := AnimationNodeBlend2.new()
+	jb.sync = true
+	bt.add_node("jump", jb)
 	bt.connect_node("jump", 0, "roll"); bt.connect_node("jump", 1, "jump_seek")
 	var below := "jump"
 	if _clips.has("hit"):
@@ -569,6 +576,7 @@ func _build_tree() -> void:
 		below = "hit"
 	var life := AnimationNodeTransition.new()
 	life.xfade_time = 0.12
+	life.sync = true
 	life.add_input("alive"); life.add_input("dead")
 	bt.add_node("die_clip", _clip("die")); bt.add_node("life", life)
 	bt.connect_node("life", 0, below); bt.connect_node("life", 1, "die_clip")

@@ -44,8 +44,11 @@ func _ready() -> void:
 		_look_tests()
 		_remediation_tests()
 		_voice_tests()
+		await _alpha10_tests()
 	elif "voice" in args:
 		_voice_tests()
+	elif "alpha10" in args:
+		await _alpha10_tests()
 	if "voice_dropin" in args: _voice_dropin_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
@@ -1586,6 +1589,474 @@ func _voice_tests() -> void:
 	mn.queue_free()
 	VoiceBank.stop_all(0.0)
 	sv.data = keep
+
+# ================================================================= 0.10.0 alpha
+## Counts the engine's errors and warnings while it is attached (the main.tscn flow must raise none). The
+## headless dummy renderer keeps no materials and logs "material is null" whenever a mesh with a surface
+## override material is freed: that is the stand-in renderer talking, not the game, so it is counted apart.
+class ErrCount extends Logger:
+	var n := 0
+	var dummy := 0
+	var seen: Array = []
+	func _log_error(_function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, _error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if file.contains("servers/rendering/dummy/"):
+			dummy += 1
+			return
+		n += 1
+		if seen.size() < 6: seen.append("%s:%d %s" % [file.get_file(), line, rationale if rationale != "" else code])
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
+
+## 0.10.0-alpha: solid props (the foe guard, no tunnelling, chunk-edge spill, a tide that moves no solid, the
+## same run on Low and High through trims), the rigs' fades, the game's own flow (intro, menu, heroes, a run,
+## pause, back to the menu) with no error and nothing left behind, VoiceBank's clip timing and stop_all, the
+## Emberwitch's contagion at 400 foes, the three prop synergies, Rift Echoes, the safe-mode sentinel, the
+## story's data and the menus' touch targets.
+func _alpha10_tests() -> void:
+	print("== 0.10.0 alpha")
+	# ---- determinism primitives: SplitMix64 against its reference values (tools: Python)
+	ok(PropLayout.splitmix(1) == 6238072747940578789 and PropLayout.splitmix(12345) == -906084347102765743 and PropLayout.splitmix(-7) == -2622165800321222925,
+		"PropLayout.splitmix matches the SplitMix64 reference (64-bit wrapping, logical shifts)")
+	ok(PropLayout.seed_of(Vector2i(3, -2), 1) == PropLayout.seed_of(Vector2i(3, -2), 1) and PropLayout.seed_of(Vector2i(3, -2), 1) != PropLayout.seed_of(Vector2i(-2, 3), 1),
+		"chunk seeds are stable and tell mirrored chunks apart")
+	# ---- the foe guard: beside impassable ground a prop never shoves a foe off its feet
+	var gw := _world({"mode": "campaign", "stage": 2, "hero": 0, "seed": 41})
+	var T := gw.terrain
+	var edges: Array = []
+	for cy in range(-60, 61):
+		for cx in range(-60, 61):
+			var q := Vector2(cx * Terrain.CELL + 8.0, cy * Terrain.CELL + 8.0)
+			if not T.passable(q) and T.passable(q + Vector2(Terrain.CELL, 0)): edges.append(q + Vector2(Terrain.CELL, 0))
+			if edges.size() >= 60: break
+		if edges.size() >= 60: break
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 7
+	var bad := 0
+	var trials := 0
+	for e in edges:
+		for k in 6:
+			var p0: Vector2 = e + Vector2(rr.randf_range(0.0, 10.0), rr.randf_range(-8.0, 8.0))
+			if not T.passable(p0): continue
+			T.set_test_props(PackedFloat32Array([p0.x + rr.randf_range(4.0, 22.0), p0.y + rr.randf_range(-12.0, 12.0), rr.randf_range(10.0, 22.0), 0.0]))
+			var np0 := p0 + Vector2(rr.randf_range(-8.0, 8.0), rr.randf_range(-8.0, 8.0))
+			var r0 := T.foe_move(p0, np0, 12.0)
+			trials += 1
+			if not T.passable(r0): bad += 1
+	ok(trials >= 100 and bad == 0, "foe_move beside impassable ground never ends a foe off it (%d of %d moves)" % [bad, trials])
+	# ---- anti-tunnelling: a 35-unit step never carries a body through an r 14 trunk
+	T.set_test_props(PackedFloat32Array([0.0, 0.0, 14.0, 0.0]))
+	var tun := 0
+	for mover in ["move", "foe_move"]:
+		var p1 := Vector2(-60.0, 0.0)
+		for k in 6:
+			var n1: Vector2 = T.move(p1, p1 + Vector2(35.0, 0.0), 6.0) if mover == "move" else T.foe_move(p1, p1 + Vector2(35.0, 0.0), 6.0)
+			if n1.x > 0.0 or n1.length() < 14.0 + 6.0 - 0.01: tun += 1
+			p1 = n1
+	ok(tun == 0, "a 35 unit/tick step never tunnels through an r 14 trunk, walking or as a foe (%d tunnelled)" % tun)
+	T.props_on = true
+	T._prop_test_on = false
+	# ---- chunk-edge spill: a circle centred in one chunk is seen from the next
+	T._prop_chunk(Vector2i(1, 0))
+	T._prop_chunks[Vector2i(0, 0)] = PackedFloat32Array([636.0, 100.0, 20.0, 1.0])
+	T._prop_tags[Vector2i(0, 0)] = PackedByteArray([PropLayout.TAG_STONE])
+	T._prop_cells.clear()
+	T._prop_cell_tags.clear()
+	var spill := false
+	var nb := T.props_near(Vector2(650.0, 100.0))
+	for j in range(0, nb.size(), 4):
+		if is_equal_approx(nb[j], 636.0) and is_equal_approx(nb[j + 1], 100.0): spill = true
+	ok(spill and T.props_clear(Vector2(650.0, 100.0), 10.0) == false, "props_near sees a wall that spills over a chunk edge (MAX_SPILL), and it blocks there")
+	# ---- Act V: the tide rises 40 and no solid moves
+	var w5 := _world({"mode": "campaign", "stage": 4, "hero": 0, "seed": 9})
+	var cs := [Vector2i(0, 0), Vector2i(1, 1), Vector2i(-2, 1), Vector2i(2, -1)]
+	var before: Array = []
+	for c in cs: before.append([PropLayout.chunk(c, 4, w5.terrain, 1.0, false).solids, PropLayout.solid_tags(c, 4, w5.terrain)])
+	w5.terrain.level += 40.0
+	w5.terrain._chunks.clear()
+	var same := true
+	for k in cs.size():
+		var c2: Vector2i = cs[k]
+		if PropLayout.chunk(c2, 4, w5.terrain, 1.0, false).solids != before[k][0] or PropLayout.solid_tags(c2, 4, w5.terrain) != before[k][1]: same = false
+	ok(same, "Act V: the liquid 40 units higher leaves every solid and its tag where it was (placement reads level0)")
+	var tags_ok := true
+	var woods := 0
+	for c3 in cs:
+		var lay := PropLayout.chunk(c3, 0, gw.terrain, 1.0, false)
+		var tg: PackedByteArray = lay.solid_tags
+		if tg.size() * 4 != (lay.solids as PackedFloat32Array).size(): tags_ok = false
+		for t in tg:
+			if t > PropLayout.TAG_ARCH: tags_ok = false
+			if t == PropLayout.TAG_WOOD: woods += 1
+	ok(tags_ok and woods > 0, "every solid carries a tag (WOOD, STONE or ARCH), parallel to the circles (%d wood)" % woods)
+	# ---- the same run on Low and on High, one of them trimming its caches all the way
+	var sv: Node = get_node("/root/Save")
+	var gfx0: int = int(sv.data.options.gfx)
+	var sigs: Array = []
+	for tier in [1, 3]:
+		sv.data.options.gfx = tier
+		var dw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 77})
+		dw.stats.set_source("t", [["max_hp", "add", 1e6]]); dw.hp = 1e6
+		for k in 1800:
+			if tier == 1 and k % 300 == 150: dw.terrain.trim(dw.pp, 1)
+			dw.step(1.0 / 60.0)
+		var hsh := 0
+		for i in dw.sw.n: hsh = hash([hsh, roundi(dw.sw.pos[i].x * 8.0), roundi(dw.sw.pos[i].y * 8.0)])
+		sigs.append([dw.sw.n, dw.kills, roundi(dw.pp.x * 8.0), roundi(dw.pp.y * 8.0), hsh])
+	sv.data.options.gfx = gfx0
+	ok(sigs[0] == sigs[1], "1,800 ticks on Low (trimming its prop caches) and on High end identical (%s)" % str(sigs[0]))
+	# ---- rigs: a boss's light dies with it; a standing cast gives way to a roll, a jump or death
+	var bo := BossRig.new()
+	add_child(bo)
+	bo.build("tyrant", Color.RED, "tyrant")
+	var e0 := bo.light.light_energy
+	var total := bo.death_time() + WorldView3D.BOSS_SINK
+	var dtb := 1.0 / 60.0
+	var tb := 0.0
+	while tb < total + 0.1:
+		bo.animate({"pos": Vector2(500, 500), "face": Vector2.RIGHT, "hp_frac": 0.0, "flash": 0.0, "t": tb, "dt": dtb, "attack": false, "phase": 0,
+			"dead": true, "fade": clampf((total - tb) / total, 0.0, 1.0)})
+		if bo.anim != null: bo.anim.advance(dtb)
+		tb += dtb
+	ok(e0 > 0.0 and bo.light.light_energy <= 0.001 and not bo.light.visible, "a dying boss's light fades from %.2f to 0 over its death and sink (%.4f)" % [e0, bo.light.light_energy])
+	bo.queue_free()
+	var aborted: Array = []
+	for how in ["roll", "jump", "dead"]:
+		var hh := HeroRig.new()
+		add_child(hh)
+		hh.build("warden", Color.WHITE)
+		if hh.tree == null:
+			hh.queue_free()
+			continue
+		var st := {"pos": Vector2.ZERO, "face": Vector2.RIGHT, "cast_dir": Vector2.RIGHT, "cast_age": 9.0, "mv": 0.0, "vel": 0.0,
+			"roll": -1.0, "hit": 0.0, "dead": false, "t": 0.0, "ph": 0.0, "jump": -1.0}
+		for k in 10:
+			hh.animate(st, dtb); hh.tree.advance(dtb)
+		st.cast_age = 0.0
+		hh.animate(st, dtb); hh.tree.advance(dtb)
+		var on := bool(hh.tree.get("parameters/cast_full/active"))
+		match how:
+			"roll": st.roll = 0.3
+			"jump": st.jump = 0.3
+			"dead": st.dead = true
+		for k in 30:
+			st.cast_age = float(st.cast_age) + dtb
+			hh.animate(st, dtb); hh.tree.advance(dtb)
+		if on and not bool(hh.tree.get("parameters/cast_full/active")): aborted.append(how)
+		hh.queue_free()
+	ok(aborted == ["roll", "jump", "dead"], "a standing cast fades out on a roll, a jump and death (%s)" % str(aborted))
+	# ---- the game itself: intro -> main menu -> heroes -> a run -> pause -> main menu, no error, nothing left
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	Diag.crashed_last = false
+	var orph0 := Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)
+	var errs := ErrCount.new()
+	OS.add_logger(errs)
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var steps: Array = []
+	if mn.intro != null and mn.state == "intro": steps.append("intro")
+	mn.intro.skip()
+	if mn.intro == null and mn.state == "menu" and mn.screens.page == "menu": steps.append("menu")
+	mn._on_act("heroes", null)
+	sv.data.hero = 1                                  # what the Sparkcaller's tile does before it acts
+	mn._on_act("hero", 1)
+	if mn.screens.page == "sub" and int(sv.data.hero) == 1 and VoiceBank.current != null and VoiceBank.current.active_id() == "spark_intro_0": steps.append("heroes")
+	mn.back()
+	if mn.screens.page == "menu": steps.append("back")
+	mn._on_act("campaign", 0)
+	for k in 30: mn._process(1.0 / 60.0)
+	if mn.state == "play" and mn.world != null and mn.world.t > 0.0: steps.append("run")
+	mn._pause()
+	if mn.state == "pause" and mn.screens.page == "pause": steps.append("pause")
+	mn._on_act("build", null)
+	mn.back()
+	if mn.state == "pause" and mn.screens.page == "pause": steps.append("build")
+	mn.back()
+	if mn.state == "play": steps.append("resume")
+	mn._pause()
+	mn.screens.confirm("Leave this run?", "", "Leave", "leave")
+	mn._on_act("leave", null)
+	var speaking := VoiceBank.current != null and VoiceBank.current.is_speaking()
+	if mn.state == "menu" and mn.world == null and mn.screens.page == "menu" and not speaking: steps.append("main menu")
+	mn.free()
+	await get_tree().process_frame                     # pages cleared with queue_free go at the end of a frame
+	await get_tree().process_frame
+	OS.remove_logger(errs)
+	var orph := Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT) - orph0
+	ok(steps == ["intro", "menu", "heroes", "back", "run", "pause", "build", "resume", "main menu"] and errs.n == 0 and orph == 0,
+		"main.tscn: intro, main menu, heroes, Back, a run, pause, Build & Stats, resume, Main Menu: %s, %d errors%s (%d from the headless dummy renderer), %d orphan nodes left" % [str(steps), errs.n, (" " + str(errs.seen)) if errs.n > 0 else "", errs.dummy, int(orph)])
+	VoiceBank.stop_all()
+	sv.data = keep
+	# ---- VoiceBank: a clip times its line; stop_all is immediate and gives Music and SFX back their 0 dB
+	var vb := _voice_bank()
+	var ln: Dictionary = vb.entries["narrator_act_0_0"]
+	ln.file = "res://tests/fixtures/voice_probe.ogg"
+	var probe: AudioStream = load(ln.file)
+	var rp := vb.say("narrator", "act_0", 0)
+	ok(bool(rp.using_pack) and absf(float(rp.duration) - probe.get_length()) < 0.001 and absf(vb.duration_of("narrator", "act_0", 0) - probe.get_length()) < 0.001
+		and is_equal_approx(VoiceBank.subtitle_seconds(float(rp.duration)), probe.get_length() + 0.35),
+		"a clip times its line: %.2f s played, the same from duration_of, its subtitle up %.2f s (length + 0.35)" % [float(rp.duration), VoiceBank.subtitle_seconds(float(rp.duration))])
+	vb.queue_free()
+	var cur := VoiceBank.current
+	var mus := AudioServer.get_bus_index("Music")
+	var sfx := AudioServer.get_bus_index("SFX")
+	if cur != null:
+		cur.say("warden", "boss_spawn", 0)
+		cur.step(0.5)
+		var ducked := AudioServer.get_bus_volume_db(mus) < -3.0 and AudioServer.get_bus_volume_db(sfx) < -1.0
+		VoiceBank.stop_all()
+		ok(ducked and not cur.is_speaking() and is_zero_approx(AudioServer.get_bus_volume_db(mus)) and is_zero_approx(AudioServer.get_bus_volume_db(sfx)),
+			"stop_all stops the line at once and returns Music (%.1f dB) and SFX (%.1f dB) to 0 dB" % [AudioServer.get_bus_volume_db(mus), AudioServer.get_bus_volume_db(sfx)])
+	var eb := _voice_bank()
+	var picks := {}
+	for k in 40:
+		var rk := eb.say("ember", "kill_streak")
+		if bool(rk.played): picks[int(rk.variant)] = true
+		eb.stop_now()
+		eb.step(11.0)
+	ok(not picks.has(eb.escalation_variant("ember", "burning_12")) and eb.escalation_variant("ember", "burning_12") >= 0 and eb.escalation_variant("warden", "hp_30") >= 0
+		and eb.escalation_variant("spark", "ricochet_2") >= 0 and eb.escalation_variant("storm", "conduct") >= 0,
+		"the four escalation lines resolve, and the frenzy line never comes up as an ordinary streak bark (%s)" % str(picks.keys()))
+	eb.queue_free()
+	# ---- the Emberwitch's contagion: 400 foes, three clusters 0 / 55 / 110 from the strike, a tree and a boulder beside it
+	var cw := _world({"mode": "campaign", "stage": 0, "hero": 2, "seed": 21})
+	cw.stats.set_source("t", [["max_hp", "add", 1e6]]); cw.hp = 1e6
+	cw.need = 1e12
+	var cp := Vector2(400, 0)
+	cw.pp = cp + Vector2(-90, 0)
+	var tree_at := cp + Vector2(30, 70)
+	cw.terrain.set_test_props(PackedFloat32Array([tree_at.x, tree_at.y, 16.0, 0.0, cp.x - 60.0, cp.y - 70.0, 18.0, 1.0]))
+	var power := float(Content.WEAPONS.nova.lv[0].dmg) * cw._dmg_scale("nova")
+	var crng := RandomNumberGenerator.new()
+	crng.seed = 5
+	var cluster3: Array = []
+	var nfoe := 0
+	var hp_min := INF
+	while cw.sw.n < 400:
+		var g := 3 if nfoe >= 150 else nfoe % 3
+		var at: Vector2
+		if g < 3:
+			at = cp + Vector2([0.0, 55.0, 110.0][g], 0.0) + Vector2(crng.randf_range(-8, 8), crng.randf_range(-26, 26))
+		else:
+			at = cp + Vector2.from_angle(crng.randf() * TAU) * crng.randf_range(150.0, 320.0)
+		var fi := cw.spawn_foe(Content.E.GRUNT, at, 0, 0, 1.0)
+		if fi < 0: break
+		var fh := Contagion.DETONATE_K * power * crng.randf_range(3.0, 16.0)      # every foe >= 3x the detonation
+		cw.sw.mhp[fi] = fh; cw.sw.hp[fi] = fh; cw.sw.spd[fi] = 0.0
+		hp_min = minf(hp_min, fh)
+		if g == 2: cluster3.append(cw.sw.uid[fi])
+		nfoe += 1
+	cw.grid.build(cw.sw)
+	cw.contagion.cast_at(cp, power)
+	cw.weapons.nova.t = 0.0
+	var c3_gen := -1
+	var t_us := 0
+	for k in 600:
+		var t0 := Time.get_ticks_usec()
+		cw.step(1.0 / 60.0)
+		t_us += Time.get_ticks_usec() - t0
+		if c3_gen < 0:
+			for u in cluster3:
+				var j := cw.sw.index_of(u)
+				if j >= 0 and cw.sw.burn_stacks[j] > 0:
+					c3_gen = cw.sw.burn_gen[j]
+					break
+	var m := cw.metrics
+	var avg_ms := t_us / 600.0 / 1000.0
+	var wood_only := true
+	for b in cw.contagion.beacons:
+		if (b.pos as Vector2).distance_to(tree_at) > 0.5: wood_only = false
+	ok(hp_min >= 3.0 * Contagion.DETONATE_K * power and c3_gen >= 1, "the cluster 110 out (beyond the strike) catches through contagion, generation %d" % c3_gen)
+	ok(cw.kills >= 30 and int(m.ember_spreads) >= 20 and int(m.ember_conflagrations) >= 5 and int(m.ember_beacons) >= 1 and wood_only,
+		"400 foes, 10 s: %d slain, %d spreads, %d conflagrations, %d beacons (the tree only, never the boulder)" % [cw.kills, int(m.ember_spreads), int(m.ember_conflagrations), int(m.ember_beacons)])
+	ok(avg_ms < 4.0, "and the whole tick averages %.2f ms (under 4 ms)" % avg_ms)
+	ok(int(m.ember_ignitions) > 0 and cw.contagion.burning >= 0 and Contagion.MAX_BURN_STACKS == 5 and Contagion.MAX_GEN == 4, "Burn caps at 5 stacks and generation 4")
+	# ---- the Warden's vault slam
+	var vw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 3})
+	vw.weapons.clear()
+	vw.stats.set_source("t", [["max_hp", "add", 1e6]]); vw.hp = 1e6
+	vw.terrain.set_test_props(PackedFloat32Array([100.0, 0.0, 18.0, 1.0]))
+	var vfoes: Array = []
+	for k in 5:
+		var vi := vw.spawn_foe(Content.E.GRUNT, Vector2(200, 0) + Vector2.from_angle(TAU * k / 5.0) * 45.0, 0, 0, 1.0)
+		vw.sw.spd[vi] = 0.0
+		vfoes.append(vw.sw.uid[vi])
+	vw._jump(Vector2.RIGHT)
+	var vaulted := vw.jump_vaulted
+	for k in 50: vw.step(1.0 / 60.0)
+	var hurt := 0
+	for u in vfoes:
+		var j2 := vw.sw.index_of(u)
+		if j2 < 0 or vw.sw.hp[j2] < vw.sw.mhp[j2]: hurt += 1
+	vw._jump(Vector2.UP)                                # over open ground
+	var plain := not vw.jump_vaulted
+	ok(vaulted and int(vw.metrics.get("warden_vaults", 0)) == 1 and hurt >= 4 and plain,
+		"the Warden's jump over a boulder lands in a crater (%d of 5 foes hit); a jump over open ground does not" % hurt)
+	# ---- the Sparkcaller's ricochet off stone
+	var sw2 := _world({"mode": "campaign", "stage": 0, "hero": 1, "seed": 4})
+	sw2.weapons.clear()
+	sw2.terrain.set_test_props(PackedFloat32Array([100.0, 0.0, 18.0, 1.0, 100.0, 200.0, 18.0, 0.0]))
+	var rics: Array = []
+	sw2.moment.connect(func(k: String, info: Dictionary) -> void: if k == "ricochet": rics.append(int(info.bounces)))
+	var bolt: World.Proj = sw2._new_proj()
+	bolt.pos = Vector2(60, 0); bolt.vel = Vector2(440, 0); bolt.life = 5.0; bolt.r = 5.0; bolt.dmg = 10.0; bolt.wid = "bolt"
+	sw2.projs.append(bolt)
+	for k in 12: sw2._step_projs(1.0 / 60.0)
+	var first := bolt.bounces == 1 and bolt.vel.x < 0.0 and is_equal_approx(bolt.dmg, 12.5)
+	bolt.pos = Vector2(60, 0); bolt.vel = Vector2(440, 0)
+	for k in 12: sw2._step_projs(1.0 / 60.0)
+	var second := bolt.bounces == 2 and is_equal_approx(bolt.dmg, 15.625) and rics == [2]
+	bolt.pos = Vector2(60, 0); bolt.vel = Vector2(440, 0)
+	for k in 12: sw2._step_projs(1.0 / 60.0)
+	var third_dead := bolt.dead                        # read before the pool hands the same Proj out again
+	var wood: World.Proj = sw2._new_proj()
+	wood.pos = Vector2(60, 200); wood.vel = Vector2(440, 0); wood.life = 5.0; wood.r = 5.0; wood.dmg = 10.0; wood.wid = "bolt"
+	sw2.projs.append(wood)
+	for k in 20: sw2._step_projs(1.0 / 60.0)
+	ok(first and second and third_dead and wood.bounces == 0 and wood.pos.x > 130.0,
+		"a Rime Bolt glances off stone twice (x1.25 each: %.2f), the third stone shatters it, and wood lets it through" % 15.625)
+	# ---- the Stormwright's conduction: shallow water (Act V) and rift crystals
+	var stw := _world({"mode": "campaign", "stage": 4, "hero": 3, "seed": 8})
+	var ST := stw.terrain
+	var wet := Vector2.INF
+	var dry := Vector2.INF
+	for r2 in range(200, 3000, 32):
+		for k in 24:
+			var q2 := Vector2.from_angle(TAU * k / 24.0) * r2
+			if wet == Vector2.INF and ST.type_at(q2) == Terrain.SHALLOW and not ST.is_frozen(q2): wet = q2
+			if dry == Vector2.INF and ST.type_at(q2) == Terrain.LAND and ST.crystals_near(q2, 80.0) == 0: dry = q2
+		if wet != Vector2.INF and dry != Vector2.INF: break
+	var crys := Vector2.INF
+	for cy2 in range(-2, 3):
+		for cx2 in range(-2, 3):
+			var cc := PropLayout.chunk(Vector2i(cx2, cy2), 4, ST, 1.0, false).crystals as PackedVector2Array
+			if crys == Vector2.INF and not cc.is_empty(): crys = cc[0]
+	var cond_ok := wet != Vector2.INF and stw.conducts(wet) and dry != Vector2.INF and not stw.conducts(dry) and (crys == Vector2.INF or stw.conducts(crys + Vector2(30, 0)))
+	var ci := stw.spawn_foe(Content.E.GRUNT, wet, 0, 0, 1.0)
+	var near_i := stw.spawn_foe(Content.E.GRUNT, wet + Vector2(50, 0), 0, 0, 1.0)
+	var out_i := stw.spawn_foe(Content.E.GRUNT, wet + Vector2(150, 0), 0, 0, 1.0)
+	stw.grid.build(stw.sw)
+	var h_near := stw.sw.hp[near_i]
+	var h_out := stw.sw.hp[out_i]
+	var arcs0 := stw.fx.filter(func(f): return f.k == "arc").size()
+	stw._conduct(ci, 34.0, 20.0, 1 << Content.El.LIGHT)
+	ok(cond_ok and stw.sw.hp[near_i] < h_near and stw.sw.hp[out_i] < h_out and stw.fx.filter(func(f): return f.k == "arc").size() > arcs0
+		and int(stw.metrics.get("storm_conducts", 0)) == 1,
+		"Skyfall conducts through shallow water and beside a crystal (not on dry land): twice the radius, and an arc branches to a foe outside it")
+	# ---- Rift Echoes: two per act, placed by rule (the same run seed: the same spots), on open ground beside
+	# the act's arches; touching one surges and speaks
+	var ea := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 1})
+	var eb2 := _world({"mode": "campaign", "stage": 0, "hero": 2, "seed": 1})
+	var ec2 := _world({"mode": "campaign", "stage": 0, "hero": 1, "seed": 999})
+	var same_e := ea.rift_echoes.size() == 2 and eb2.rift_echoes.size() == 2 and ec2.rift_echoes.size() == 2
+	for k in mini(ea.rift_echoes.size(), eb2.rift_echoes.size()):
+		if (ea.rift_echoes[k].pos as Vector2).distance_to(eb2.rift_echoes[k].pos) > 0.01: same_e = false
+	for wq in [ea, ec2]:
+		for e in (wq as World).rift_echoes:
+			if (e.pos as Vector2).length() < World.ECHO_MIN or not (wq as World).terrain.passable(e.pos): same_e = false
+	var heard: Array = []
+	ea.moment.connect(func(k: String, info: Dictionary) -> void: if k == "echo": heard.append(int(info.k)))
+	ea.pp = ea.rift_echoes[0].pos
+	ea._step_echoes()
+	ok(same_e and bool(ea.rift_echoes[0].taken) and ea.buffs.has("rift_surge") and is_equal_approx(ea.buffs.remaining("rift_surge"), Story.ECHO_SURGE_S)
+		and heard == [0] and (sv.data.rift_echoes as Array).has(Story.echo_key(0, 0)),
+		"two Echo Shards per act beside its arches (the same run seed: the same spots); touching one gives a 10 s Rift Surge, the exchange and the Codex page")
+	# ---- the safe-mode sentinel (Options > Renderer and the crash fallback), on a scratch file
+	var keep_path := Quality.override_path
+	var keep_api: int = int(sv.data.options.get("gfx_api", 0))
+	Quality.override_path = "user://test_override.cfg"
+	sv.set_opt("gfx_api", Quality.API_VULKAN)
+	var armed: bool = Quality.arm_sentinel(true) and Quality.read_api().gl and Quality.read_api().sentinel
+	Quality.disarm_sentinel()
+	var disarmed := not FileAccess.file_exists(Quality.override_path)
+	Quality.arm_sentinel(true)
+	var fell: bool = Quality.check_sentinel() and int(sv.opt("gfx_api")) == Quality.API_GL and Quality.read_api().gl and not Quality.read_api().sentinel and Quality.safe_fell_back
+	Quality.set_api(Quality.API_VULKAN)
+	var back_v := not FileAccess.file_exists(Quality.override_path)
+	Quality.override_path = keep_path
+	Quality.safe_fell_back = false
+	sv.set_opt("gfx_api", keep_api)
+	ok(armed and disarmed and fell and back_v, "the crash sentinel: armed on Vulkan, disarmed by a clean end, a crash falls back to OpenGL Safe Mode, Options switches back")
+	# ---- the story's data
+	var story_ok := Story.ACTS.size() == Content.STAGES.size() and Story.HEROES.size() == 4
+	for a in Story.ACTS:
+		for k in ["title", "subtitle", "intro_lines", "boss_name", "boss_taunt", "victory_note", "echoes"]:
+			if not a.has(k): story_ok = false
+		if (a.echoes as Array).size() != 2: story_ok = false
+	for i in Content.STAGES.size():
+		if String(Story.ACTS[i].boss_name) != String(Content.STAGES[i].boss): story_ok = false
+	ok(story_ok, "The Shattering of the Veil: 5 acts (title, subtitle, lore, boss and taunt, victory note, 2 Rift Echoes each), 4 exiles")
+	# ---- the menus: every button at least 48 units tall, in landscape and in portrait
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	var mm: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mm)
+	var small: Array = []
+	var pages := 0
+	var sizes: Array = []
+	var root_size := get_tree().root.size
+	var root_scale := get_tree().root.content_scale_factor
+	# main rescales the canvas from the OS window on every resize, and headless cannot report a phone's: the
+	# test plays that part itself, with main's handler detached until it is done
+	var on_resize := Callable(mm, "_on_resize")
+	if get_tree().root.size_changed.is_connected(on_resize): get_tree().root.size_changed.disconnect(on_resize)
+	for orient in [Vector2i(1280, 720), Vector2i(720, 1280)]:
+		get_tree().root.size = orient
+		await get_tree().process_frame                 # main's resize handler runs first (it sets the scale from the window)
+		# what main._ui_scale does on a portrait phone (headless cannot report the window): the canvas scaled
+		# so the 1280 x 720 design base becomes a 720-unit-wide portrait page
+		get_tree().root.content_scale_factor = 1.0 if orient.x > orient.y else float(orient.y) / float(orient.x)
+		await get_tree().process_frame
+		sizes.append(mm.screens.get_viewport_rect().size)
+		if mm.world != null: mm._on_act("leave", null)
+		pages += _menu_pages(mm, small)
+	get_tree().root.size = root_size
+	get_tree().root.content_scale_factor = root_scale
+	get_tree().root.size_changed.connect(on_resize)
+	var portrait_seen: bool = sizes.size() == 2 and (sizes[1] as Vector2).x < 820.0 and (sizes[0] as Vector2).x >= 820.0
+	mm.free()
+	VoiceBank.stop_all()
+	sv.data = keep
+	ok(pages == 14 and small.is_empty() and portrait_seen, "every button on the main menu, Heroes, Codex, Options (4 tabs), Pause, Build & Stats and a confirmation is at least %d tall, landscape and portrait (%s)%s" % [UIKit.MIN_TOUCH, str(sizes), ("" if small.is_empty() else ": " + str(small.slice(0, 4)))])
+
+## Every page _alpha10_tests checks for touch targets, in the current window; returns how many were shown.
+func _menu_pages(mm: Node, small: Array) -> int:
+	var pages := 0
+	for page in ["menu", "heroes", "codex", "options", "pause", "build", "confirm"]:
+		match page:
+			"menu": mm.screens.show_menu()
+			"heroes": mm.screens.show_heroes()
+			"codex": mm.screens.show_codex("menu")
+			"options":
+				for tab in 4:
+					mm.screens._opt_tab = tab
+					mm.screens.show_options("menu")
+					small.append_array(_small_buttons(mm.screens, "options %d" % tab))
+				mm.screens._opt_tab = 0
+				pages += 1
+				continue
+			"pause":
+				mm._on_act("campaign", 0)
+				mm._pause()
+			"build": mm._on_act("build", null)
+			"confirm": mm.screens.confirm("Leave this run?", "", "Leave", "leave")
+		small.append_array(_small_buttons(mm.screens, page))
+		pages += 1
+	mm._on_act("leave", null)
+	return pages
+
+func _small_buttons(root: Node, label: String) -> Array:
+	var out: Array = []
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Button and (n as Control).visible:
+			var h := maxf((n as Control).custom_minimum_size.y, (n as Control).get_combined_minimum_size().y)
+			if h < UIKit.MIN_TOUCH: out.append("%s: %s (%d)" % [label, (n as Button).text, int(h)])
+		stack.append_array(n.get_children())
+	return out
 
 ## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
 ## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.

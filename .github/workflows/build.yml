@@ -1,8 +1,8 @@
 name: build
 # Tests the game and builds the Android packages on every push.
-# Signing: with the repository secrets below the APKs and the Play bundle are signed with the
-# release key; without them the APKs are signed with the shared test key in tools/keys (fine for
-# sideloading) and no bundle is built. See docs/RELEASE.md.
+# Signing: with the repository secrets below the release APK and the Play bundle are signed with the
+# release key. Without them CI builds a debug APK signed with the shared test key in tools/keys (fine for
+# sideloading): tools/build_android.sh refuses a CI release build without SHARDFALL_KEYSTORE. See docs/RELEASE.md.
 #   SHARDFALL_KEYSTORE_B64   base64 of the release keystore file
 #   SHARDFALL_KEYSTORE_USER  key alias
 #   SHARDFALL_KEYSTORE_PASS  keystore password
@@ -46,10 +46,16 @@ jobs:
         run: ~/toolchains/godot/godot --headless --path godot --import || true
       - name: Parse check (every script compiles)
         run: ~/toolchains/godot/godot --headless --path godot res://tests/parse_all.tscn
-      - name: Unit tests
+      - name: Install the gate's Python packages and ffmpeg
         run: |
-          ~/toolchains/godot/godot --headless --path godot res://tests/tests.tscn -- unit | tee test.log
-          grep -q ", 0 failed ==" test.log
+          python3 -m pip install --user numpy pillow
+          sudo apt-get install -y ffmpeg xvfb
+      # every check of the release gate (fal spend, models, textures, engine boot, chunk dressing, unit tests,
+      # the voice manifest and generator, the combat render smoke); the APK is built below
+      - name: Release gate (no APK)
+        env:
+          GODOT: /home/runner/toolchains/godot/godot
+        run: python3 tools/gate_check.py --no-apk
       - name: Release key (if configured)
         env:
           KEY_B64: ${{ secrets.SHARDFALL_KEYSTORE_B64 }}
@@ -58,11 +64,12 @@ jobs:
             echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "SHARDFALL_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           fi
-      - name: Build APK
+      - name: Build APK (release with the release key, else a test-key debug APK)
         env:
           SHARDFALL_KEYSTORE_USER: ${{ secrets.SHARDFALL_KEYSTORE_USER }}
           SHARDFALL_KEYSTORE_PASS: ${{ secrets.SHARDFALL_KEYSTORE_PASS }}
-        run: bash tools/build_android.sh
+        run: |
+          if [ -n "${SHARDFALL_KEYSTORE:-}" ]; then bash tools/build_android.sh; else bash tools/build_android.sh debug; fi
       - name: Build Play bundle (release key only)
         if: env.SHARDFALL_KEYSTORE != ''
         env:

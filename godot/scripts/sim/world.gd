@@ -301,10 +301,10 @@ func setup(cfg: Dictionary) -> void:
 
 # ================================================================= Rift Echoes (Story)
 ## Two Echo Shards per act, beside the act's arches nearest the start (but at least ECHO_MIN out): ECHO_IN
-## units in front of the gateway, on open ground. The arches come from PropLayout (the act's own layout, not
-## the run's seed), so the shards stand in the same places every run of an act. Touching one, or vaulting over
-## it, takes it: a Rift Surge (Content.BUFFS.rift_surge), the "echo" moment (main runs the hero/narrator exchange
-## from Story) and the fragment kept in the profile for the Codex.
+## units in front of the gateway, on open ground. The arches come from PropLayout over this run's terrain, so
+## the same act and run seed put the shards in the same places. Touching one, or vaulting over it, takes it: a
+## Rift Surge (Content.BUFFS.rift_surge), the "echo" moment (main runs the hero/narrator exchange from Story)
+## and the fragment kept in the profile for the Codex.
 const ECHO_R := 40.0
 const ECHO_MIN := 420.0
 const ECHO_IN := 55.0

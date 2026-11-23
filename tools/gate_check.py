@@ -7,29 +7,39 @@
    every hero, boss, foe and prop .glb exists, > 100 KB
 2. every .glb parsed (struct + json), its height and min_y printed and in range (feet at 0):
    heroes: a skin with joints and the 7 clips (idle, walk, run, cast/attack, roll/dodge, jump, die/death),
-   each > 0.2 s, and the trimmed ones short: cast <= 1.10 s, roll <= 0.80 s, jump <= 1.00 s;
+   each > 0.2 s, and the trimmed ones in their windows (HERO_RANGE): cast 0.65-1.10 s, roll 0.45-0.80 s,
+   jump 0.55-1.00 s;
    bosses: a skin with joints and the 5 clips (idle, walk, attack, slam, die/death), each > 0.2 s;
-   foes: albedo, normal and ORM maps, the baked normal and ORM images not blank (each of their R and G
-   channels' pixel standard deviation >= 3.0), and a walk cycle that moves (its .vat: > 2 units of travel);
+   foes: albedo, normal and ORM maps, none blank (each map's R and G pixel standard deviation >= 3.0), the
+   normal map tangent-space (mean blue > 180), the ORM map metal-free (blue at most 4), and a walk cycle
+   that moves (its .vat: > 2 units of travel);
    props: a baseColorTexture on every material
 3. code: no JumpTuck in scripts/; no "pal * 4.0" in the terrain shader; prop_mat never on a PBR prop; High
-   and Medium phones at 3D scale 1.0; no web branch (OS.has_feature("web")) in scripts/
+   and Medium phones at 3D scale 1.0; no web branch (OS.has_feature("web")) in scripts/; Android Back never
+   quits (quit_on_go_back off) and the renderer choice reads user://override.cfg (project_settings_override)
 4. textures: the imported .ctex headers of everything under textures/terrain and models/{heroes, bosses,
-   foes, props}: none 256 px or smaller; and the texel budget (tools/texture_budget.py --check)
+   foes, props}: none 256 px or smaller; and the texel budget (tools/texture_budget.py): every imported .ctex
+   under models/** (recursive) checked, the row count equal to that count, 0 skipped, 0 off budget
 5. engine: godot --headless --quit with no ERROR / WARNING line; tests/gate_chunk.tscn (models as the game
-   resolves them, chunk dressing on Low, Medium and High, solids the same on every tier); the unit tests
-   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation and 0.10.0 voice groups printed; neither
-   gate_chunk nor the unit run leaves an object alive at exit (an undisposed World is a reference cycle)
+   resolves them; chunk dressing strictly Low < Medium < High with Low <= 145; solids the same on every
+   tier; grass to NEAR_END x the view scale; render scale on all three tiers); the unit tests
+   (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation, 0.10.0 voice and 0.10.0 alpha groups
+   printed; neither gate_chunk nor the unit run leaves an object alive at exit
 6. voice (godot/data/voice_manifest.json, tools/gen_voices.py; nothing calls ElevenLabs or fal): the dry run exits 0
-   with the network shut off; 61 lines, a valid schema, the 4 exiles on distinct voices and distinct
-   stability/style; the validator refuses six broken copies of the manifest; no line's text is repeated in a
-   script; the ffmpeg chain's selftest; and the drop-in end to end: a clip encoded at narrator/act_0_0.ogg,
-   imported by Godot, plays instead of the chime at its own length (removed again before the APK is built); the
-   clips present add up to at most 2.5 MB
-7. the single Android APK, the only build: export_presets.cfg holds one preset, Android
-   (com.shardfall.riftsurvivors: no Web, no Lite); no web build tools (tools/build_web.sh, pack_web.py) and
-   no web renderer override in project.godot; tools/build_android.sh has no lite mode; built, its size and
-   the .ctex bytes inside printed, the voice manifest inside it
+   with the network shut off and leaves the fal spend at $18.904; 61 lines, a valid schema, every speaker's
+   casting distinct (stability, similarity boost, style, default voice); the validator refuses nine broken
+   copies of the manifest; no line's text is repeated in a script; the ffmpeg chain's selftest; and the drop-in
+   end to end: a clip encoded at narrator/act_0_0.ogg, imported by Godot, plays instead of the chime at its own
+   length (removed again before the APK is built); the clips present add up to at most 2.5 MB
+7. combat render smoke (when xvfb-run is installed; Godot uses Vulkan where the driver has it and says when it
+   falls back to OpenGL): tests/combat_shot.tscn, a real run through main.tscn with the Emberwitch's fire
+   burning through a pack: >= 20 foes on screen, and the central playfield's luma standard deviation >= 38.0
+   with a median >= 0.08
+8. the single Android APK, the only build: export_presets.cfg holds one preset, Android
+   (com.shardfall.riftsurvivors, version code 12, "0.10.0-alpha": no Web, no Lite); no web build tools
+   (tools/build_web.sh, pack_web.py) and no web renderer override in project.godot; tools/build_android.sh has
+   no lite mode and refuses an unsigned CI release; built, its size and the .ctex bytes inside printed, the
+   voice manifest inside it
 """
 import glob
 import io
@@ -57,7 +67,10 @@ import verify_assets  # noqa: E402
 import gen_voices  # noqa: E402
 
 EXPECTED_SPEND = 18.904
-HERO_MAX = {"cast": 1.10, "roll": 0.80, "jump": 1.00}
+HERO_RANGE = {"cast": (0.65, 1.10), "roll": (0.45, 0.80), "jump": (0.55, 1.00)}
+SMOKE_STD = 38.0
+SMOKE_MEDIAN = 0.08
+SMOKE_FOES = 20
 FAILS = []
 
 
@@ -114,9 +127,9 @@ def main(build_apk=True):
         check(lo <= s["height"] <= hi and abs(s["min_y"]) <= 0.5, f"{aid}: height {s['height']:.2f} in {lo:g}-{hi:g}, min_y {s['min_y']:.3f}")
         if kind == "hero":
             names = _clips(aid, s, verify_assets.CLIPS["hero"])
-            for clip, mx in HERO_MAX.items():
+            for clip, (lo, hi) in HERO_RANGE.items():
                 d = names.get(clip, 99.0)
-                check(d <= mx, f"{aid}: {clip} trimmed to {d:.2f} s (<= {mx:.2f})")
+                check(lo <= d <= hi, f"{aid}: {clip} trimmed to {d:.2f} s ({lo:.2f}-{hi:.2f})")
         elif kind == "boss":
             _clips(aid, s, verify_assets.CLIPS["boss"])
             mats = s["materials"]
@@ -127,12 +140,18 @@ def main(build_apk=True):
             pbr = m.get("pbrMetallicRoughness", {})
             have = {"albedo": "baseColorTexture" in pbr, "normal": "normalTexture" in m, "orm": "metallicRoughnessTexture" in pbr}
             check(all(have.values()), f"{aid}: albedo, normal and ORM maps ({', '.join(k for k, v in have.items() if v)})")
-            for slot, ref in (("normal", m.get("normalTexture")), ("orm", pbr.get("metallicRoughnessTexture"))):
+            for slot, ref in (("albedo", pbr.get("baseColorTexture")), ("normal", m.get("normalTexture")), ("orm", pbr.get("metallicRoughnessTexture"))):
                 if ref is None: continue
                 name, im = _image(js, binchunk, ref["index"])
                 px = np.asarray(im, dtype=np.float32).reshape(-1, 3)
                 sd = px.std(0)
-                check(min(sd[0], sd[1]) >= 3.0, f"{aid}: baked {slot} '{name}' {im.size[0]}x{im.size[1]} not blank: pixel std R {sd[0]:.1f} G {sd[1]:.1f} B {sd[2]:.1f} (RGB {px.std():.1f})")
+                check(min(sd[0], sd[1]) >= 3.0, f"{aid}: {slot} '{name}' {im.size[0]}x{im.size[1]} not blank: pixel std R {sd[0]:.1f} G {sd[1]:.1f} B {sd[2]:.1f} (RGB {px.std():.1f})")
+                if slot == "normal":
+                    mb = float(px[:, 2].mean())
+                    check(mb > 180.0, f"{aid}: normal '{name}' is tangent-space: mean blue {mb:.1f} (> 180)")
+                if slot == "orm":
+                    xb = float(px[:, 2].max())
+                    check(xb < 5.0, f"{aid}: ORM '{name}' carries no metal: blue at most {xb:.0f} (< 5)")
             nv, clips, P, N = vat_pack.read_sva3(open(p[:-4] + ".vat", "rb").read())
             walk = next(cl for cl in clips if cl[0] == "walk")
             seg = P[walk[1]: walk[1] + walk[2]]
@@ -156,6 +175,9 @@ def main(build_apk=True):
           "main.gd auto_render_scale: phones Low/Medium/High = " + (", ".join(m.groups()) if m else "?") + " (High and Medium 1.0)")
     webf = subprocess.run(["grep", "-rn", 'has_feature("web")', os.path.join(GD, "scripts")], capture_output=True, text=True).stdout.strip()
     check(webf == "", 'OS.has_feature("web"): 0 matches in scripts/ (the APK is the only build)' + ("" if not webf else f" ({len(webf.splitlines())} found)"))
+    pgt = open(os.path.join(GD, "project.godot")).read()
+    check("config/quit_on_go_back=false" in pgt and 'config/project_settings_override="user://override.cfg"' in pgt,
+          "project.godot: Android Back never quits (quit_on_go_back=false); the renderer choice and the crash sentinel read user://override.cfg")
     # 4 ----------------------------------------------------------------
     section("4. imported texture sizes (.ctex headers)")
     dirs = ["textures/terrain", "models/heroes", "models/bosses", "models/foes", "models/props"]
@@ -190,7 +212,12 @@ def main(build_apk=True):
             if max(w, h) != want:
                 off += 1
                 print(f"      off budget: {rel} ({fmt}) {w}x{h}, wanted {want} ({why})")
-    check(rows > 0 and off == 0, f"texel budget: {rows} imported files, all VRAM-compressed, {off} off it (2048: heroes, bosses, landmark and foe albedo; 1024: prop and foe normal/ORM, clutter albedo)")
+    unmatched = texture_budget.unmatched()
+    scoped = [rel for rel, sc in unmatched if sc]
+    for rel in scoped: print(f"      no budget rule: {rel}")
+    total = texture_budget.model_ctex()
+    check(rows > 0 and off == 0, f"texel budget: {rows} imported files, all VRAM-compressed, {off} off it (2048: heroes and bosses, landmark albedo; 1024: every foe map, prop normal/ORM, clutter albedo, shared tiling sets)")
+    check(rows == total and not unmatched, f"texel budget: {rows} rows for {total} imported .ctex under models/** (recursive), {len(unmatched)} skipped, {len(scoped)} unbudgeted in models/{{heroes,bosses,foes,props}}")
     # 5 ----------------------------------------------------------------
     section("5. engine: headless boot, chunk dressing, unit tests")
     r = subprocess.run([GODOT, "--headless", "--path", GD, "--quit"], capture_output=True, text=True, timeout=600)
@@ -210,7 +237,7 @@ def main(build_apk=True):
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
     lines = out.splitlines()
-    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice"):
+    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:
@@ -221,6 +248,7 @@ def main(build_apk=True):
     tot = next((l for l in lines if re.match(r"^== \d+ passed, \d+ failed ==$", l)), "no totals line")
     print("      " + tot)
     check(r.returncode == 0 and ", 0 failed ==" in tot and not fails, f"unit tests: {tot.strip('= ')}")
+    check("== 0.10.0 alpha" in lines, "unit tests: the 0.10.0 alpha group ran")
     leak = next((l.strip() for l in lines if "leaked at exit" in l), "")
     check(not leak, "unit tests: no objects left alive at exit" + (f" ({leak})" if leak else ""))
     # 6 ----------------------------------------------------------------
@@ -230,13 +258,18 @@ def main(build_apk=True):
     r = subprocess.run([sys.executable, os.path.join(HERE, "gen_voices.py"), "--dry-run"], capture_output=True, text=True, timeout=120, env=env)
     for l in (r.stdout + r.stderr).rstrip().splitlines(): print("      " + l)
     check(r.returncode == 0 and "ERROR" not in r.stdout, f"gen_voices.py --dry-run: exit {r.returncode} with the network shut off and no keys")
+    c2 = json.load(open(os.path.join(HERE, "fal_cache.json")))
+    after = sum(x["cost_usd"] for x in c2["calls"])
+    check(abs(after - EXPECTED_SPEND) < 1e-6, f"fal spend after the voice dry run: ${after:.3f} (unchanged from ${EXPECTED_SPEND:.3f})")
     man = gen_voices.load_manifest()
     err, _ = gen_voices.validate(man)
     check(len(man.get("lines", [])) == 61 and not err, f"voice_manifest.json: {len(man.get('lines', []))} lines (61), schema valid ({len(err)} errors)")
-    heroes = [man["casting"][h] for h in gen_voices.HEROES]
-    envs = [c["voice_id_env"] for c in heroes]
-    profs = [(c["stability"], c["style"]) for c in heroes]
-    check(len(set(envs)) == 4 and len(set(profs)) == 4, f"the 4 exiles: distinct voices {envs}, distinct stability/style {profs}")
+    cast = man["casting"]
+    envs = [c["voice_id_env"] for c in cast.values()]
+    voices = [c.get("default_voice_id", "") for c in cast.values()]
+    distinct = all(len({c[k] for c in cast.values()}) == len(cast) for k in ("stability", "similarity_boost", "style"))
+    check(len(set(envs)) == len(cast) == 7 and len(set(voices)) == 7 and distinct,
+          f"casting: 7 speakers, each on its own voice ({len(set(voices))} stock defaults, {len(set(envs))} env vars) and its own stability, similarity boost and style")
     # the validator is not vacuous: each broken copy of the manifest must be refused
     def broken(fn):
         m = copy.deepcopy(man)
@@ -247,7 +280,10 @@ def main(build_apk=True):
         "Sparkcaller cast like the Warden": lambda m: m["casting"]["spark"].update(stability=m["casting"]["warden"]["stability"], style=m["casting"]["warden"]["style"]),
         "two speakers on one voice": lambda m: m["casting"]["herald"].update(voice_id_env=m["casting"]["tyrant"]["voice_id_env"]),
         "a cast bark at priority 2": lambda m: next(l for l in m["lines"] if l["cue"] == "cast").update(priority=2),
-        "a 12-word bark": lambda m: next(l for l in m["lines"] if l["cue"] == "cast").update(text="one two three four five six seven eight nine ten eleven twelve"),
+        "a 13-word bark": lambda m: next(l for l in m["lines"] if l["cue"] == "cast").update(text="one two three four five six seven eight nine ten eleven twelve thirteen"),
+        "a default voice that is not an ElevenLabs ID": lambda m: m["casting"]["storm"].update(default_voice_id="not-a-voice"),
+        "an escalation on the wrong cue": lambda m: next(l for l in m["lines"] if l.get("escalation") == "conduct").update(escalation="burning_12"),
+        "a pack under 4,000 characters": lambda m: [l.update(text=" ".join(l["text"].split()[:max(3, len(l["text"].split()) // 2)])) for l in m["lines"] if l["cue"] != "intro"],
         "a clip off its canonical path": lambda m: m["lines"][0].update(file="res://audio/voices/elsewhere.ogg"),
     }
     caught = {k: broken(f) for k, f in muts.items()}
@@ -289,8 +325,35 @@ def main(build_apk=True):
     vc = gen_voices.load_cache()
     check(True, f"voice spend ${gen_voices.spend(vc):.3f} over {len(vc.get('calls', {}))} calls (tools/voice_cache.json); fal's ledger is section 1")
     # 7 ----------------------------------------------------------------
+    section("7. combat render smoke (Xvfb)")
+    if not shutil.which("xvfb-run"):
+        check(True, "combat render smoke: skipped, xvfb-run is not installed (no display to render on)")
+    else:
+        with tempfile.TemporaryDirectory() as d:
+            png = os.path.join(d, "combat.png")
+            r = subprocess.run(["xvfb-run", "-a", GODOT, "--path", GD, "--rendering-method", "mobile", "--resolution", "1280x720",
+                                "res://tests/combat_shot.tscn", "--", png, "2", "0"], capture_output=True, text=True, timeout=600)
+            out = r.stdout + r.stderr
+            smoke = next((l for l in out.splitlines() if l.startswith("SMOKE ")), "")
+            api = "OpenGL 3 (Godot's fallback: no Vulkan driver here)" if "switching to OpenGL" in out else "Vulkan (Mobile renderer)"
+            print(f"      renderer: {api}")
+            print(f"      {smoke or 'no SMOKE line'}")
+            foes = int(re.search(r"foes=(\d+)", smoke).group(1)) if smoke else 0
+            ok = r.returncode == 0 and os.path.exists(png)
+            std = med = 0.0
+            if ok:
+                from PIL import Image
+                im = np.asarray(Image.open(png).convert("RGB"), dtype=np.float32)
+                h, w, _ = im.shape
+                c = im[int(h * 0.2):int(h * 0.8), int(w * 0.2):int(w * 0.8)]
+                luma = 0.2126 * c[..., 0] + 0.7152 * c[..., 1] + 0.0722 * c[..., 2]
+                std, med = float(luma.std()), float(np.median(luma)) / 255.0
+            check(ok and foes >= SMOKE_FOES, f"combat render smoke: a real run renders (exit {r.returncode}), {foes} foes on the field (>= {SMOKE_FOES})")
+            check(ok and std >= SMOKE_STD and med >= SMOKE_MEDIAN,
+                  f"combat render smoke: central playfield luma std {std:.1f} (>= {SMOKE_STD}), median {med:.3f} (>= {SMOKE_MEDIAN})")
+    # 8 ----------------------------------------------------------------
     if build_apk:
-        section("7. Android APK (one build)")
+        section("8. Android APK (one build)")
         pre = open(os.path.join(GD, "export_presets.cfg")).read()
         blocks = re.split(r"^\[preset\.\d+\]$", pre, flags=re.M)[1:]
         names = [re.search(r'^name="([^"]*)"', b, re.M).group(1) for b in blocks]
@@ -298,6 +361,10 @@ def main(build_apk=True):
         ids = re.findall(r'^package/unique_name="([^"]*)"', pre, re.M)
         check(names == ["Android"] and plats == ["Android"] and ids == ["com.shardfall.riftsurvivors"] and "Lite" not in pre,
               f"export_presets.cfg: presets {names} on {plats}, app ids {ids} (one APK: no Web, no Shardfall Lite)")
+        vcode = re.search(r"^version/code=(\d+)", pre, re.M)
+        vname = re.search(r'^version/name="([^"]*)"', pre, re.M)
+        check(vcode is not None and vcode.group(1) == "12" and vname is not None and vname.group(1) == "0.10.0-alpha",
+              f"export_presets.cfg: version code {vcode.group(1) if vcode else '?'}, name {vname.group(1) if vname else '?'} (12, 0.10.0-alpha)")
         webt = [f for f in ("tools/build_web.sh", "tools/pack_web.py") if os.path.exists(os.path.join(ROOT, f))]
         pg = open(os.path.join(GD, "project.godot")).read()
         check(not webt and ".web=" not in pg,
@@ -305,6 +372,10 @@ def main(build_apk=True):
               (", a web override in project.godot" if ".web=" in pg else ", no web override in project.godot"))
         bs = open(os.path.join(HERE, "build_android.sh")).read()
         check(re.search(r"\blite\b", bs, re.I) is None, "tools/build_android.sh: no lite mode")
+        r0 = subprocess.run(["bash", os.path.join(HERE, "build_android.sh")], capture_output=True, text=True, timeout=120,
+                            env=dict(os.environ, CI="true", SHARDFALL_KEYSTORE=""))
+        check(r0.returncode != 0 and "SHARDFALL_KEYSTORE" in (r0.stdout + r0.stderr),
+              f"tools/build_android.sh refuses a CI release build with an empty SHARDFALL_KEYSTORE (exit {r0.returncode})")
         r = subprocess.run(["bash", os.path.join(HERE, "build_android.sh")], capture_output=True, text=True, timeout=3600)
         apk = os.path.join(ROOT, "build", "shardfall.apk")
         tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if not l.startswith("Picked up JAVA_TOOL_OPTIONS")][-4:]

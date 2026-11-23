@@ -3,11 +3,12 @@ extends Node
 ##   godot --headless --path godot res://tests/gate_chunk.tscn
 ## - each generated prop and foe resolves (on the High tier) to its own PBR model at its height
 ## - one 640 x 640 chunk dressed per act and chunk on each tier (WorldView3D._build_cell): Medium and High
-##   hold >= 150 prop instances, Low 80-145 (Quality.DENSITY 0.45: ~105 on average, the Galaxy A05's budget)
-##   and fewer than Medium; the solid props (PropLayout) are the same
+##   hold >= 150 prop instances, Low 80-145 (Quality.DENSITY 0.45: ~105 on average, the Galaxy A05's budget),
+##   strictly Low < Medium < High in every chunk; the solid props (PropLayout) are the same
 ##   on every tier (they collide); bones, bushes and grass cast no shadow; grass and bushes stop at the near
 ##   range with no fade; imported PBR props draw their own materials (no material_override)
-## - High-tier phones render 3D at native resolution (Main.auto_render_scale)
+## - phones render 3D at Main.auto_render_scale: 0.75 on Low, native (1.0) on Medium and High; desktops at 1.0
+## - grass stops at NEAR_END x the view's scale (portrait and the boss zoom pull the camera back): within 2 units
 ## Exits 0 when everything holds, 1 otherwise.
 const CHUNKS := [Vector2i(1, 1), Vector2i(-2, 1), Vector2i(0, 0)]
 const MIN_INSTANCES := 150
@@ -28,9 +29,13 @@ func _ready() -> void:
 	save.data.options.gfx = 3                               # the High tier (phones' default on a flagship)
 	var bad := 0
 	var M: Script = load("res://scripts/main.gd")
-	var hi_scale: float = M.auto_render_scale(2, true)
-	print("GATE render scale on High phones: %.2f" % hi_scale)
-	if hi_scale != 1.0: bad += 1
+	var want_scale := {0: 0.75, 1: 1.0, 2: 1.0}
+	for tier in 3:
+		var ps: float = M.auto_render_scale(tier, true)
+		var ds: float = M.auto_render_scale(tier, false)
+		var sok: bool = is_equal_approx(ps, want_scale[tier]) and is_equal_approx(ds, 1.0)
+		print("GATE render scale on %s: phones %.2f (want %.2f), desktop %.2f %s" % [TIERS[tier + 1], ps, want_scale[tier], ds, "ok" if sok else "FAIL"])
+		if not sok: bad += 1
 	for k in GEN_PROPS:
 		var pm := Models.prop_mesh(k)
 		var ph := pm.get_aabb().size.y if pm != null else 0.0
@@ -55,6 +60,9 @@ func _ready() -> void:
 			add_child(v)
 			v.bind(w)
 			v._process(1.0 / 60.0)
+			var near_ok := absf(v._near_end - WorldView3D.NEAR_END * v.view_scale) < 2.0
+			if not near_ok:
+				print("GATE FAIL stage %d: grass range %.1f, NEAR_END x view scale %.1f" % [stage, v._near_end, WorldView3D.NEAR_END * v.view_scale]); bad += 1
 			for c in CHUNKS:
 				var cell: Node3D = v._build_cell(c)
 				var total := 0
@@ -99,8 +107,8 @@ func _ready() -> void:
 			w.dispose()                                      # its bosses and director point back at it
 	for key in counts:
 		var t: Dictionary = counts[key]
-		if not (int(t[1]) < int(t[2]) and int(t[2]) <= int(t[3])):
-			print("GATE FAIL %s: Low %d, Medium %d, High %d (Low must be under Medium, Medium at most High)" % [key, t[1], t[2], t[3]]); bad += 1
+		if not (int(t[1]) < int(t[2]) and int(t[2]) < int(t[3])):
+			print("GATE FAIL %s: Low %d, Medium %d, High %d (strictly Low < Medium < High)" % [key, t[1], t[2], t[3]]); bad += 1
 	print("GATE engine checks: %s" % ("PASS" if bad == 0 else "%d FAILED" % bad))
 	Models._cache.clear()                                  # static caches hold meshes: let them go before the engine exits
 	await get_tree().process_frame

@@ -390,3 +390,48 @@ comes from run metrics, and the reward pays out mid-run as soon as the objective
 The bot now steps out of fire, poison and spikes. Without that, poison chip damage during Rogue
 Exile fights cost 2 of the 6 campaign sims. The sims reset the nemesis before running, because the
 unit tests' defeats would otherwise raise one.
+
+## 0.10.0-alpha: The Shattering of the Veil
+
+**The story** (`scripts/data/story.gd`). Five acts, each with a title, its place in the story, its lore, its
+boss and that boss's taunt, a victory note and two Rift Echo fragments; the four exiles' bios and the one
+mechanic each is built around. Written text only: spoken lines live in `data/voice_manifest.json`
+(docs/VOICES.md), and the gate fails if a script repeats one.
+- A campaign run opens on a 3.5 s banner with the act's title, its place in the story and the first line of
+  its lore; a boss arrives with its nameplate and taunt.
+- **Rift Echoes** (`World.place_echoes`): two Echo Shards per act, on open ground in front of the act's arches
+  nearest the start (at least 420 units out). Touching one, or vaulting over it, gives a 10 s Rift Surge
+  (+30% damage, +20% move speed, cooldowns x0.85), a written exchange in the subtitle banner (the exile's
+  remark, then the narrator reading the fragment, 5 s, never pausing the run) and the fragment's page in the
+  Codex. The same act and run seed put them in the same places.
+
+**The cold open** (`intro_screen.gd`, `render3d/cold_open.gd`): 12 s over Act I itself, on first launch and
+from Main Menu > Replay Intro. The run's own 3D view, its camera sweeping down over Mossglen Hollow while a
+Rift Shard streaks through the torn Veil and strikes; four narrator beats, each its line + 0.5 s; then a glide
+to black and the title stage. Tap/Next and Skip stop the narrator (`VoiceBank.stop_all`) and mark it seen.
+
+**The Emberwitch's contagion** (`scripts/sim/contagion.gd`). Her Shock Pulse becomes Incineration: it lands
+on the densest pack within 420 units, detonates for 0.6x spell power and +2 Burn, and leaves the ground
+burning for 1.6 s (+1 Burn every 0.25 s). Burn stacks to 5 and lasts 4 s after the latest stack; every 0.25 s
+a burning foe takes burn dps x stacks x (1 + 0.18 x (stacks - 1)) x 0.25 (a stack's burn dps is 0.12x the
+spell power that lit it). A foe with 2+ stacks passes its fire to up to 2 neighbours within 72 that carry
+fewer (max(1, stacks - 1) each, one generation further, at most generation 4; 0.35 s between spreads). A
+burning foe's death, or a foe reaching 5 stacks, conflagrates (115 across, 1.25x spell power, +2 Burn), at
+most once every 1.5 s; at most 60 spread and conflagration events a tick. An Incineration or conflagration
+that reaches a tree trunk (a WOOD solid) lights it for 6 s: +1 Burn every 0.5 s to foes within 55 of its
+bark. The pause menu counts ignitions, spreads, conflagrations and trees lit. At 400 foes the whole tick
+averages under 4 ms in the tests (about 1.4 ms on the build machine).
+
+**Prop synergies.** The Warden's jump over a boulder or wall lands in a crater (110 across, 1.5x his blades'
+damage, a heavy knockback). The Sparkcaller's Rime Bolts ricochet off stone up to twice, 25% harder each
+time. The Stormwright's Skyfall striking shallow water or within 60 of a rift crystal spreads to twice its
+radius and arcs to three foes outside it.
+
+**Menus.** Main menu: Continue Campaign (the act pill over one large tile), New Campaign, Daily Rift (today's
+code and your best), Heroes (the showcase: the exile cast and settle, their lore, a mechanic card, their intro
+line), Codex & Story (Story, Exiles, Bestiary, Lore, Powers, Records, Arsenal), Options, Replay Intro, and a
+bar for Gear, Upgrades and Modes. Options: Audio (Master, Music, SFX, Voice), Graphics (tier, 3D scale,
+Renderer: Vulkan or OpenGL Safe Mode, UI scale, Show FPS and the rest), Game, Diagnostics. Pause: Resume,
+Build & Stats, Gear & Crafting, Settings, Restart Run and Main Menu (both confirmed). Every button is at least
+48 units of the 1280 x 720 design base tall, in portrait and in landscape. Android Back never quits: in a run
+it toggles the pause menu (and backs out of the pages inside it), elsewhere it returns to the main menu.

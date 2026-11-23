@@ -93,7 +93,7 @@ func _raw(x: float, y: float) -> float:
 	if rw > 0.0:
 		var rv := absf(_river.get_noise_2d(x, y))
 		var carve := smoothstep(rw, rw * 0.35, rv)
-		h = lerpf(h, level - float(prof.get("river_depth", 26.0)), carve)
+		h = lerpf(h, level0 - float(prof.get("river_depth", 26.0)), carve)   # river beds sit under the act's starting surface: a rising tide never reshapes the ground
 	h += _detail.get_noise_2d(x, y) * float(prof.get("detail", 4.0))
 	var d := sqrt(x * x + y * y)
 	if d < flat_r + 220.0:

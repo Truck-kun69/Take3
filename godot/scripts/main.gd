@@ -1,7 +1,9 @@
 extends Node
-## Game flow: menu -> run -> level-up / pause / merchant overlays -> results. Owns the World, its
-## view, the HUD, touch controls and every screen. Also owns the GPU crowd solver, created once
-## (a RenderingDevice is expensive) and reused across runs.
+## Game flow: the cold open (first launch, or Replay Intro) -> main menu (and its pages: Heroes, Codex & Story,
+## Daily Rift, Options, ...) -> run -> level-up / pause (Build & Stats, Settings, Restart Run, Main Menu) /
+## merchant overlays -> results -> main menu. Android Back is back(): it never quits. Owns the World, its view,
+## the HUD, touch controls and every screen, the renderer choice's crash sentinel (Quality) and the GPU crowd
+## solver, created once (a RenderingDevice is expensive) and reused across runs.
 
 var world: World
 var view: WorldView                # classic 2D renderer (option "renderer" = 1, and low-end fallback)
