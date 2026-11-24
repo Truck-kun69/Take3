@@ -1207,8 +1207,15 @@ func _slider(v: VBoxContainer, label: String, key: String, lo: float, hi: float,
 	v.add_child(h)
 
 # ================================================================= in-run overlays
+## The cards are dealt in one after another (each fades in from 0.08 s, 0.07 s apart), so they are built one a
+## frame, the arsenal last: the screen cost 5-7 ms in one frame on a desktop, inside the tick that levelled up
+## (O7). Each card's fade still starts when it always did. Another screen, or the next level-up, stops the rest.
+var _lv_token := 0
 func show_levelup(w: World) -> void:
 	var v := _open(1180)
+	_lv_token += 1
+	var my := _lv_token
+	var t0 := Time.get_ticks_msec()
 	var portrait := get_viewport_rect().size.x < 820.0
 	_title(v, "Level %d" % w.lvl, "The rift offers a gift. Choose one.")
 	var choices := w.make_choices()
@@ -1217,12 +1224,17 @@ func show_levelup(w: World) -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
 	for i in choices.size():
+		if i > 0:
+			await get_tree().process_frame
+			if my != _lv_token or not is_instance_valid(row) or not row.is_inside_tree(): return
 		var card := _choice_card(w, choices[i], i, portrait)
 		row.add_child(card)
-		card.modulate.a = 0.0                     # cards are dealt in, one after another
+		card.modulate.a = 0.0
 		var tw := card.create_tween()
-		tw.tween_interval(0.08 + 0.07 * i)
+		tw.tween_interval(maxf(0.0, 0.08 + 0.07 * i - (Time.get_ticks_msec() - t0) / 1000.0))
 		tw.tween_property(card, "modulate:a", 1.0, 0.18)
+	await get_tree().process_frame
+	if my != _lv_token or not is_instance_valid(v) or not v.is_inside_tree(): return
 	# weapon + gem overview so links are visible while choosing
 	v.add_child(_section("Your arsenal"))
 	var o := ""

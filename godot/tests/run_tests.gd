@@ -2464,6 +2464,25 @@ func _perf_view_tests() -> void:
 		written += na
 		if na != nb or a != b: diff += 1
 	ok(diff == 0 and written > 100, "the 3D view's foe instances, swarm arrays read through locals: the same buffers as 0.10.3's writer for every kind (%d foes written, %d kinds differ)" % [written, diff])
+	# O7: the level-up cards are dealt one a frame; the screen is complete within four frames, and closed mid-deal
+	# it adds nothing more
+	w.pending = 1
+	mn._on_level()
+	var cards_now: int = mn.screens.find_children("*", "Button", true, false).size()
+	for f in 4: await get_tree().process_frame
+	var btns: Array = mn.screens.find_children("*", "Button", true, false)
+	var arsenal: bool = mn.screens.find_children("*", "Label", true, false).any(func(l): return String((l as Label).text).to_lower().contains("arsenal"))
+	ok(mn.state == "levelup" and cards_now >= 1 and btns.size() >= cards_now + 2 and arsenal,
+		"the level-up deals its cards a frame each: %d card on the first frame, %d buttons and the arsenal after four" % [cards_now, btns.size()])
+	mn.screens.close()
+	mn.state = "play"
+	w.pending = 1
+	mn._on_level()
+	mn.screens.close()
+	mn.state = "play"
+	w.pending = 0
+	for f in 4: await get_tree().process_frame
+	ok(mn.screens.get_child_count() == 0, "closed mid-deal, the level-up screen builds nothing more (%d children)" % mn.screens.get_child_count())
 	ok(Diag.startup.begins_with("startup: the engine up at") and Diag.report_text().contains(Diag.startup),
 		"a launch records when its first frames were drawn, and Copy report carries it (%s)" % Diag.startup.trim_prefix("startup: "))
 	mn._free_world()                                  # the run's World holds reference cycles: dispose of it
