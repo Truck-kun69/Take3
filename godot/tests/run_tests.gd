@@ -2645,6 +2645,39 @@ func _stream_tests() -> void:
 			for i in 4: best[i] = minf(best[i], us[i])
 		print("  STREAM a cell (best of 3 x 10 fresh chunks): PropLayout.chunk %.2f ms, dress_chunk (layout + transforms) %.2f ms, cell_parts (+ batches, buffers) %.2f ms, _build_cell (all of it) %.2f ms, %d items" % [
 			best[0] / 10000.0, best[1] / 10000.0, best[2] / 10000.0, best[3] / 10000.0, items / 10])
+	# O7: the act's tyrant is loaded on a thread 45 s before it comes, and a pinnacle run's Herald from its start
+	var tyr := Models.find_asset("bosses", "tyrant_%d" % w.stage)
+	if tyr == "": tyr = Models.find_asset("bosses", "tyrant")
+	V._preload_step()
+	var early := V.ahead.has(tyr)
+	w.t = Content.STAGE_TIME - 40.0
+	var frames := 0
+	while frames < 600:
+		V._preload_step()
+		if V.ahead.get(tyr) != null: break
+		await get_tree().process_frame
+		frames += 1
+	ok(not early and V.ahead.get(tyr) is PackedScene, "the act's tyrant is not loaded at the start, and is loaded on a thread 45 s before it comes (%d frames)" % frames)
+	var b0 := Time.get_ticks_usec()
+	var probe := BossRig.new()
+	V.add_child(probe)
+	probe.build("tyrant", Color.WHITE, tyr.get_file().get_basename())
+	var build_ms := (Time.get_ticks_usec() - b0) / 1000.0
+	probe.free()
+	if OS.get_environment("PERF_BENCH") != "": print("  PRELOAD a tyrant rig with its model preloaded: %.1f ms to build" % build_ms)
+	mn._free_world()
+	mn.start({"mode": "pinnacle"})
+	w = mn.world
+	w.stats.set_source("t", [["max_hp", "add", 1e6]])
+	var her := Models.find_asset("bosses", "herald")
+	ok(not V.ahead.has(tyr), "a new run lets the last run's preloaded models go")
+	frames = 0
+	while frames < 600:
+		V._preload_step()
+		if V.ahead.get(her) != null: break
+		await get_tree().process_frame
+		frames += 1
+	ok(V.ahead.get(her) is PackedScene, "a pinnacle run loads the Herald on a thread from its start (%d frames; it comes at 90 s)" % frames)
 	# the Emberwitch's fire loops ship baked (tools/bake_loops.sh): loading them is not synthesizing 10 s of audio
 	var sfx := get_node("/root/Sfx")
 	for spec in [["fire_crackle", 4.0, false], ["fire_rumble", 6.0, true]]:

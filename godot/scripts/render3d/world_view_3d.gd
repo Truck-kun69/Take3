@@ -337,6 +337,7 @@ static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
 	mat.set_shader_parameter("nrm_b", load("res://textures/terrain/%s_n.jpg" % gs[1]))
 
 func bind(world: World) -> void:
+	_preload_release()
 	w = world
 	_feat_sig = -1
 	if GROUND_Q != Quality.ground_q(): _ground_mesh()
@@ -475,12 +476,52 @@ func _process(dt: float) -> void:
 		if Quality.on("effects"): _surf_fx()
 		fx.step(dt)
 		_assign_lights()
+	_preload_step()
 	var sig := Quality.tier() * 131 + Quality.off.hash()
 	if sig != _feat_sig:
 		_feat_sig = sig
 		_features()
 	cost_us = lerpf(cost_us, float(Time.get_ticks_usec() - t0), 0.05)
 	Diag.view_us = cost_us
+
+## The models a run will need later, loaded on a loader thread ahead of time (O7): loading a boss's or a rival
+## exile's model and its 2048 px textures took 15-24 ms on a desktop in the frame it appeared. The act's tyrant
+## 45 s before it comes (campaign and atlas: Content.STAGE_TIME), the rift's guardian and the pinnacle's Herald
+## from the start, a nemesis's hero model from the start (it comes after 45 s). Each is held until the next run;
+## a rig's own load() then finds it in the cache, or waits for the thread if it is still loading. A random rogue
+## exile's model is picked by the run's dice as it spawns (three possible), so it still loads then.
+var ahead := {}                    # path -> the loaded resource, null while its thread runs, false if it failed
+func _preload_step() -> void:
+	var want: Array[String] = []
+	var m := w.mode
+	if (m == "campaign" or m == "atlas") and not w.boss_spawned and w.t >= Content.STAGE_TIME - 45.0:
+		var own := Models.find_asset("bosses", "tyrant_%d" % w.stage)
+		want.append(own if own != "" else Models.find_asset("bosses", "tyrant"))
+	elif m == "rift" and w.bosses.guardian_uid < 0: want.append(Models.find_asset("bosses", "guardian"))
+	elif m == "pinnacle" and w.bosses.herald_uid < 0: want.append(Models.find_asset("bosses", "herald"))
+	if w.director != null and w.director.nemesis_pending:
+		var nm: Dictionary = Save.data.get("nemesis", {})
+		if not nm.is_empty():
+			want.append(Models.find_asset("heroes", {"bolt": "spark", "nova": "ember", "storm": "storm"}.get(String(nm.get("weapon", "")), "warden")))
+	for p in want:
+		if p == "" or ahead.has(p): continue
+		ahead[p] = null if ResourceLoader.load_threaded_request(p) == OK else false
+	for p in ahead:
+		if ahead[p] != null: continue
+		match ResourceLoader.load_threaded_get_status(p):
+			ResourceLoader.THREAD_LOAD_LOADED: ahead[p] = ResourceLoader.load_threaded_get(p)
+			ResourceLoader.THREAD_LOAD_FAILED, ResourceLoader.THREAD_LOAD_INVALID_RESOURCE: ahead[p] = false
+
+## The view leaving (the app closing, a test's main freed): a load still running is collected, never left behind.
+func _exit_tree() -> void:
+	_preload_release()
+
+## A new run (or none): what the last one preloaded is let go; a load still running is finished first, so the
+## loader thread is never left holding it.
+func _preload_release() -> void:
+	for p in ahead:
+		if ahead[p] == null: ResourceLoader.load_threaded_get(p)
+	ahead.clear()
 
 ## Quality feature switches (self-test / gfx_off), applied every frame so they can change mid-run.
 var _props_on := true

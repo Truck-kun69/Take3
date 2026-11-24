@@ -449,6 +449,10 @@ func step(dt: float) -> void:
 		return
 	var _t0 := Time.get_ticks_usec()
 	_snapshot()
+	if profile:
+		_pt = _t0
+		_pp("snapshot")
+		prof_tick["ticks"] = float(prof_tick.get("ticks", 0.0)) + 1000.0      # counted in thousands (printed as ms)
 	_step(dt)
 	step_us = lerpf(step_us, float(Time.get_ticks_usec() - _t0), 0.1)
 
@@ -466,9 +470,25 @@ func _snapshot() -> void:
 	for p in projs: p.prev = p.pos
 	for q in eshots: q.prev = q.pos
 
+## With profile on (tests/soak.gd, the benchmarks), each part of a tick is timed: prof_tick sums the parts of
+## the ticks since its owner last cleared it (the soak: a frame), prof_us all of them. Off, it costs a branch a
+## part (docs/OPTIMIZATION.md O7).
+var profile := false
+var prof_us := {}
+var prof_tick := {}
+var _pt := 0
+func _pp(part: String) -> void:
+	var now := Time.get_ticks_usec()
+	var d := float(now - _pt)
+	_pt = now
+	prof_tick[part] = float(prof_tick.get(part, 0.0)) + d
+	prof_us[part] = float(prof_us.get(part, 0.0)) + d
+
 func _step(dt: float) -> void:
 	if over:
 		return
+	var prof := profile
+	if prof: _pt = Time.get_ticks_usec()
 	if hitstop > 0.0:
 		hitstop -= dt
 		shake = maxf(0.0, shake - dt * 1.5)
@@ -487,6 +507,7 @@ func _step(dt: float) -> void:
 	if _trim_t <= 0.0:
 		_trim_t += 7.0
 		terrain.trim(pp)
+	if prof: _pp("terrain")
 	buffs.step(dt)
 	_step_echoes()
 	_step_light(dt)
@@ -499,26 +520,41 @@ func _step(dt: float) -> void:
 	if combo_t > 0.0:
 		combo_t -= dt
 		if combo_t <= 0.0: combo = 0
+	if prof: _pp("misc")
 	_step_player(dt)
+	if prof: _pp("player")
 	_spawn(dt)
+	if prof: _pp("spawn")
 	grid.build(sw)
+	if prof: _pp("grid")
 	_step_foes(dt)
+	if prof: _pp("foes")
 	_contact()
+	if prof: _pp("contact")
 	_step_weapons(dt)
+	if prof: _pp("weapons")
 	_step_delayed()
 	_step_meteors()
 	_step_projs(dt)
+	if prof: _pp("projs")
 	_step_eshots(dt)
 	_step_teles(dt)
 	_step_dots(dt)
+	if prof: _pp("eshots_dots")
 	if contagion != null: contagion.step(dt)
+	if prof: _pp("contagion")
 	_resolve_reactions()
+	if prof: _pp("reactions")
 	director.step(dt)
+	if prof: _pp("director")
 	bosses.step(dt)
+	if prof: _pp("bosses")
 	_step_breakables(dt)
 	_step_pickups(dt)
+	if prof: _pp("pickups")
 	_step_feed(dt)
 	_reap()
+	if prof: _pp("feed_reap")
 	metrics.peak_foes = maxi(metrics.peak_foes, sw.n)
 	while xp >= need:
 		xp -= need

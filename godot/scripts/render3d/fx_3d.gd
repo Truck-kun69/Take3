@@ -223,9 +223,11 @@ func step(dt: float) -> void:
 	_contagion(dt)
 	if prof: t = _pp("debris_contagion", t)
 	_lightning()
+	if prof: t = _pp("lightning", t)
 	_decals()
+	if prof: t = _pp("decals", t)
 	_event_props(dt)
-	if prof: t = _pp("lightning_decals_props", t)
+	if prof: t = _pp("event_props", t)
 	var k := _lights.size() - 1
 	while k >= 0:
 		_lights[k][4] -= dt

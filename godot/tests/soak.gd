@@ -6,7 +6,7 @@ extends Node
 ## Per run it prints the engine's object, resource and node counts and static memory as the run starts (the
 ## menu, the last run's world freed), the frame's simulation and view cost, and the containers of the run's
 ## World, view and effects that grew most; at the end, the autoloads' and static caches' sizes, first run to
-## last. SOAK_JSON=<path> writes the rows.
+## last. SOAK_JSON=<path> writes the rows; SOAK_HITCH_MS (25) is the frame time logged as a hitch.
 var main: Node
 var bot: Bot
 var runs := 10
@@ -26,6 +26,7 @@ var _frame_no := 0
 var _nodes: Array = []   # SOAK_NODES=1: these nodes' _process run from here, each timed (tree order kept)
 var _node_us := {}
 var _prof_prev := {}     # the view's part timings (WorldView3D.profile) at the last frame
+var _hitch_us := (float(OS.get_environment("SOAK_HITCH_MS")) if OS.get_environment("SOAK_HITCH_MS") != "" else 25.0) * 1000.0
 
 func _ready() -> void:
 	var a := OS.get_cmdline_user_args()
@@ -126,6 +127,7 @@ func _start_run() -> void:
 				n.set_process(false)
 				_nodes.append(n)
 		main.view3d.profile = true
+	if OS.get_environment("SOAK_NODES") != "": main.world.profile = true
 	main.world.stats.set_source("soak", [["max_hp", "add", 900.0], ["regen", "add", 12.0]])
 	bot = Bot.new(main.world, 50 + k)
 	_acc = {"sim": 0.0, "view": 0.0, "frames": 0, "worst": 0.0, "foes": 0, "levels": 0, "bargains": 0, "merchants": 0, "frame_worst": 0.0, "hitches": 0}
@@ -156,7 +158,7 @@ func _end_row(why: String) -> void:
 	var big: Array = end.keys()
 	big.sort_custom(func(x, y): return int(end[x]) > int(end[y]))
 	r["largest"] = big.slice(0, 6).map(func(x): return "%s %d" % [x, int(end[x])])
-	print("SOAK run %d %s act %d: %s at %.0f s, sim %.2f ms view %.2f ms (worst %.1f ms; whole frame worst %.1f ms, %d over 25 ms; the start %.0f ms), %d foes max, %d level-ups | at start: %d objects, %d resources, %d nodes, %d orphans, static %.1f MB, rss %.0f MB, view tree %d, ui tree %d" % [
+	print("SOAK run %d %s act %d: %s at %.0f s, sim %.2f ms view %.2f ms (worst %.1f ms; whole frame worst %.1f ms, %d over the hitch line; the start %.0f ms), %d foes max, %d level-ups | at start: %d objects, %d resources, %d nodes, %d orphans, static %.1f MB, rss %.0f MB, view tree %d, ui tree %d" % [
 		r.run, r.hero, r.act, why, r.game_s, r.sim_ms, r.view_ms, r.worst_ms, r.frame_worst_ms, r.hitches, r.start_ms, r.foes_max, r.levels,
 		r.objects, r.resources, r.nodes, r.orphans, r.static_mb, r.rss_mb, r.view_tree, r.ui_tree])
 	if not grew.is_empty(): print("     grew after 60 s: " + ", ".join(grew))
@@ -176,7 +178,7 @@ func _process(dt: float) -> void:
 		_since_start += 1
 		if _since_start > 3:          # past the start's own frames
 			_acc.frame_worst = maxf(_acc.frame_worst, frame_us)
-			if frame_us > 25000.0:
+			if frame_us > _hitch_us:
 				_acc.hitches += 1
 				var vu: float = main.view3d.cost_us if main.view3d != null else 0.0
 				var parts := ""
@@ -193,15 +195,23 @@ func _process(dt: float) -> void:
 						var pk: Array = d.keys()
 						pk.sort_custom(func(a, b): return d[a] > d[b])
 						parts += " | view parts " + ", ".join(pk.slice(0, 4).map(func(key): return "%s %.1f" % [key, d[key] / 1000.0]))
+					var wt: Dictionary = main.world.prof_tick
+					if not wt.is_empty():
+						var wk: Array = wt.keys()
+						wk.sort_custom(func(a, b): return wt[a] > wt[b])
+						parts += " | tick " + ", ".join(wk.slice(0, 4).map(func(key): return "%s %.1f" % [key, wt[key] / 1000.0]))
 				print("SOAK hitch run %d frame %d at %.1f s (%s): %.1f ms = sim %.2f + view %.2f + the rest %.2f, %d foes%s" % [k, _frame_no - 1, main.world.t, main.state, frame_us / 1000.0,
 					main.sim_us / 1000.0, vu / 1000.0, (frame_us - main.sim_us - vu) / 1000.0, main.world.sw.n, parts])
 	if main.view3d != null and main.view3d.profile: _prof_prev = main.view3d.prof_us.duplicate()
+	if main.world != null and main.world.profile: main.world.prof_tick = {}        # this frame's ticks from here
 	_node_us = {}
 	for n in _nodes:
 		if not is_instance_valid(n): continue
 		var n0 := Time.get_ticks_usec()
 		n._process(dt)
-		_node_us[String(n.name)] = float(Time.get_ticks_usec() - n0)
+		var nm := String(n.name)
+		if nm.begins_with("@") and n.get_script() != null: nm = (n.get_script() as Script).resource_path.get_file().get_basename()
+		_node_us[nm] = float(Time.get_ticks_usec() - n0)
 	match phase:
 		"boot":
 			if t > 1.0 and main.state == "menu": _start_run()

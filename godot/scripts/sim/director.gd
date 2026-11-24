@@ -86,6 +86,8 @@ func step(dt: float) -> void:
 			nemesis_pending = false
 			exile_spawned = true
 			w.bosses.spawn_exile(true)
+	var prof := w.profile                   # O7: World's per-part profile, the director split in four
+	if prof: w._pp("dir:pick")
 	if w.t >= shrine_t:
 		shrine_t = w.t + w.rng.randf_range(40.0, 65.0)
 		_place_object()
@@ -100,12 +102,15 @@ func step(dt: float) -> void:
 		whispers += 1
 		objects.append({"pos": _near_point(200.0), "kind": "whisper", "id": "whisper", "life": 30.0})
 		w.banner.emit("A voice in the dark", "Something wants to bargain. Find it before it fades.", Color("9a6bff"))
+	if prof: w._pp("dir:place")
 	_step_objects(dt)
+	if prof: w._pp("dir:objects")
 	var k := active.size() - 1
 	while k >= 0:
 		var ev: Dictionary = active[k]
 		ev.t += dt
 		call("_step_" + String(ev.id), ev, dt)
+		if prof: w._pp("dir:ev_" + String(ev.id))
 		if ev.done:
 			active.remove_at(k)
 		k -= 1

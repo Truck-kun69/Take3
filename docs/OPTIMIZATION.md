@@ -16,9 +16,9 @@ Tools:
 - `godot --headless --path godot res://tests/tests.tscn -- lodprobe`: the foe meshes' triangles and imported
   LODs (the numbers at the end of O2).
 - `godot --headless --fixed-fps 60 --path godot res://tests/soak.tscn -- [runs] [seconds]`: bot-played runs
-  back to back on the real game scene (O3, O6). `SOAK_NODES=1` times every node's `_process` and the view's
-  parts in each frame over 25 ms; `SOAK_LOADS=1` marks the frames that loaded a resource (with `--verbose`,
-  the loads print before the mark).
+  back to back on the real game scene (O3, O6, O7). `SOAK_NODES=1` times every node's `_process`, the view's
+  parts and the simulation tick's parts (`World.profile`) in each frame over `SOAK_HITCH_MS` (25);
+  `SOAK_LOADS=1` marks the frames that loaded a resource (with `--verbose`, the loads print before the mark).
 - `PERF_BENCH=1 godot --headless --path godot res://tests/tests.tscn -- stream`: 8 chunk crossings and the
   walk back, timed (O6).
 - `godot --path godot res://tests/startup.tscn` (headless, or under `xvfb-run` with `--rendering-method mobile`
@@ -180,3 +180,25 @@ Not done, and why:
 - The APK (138 MB) is 94 MB of textures, which 0.9.8 settled on keeping at their full 1,024-2,048 px. Nothing
   shipped is unused: the files the unit suite never loads are each reached by a path built at run time (Acts
   IV-V's terrain and props, the guardian's textures, the Emberwitch and the Herald).
+
+## O7. The next tier of spikes: frames over 8 ms here (25-40 ms on a phone)
+
+With O6's hitches gone, the soak's line moved to 8 ms (`SOAK_HITCH_MS=8`) and the simulation's tick got a
+per-part profile of its own (`World.profile`: one branch a part when off; the director split in four inside
+it). Four runs of 150 s: 75-84 frames over 8 ms, worst 25-34 ms. Where they come from:
+
+| Frames | What | Here | Kept as it is? |
+|---|---|---|---|
+| 40-46 | A modal screen built inside the tick: the level-up cards (5-7 ms, a card ~1 ms) and the Whisperer's bargain (the director's 6-7 ms, at the touch) | 5-11 ms | Yes: the game stops for the choice there, and a cheaper build means rebuilding how every screen is made. |
+| 12-18 | Engine work and the soak's own (its bot, its picks) | 8-17 ms | Not the game's. |
+| 2 | A rival exile's or a boss's model loaded in the frame it appears (the view's `bosses` part) | 22.5-24.7 ms | No (cycle 2). |
+| 2 | The effects' lightning-decals-props part | 4.7-16.8 ms | Cycle 1 ruled out the lightning. |
+| the rest | Heavy ticks of the foe step, terrain, the hero's ultimate | 8-16 ms | Bursts of play. |
+
+| Cycle | Change | Measured | Critique |
+|---|---|---|---|
+| 1 | The lightning ribbons built in packed arrays and handed to an ArrayMesh in one call (it was ~13 ImmediateMesh calls a segment) | 114 strikes: 1.46-1.72 ms, against 1.24-1.45 ms through ImmediateMesh | Slower: those calls cost ~0.07 us each, less than the arrays' allocations. Reverted. And 114 strikes are 1.3 ms, so the 16.8 ms spike was not the lightning: the part is now three (`lightning`, `decals`, `event_props`). Event props were ruled out too (0.1-0.9 ms each to build). |
+| 2 | The models a run will need later loaded on a loader thread ahead of time (`WorldView3D.ahead`): the act's tyrant 45 s before it comes at 8:00, the rift's guardian and the pinnacle's Herald from the start, a nemesis's hero model from the start (it comes after 45 s); each held until the next run, collected if the view leaves while one still loads | the tyrant's model loads in 3 frames on the thread; a rig built from it 0.9-1.0 ms, against 15-24 ms loading it in the frame | A random rogue exile's model (one of three) is chosen by the run's dice as it spawns, so it still loads then: loading all three ahead would hold ~30 MB of textures for an event a run meets once at most, and choosing earlier would change the run's dice (the Daily Rift's codes). The first test run leaked a load token: a test freed the view while the tyrant's load was still running; `_exit_tree` now collects it. |
+
+Tests (unit group "0.10.4 streaming"): the tyrant is not loaded at a run's start and is loaded on a thread 45 s
+before it comes; a new run lets the old run's models go; a pinnacle run loads the Herald from its start.
