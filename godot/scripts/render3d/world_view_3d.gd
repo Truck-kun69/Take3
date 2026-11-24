@@ -339,6 +339,7 @@ static func apply_ground(mat: ShaderMaterial, stage: int) -> void:
 func bind(world: World) -> void:
 	_preload_release()
 	w = world
+	_preload_paths()
 	_feat_sig = -1
 	if GROUND_Q != Quality.ground_q(): _ground_mesh()
 	var s: Dictionary = Content.STAGES[w.stage]
@@ -487,22 +488,43 @@ func _process(dt: float) -> void:
 ## The models a run will need later, loaded on a loader thread ahead of time (O7): loading a boss's or a rival
 ## exile's model and its 2048 px textures took 15-24 ms on a desktop in the frame it appeared. The act's tyrant
 ## 45 s before it comes (campaign and atlas: Content.STAGE_TIME), the rift's guardian and the pinnacle's Herald
-## from the start, a nemesis's hero model from the start (it comes after 45 s). Each is held until the next run;
-## a rig's own load() then finds it in the cache, or waits for the thread if it is still loading. A random rogue
-## exile's model is picked by the run's dice as it spawns (three possible), so it still loads then.
-var ahead := {}                    # path -> the loaded resource, null while its thread runs, false if it failed
+## from the start, a nemesis's hero model from the start (it comes after 45 s). A rogue exile (about six acts
+## in ten meet one, from 55 s on) is one of three exiles, picked by the run's dice as it spawns: on Medium and High
+## all three are loaded from 30 s, and the two it did not pick are let go once it has come. Each is held until the
+## next run; a rig's own load() then finds it in the cache, or waits for the thread if it is still loading.
+const EXILE_MODELS := {"bolt": "spark", "nova": "ember", "storm": "storm"}     # Bosses.exile_weapon -> hero model
+var ahead := {}                      # path -> the loaded resource, null while its thread runs, false if it failed
+var _paths := {}                     # what this run may load ahead, resolved once at bind (find_asset probes the disk)
+var _exile_settled := false
+func _preload_paths() -> void:
+	_paths.clear()
+	_exile_settled = false
+	if w == null: return
+	var own := Models.find_asset("bosses", "tyrant_%d" % w.stage)
+	_paths["tyrant"] = own if own != "" else Models.find_asset("bosses", "tyrant")
+	_paths["guardian"] = Models.find_asset("bosses", "guardian")
+	_paths["herald"] = Models.find_asset("bosses", "herald")
+	for wid in EXILE_MODELS: _paths["exile_" + wid] = Models.find_asset("heroes", EXILE_MODELS[wid])
+	var nm: Dictionary = Save.data.get("nemesis", {})
+	_paths["nemesis"] = "" if nm.is_empty() else Models.find_asset("heroes", EXILE_MODELS.get(String(nm.get("weapon", "")), "warden"))
+
 func _preload_step() -> void:
-	var want: Array[String] = []
+	var want: Array = []
 	var m := w.mode
-	if (m == "campaign" or m == "atlas") and not w.boss_spawned and w.t >= Content.STAGE_TIME - 45.0:
-		var own := Models.find_asset("bosses", "tyrant_%d" % w.stage)
-		want.append(own if own != "" else Models.find_asset("bosses", "tyrant"))
-	elif m == "rift" and w.bosses.guardian_uid < 0: want.append(Models.find_asset("bosses", "guardian"))
-	elif m == "pinnacle" and w.bosses.herald_uid < 0: want.append(Models.find_asset("bosses", "herald"))
-	if w.director != null and w.director.nemesis_pending:
-		var nm: Dictionary = Save.data.get("nemesis", {})
-		if not nm.is_empty():
-			want.append(Models.find_asset("heroes", {"bolt": "spark", "nova": "ember", "storm": "storm"}.get(String(nm.get("weapon", "")), "warden")))
+	if (m == "campaign" or m == "atlas") and not w.boss_spawned and w.t >= Content.STAGE_TIME - 45.0: want.append(_paths.tyrant)
+	elif m == "rift" and w.bosses.guardian_uid < 0: want.append(_paths.guardian)
+	elif m == "pinnacle" and w.bosses.herald_uid < 0: want.append(_paths.herald)
+	var dr := w.director
+	if dr != null:
+		if dr.nemesis_pending: want.append(_paths.nemesis)
+		if m != "pinnacle" and not dr.exile_spawned and w.t >= 30.0 and Quality.tier() >= 1:
+			for wid in EXILE_MODELS: want.append(_paths["exile_" + wid])
+		if dr.exile_spawned and not _exile_settled:
+			_exile_settled = true
+			var keep: String = _paths.get("exile_" + String(w.bosses.exile_weapon), "")
+			for wid in EXILE_MODELS:
+				var p: String = _paths["exile_" + wid]
+				if p != keep and p != _paths.nemesis and ahead.has(p): _let_go(p)
 	for p in want:
 		if p == "" or ahead.has(p): continue
 		ahead[p] = null if ResourceLoader.load_threaded_request(p) == OK else false
@@ -511,6 +533,11 @@ func _preload_step() -> void:
 		match ResourceLoader.load_threaded_get_status(p):
 			ResourceLoader.THREAD_LOAD_LOADED: ahead[p] = ResourceLoader.load_threaded_get(p)
 			ResourceLoader.THREAD_LOAD_FAILED, ResourceLoader.THREAD_LOAD_INVALID_RESOURCE: ahead[p] = false
+
+## One preloaded model let go (a load still running is collected first, so the loader never keeps it).
+func _let_go(p: String) -> void:
+	if ahead.get(p, false) == null: ResourceLoader.load_threaded_get(p)
+	ahead.erase(p)
 
 ## The view leaving (the app closing, a test's main freed): a load still running is collected, never left behind.
 func _exit_tree() -> void:

@@ -2698,6 +2698,29 @@ func _stream_tests() -> void:
 	var build_ms := (Time.get_ticks_usec() - b0) / 1000.0
 	probe.free()
 	if OS.get_environment("PERF_BENCH") != "": print("  PRELOAD a tyrant rig with its model preloaded: %.1f ms to build" % build_ms)
+	# a rogue exile's three possible models from 30 s (Medium and High), the two it did not pick let go once it comes
+	var cands: Array = WorldView3D.EXILE_MODELS.values().map(func(h): return Models.find_asset("heroes", h))
+	w.t = 31.0
+	frames = 0
+	while frames < 900:
+		V._preload_step()
+		if cands.all(func(c): return V.ahead.get(c) != null): break
+		await get_tree().process_frame
+		frames += 1
+	var all_in := cands.all(func(c): return V.ahead.get(c) is PackedScene)
+	w.bosses.spawn_exile(false)
+	w.director.exile_spawned = true
+	V._preload_step()
+	var picked := Models.find_asset("heroes", WorldView3D.EXILE_MODELS.get(w.bosses.exile_weapon, "warden"))
+	var kept: Array = cands.filter(func(c): return V.ahead.has(c))
+	ok(Quality.tier() == 0 or (all_in and kept == [picked]), "a rogue exile's three possible models load from 30 s (%d frames), and once it comes only its own is kept (%s)" % [frames, ", ".join(kept.map(func(c): return String(c).get_file()))])
+	var e0 := Time.get_ticks_usec()
+	var er := HeroRig.new()
+	V.add_child(er)
+	er.build(WorldView3D.EXILE_MODELS.get(w.bosses.exile_weapon, "warden"), Color("4a2a2a"))
+	var exile_ms := (Time.get_ticks_usec() - e0) / 1000.0
+	er.free()
+	if OS.get_environment("PERF_BENCH") != "": print("  PRELOAD a rogue exile's rig with its model preloaded: %.1f ms to build (tier %d)" % [exile_ms, Quality.tier()])
 	mn._free_world()
 	mn.start({"mode": "pinnacle"})
 	w = mn.world
