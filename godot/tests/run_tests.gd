@@ -49,6 +49,7 @@ func _ready() -> void:
 		_ops_tests()
 		await _fit_tests()
 		_perf_tests()
+		await _perf_view_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -59,6 +60,15 @@ func _ready() -> void:
 		await _fit_tests()
 	elif "perf" in args:
 		_perf_tests()
+		await _perf_view_tests()
+	elif "lodprobe" in args:
+		for kind in ["grunt", "runner", "brute", "charger", "spitter", "breach"]:
+			var m: Mesh = Models.foe_mesh(kind)
+			var sf := RenderingServer.mesh_get_surface(m.get_rid(), 0)
+			var vc: int = sf.get("vertex_count", 0)
+			var row := "%s: %d tris, %d verts, hi=%s; LODs:" % [kind, int(sf.get("index_count", 0)) / 3, vc, str(Quality.high())]
+			for l in sf.get("lods", []): row += " %d (err %.4f)" % [(l.index_data as PackedByteArray).size() / (2 if vc < 65536 else 4) / 3, l.edge_length]
+			print("LODPROBE ", row)
 	if "voice_dropin" in args: _voice_dropin_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
@@ -2398,6 +2408,124 @@ func _perf_tests() -> void:
 			for k in 60: w.sw.cpu_separation(w.grid, k % 2, w.pp, INF)
 			best = minf(best, (Time.get_ticks_usec() - t0) / 60000.0)
 		print("  PERF separation, %d foes: %.3f ms a call" % [w.sw.n, best])
+
+## The 3D view's per-frame foe instance writer, optimised in 0.10.4, against the 0.10.3 code on a real frame: a
+## campaign run through main.tscn with a mixed crowd (elites, a charging Ramshard, frozen, burning, poisoned).
+func _perf_view_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	await get_tree().process_frame
+	mn.start({"mode": "campaign", "stage": 0})
+	var w: World = mn.world
+	w.stats.set_source("t", [["max_hp", "add", 1e6]])
+	w.hp = 1e6
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for k in 160:
+		var kind: int = [Content.E.GRUNT, Content.E.RUNNER, Content.E.BRUTE, Content.E.SPITTER, Content.E.CHARGER][k % 5]
+		var i := w.spawn_foe(kind, w.pp + Vector2(rng.randf_range(-400, 400), rng.randf_range(-260, 260)), 1 if k % 11 == 0 else 0)
+		if i < 0: continue
+		match k % 7:
+			1: w.sw.set_freeze(i, 2.0)
+			2: w.sw.set_burn(i, 3, 5.0, 1, 3.0)
+			3: w.sw.pois[i] = 4.0
+			4: w.sw.set_ai(i, 2, 0.4)
+	for f in 6: await get_tree().process_frame
+	var V: WorldView3D = mn.view3d
+	var diff := 0
+	var written := 0
+	for k in V._foe_mm.size():
+		var size: int = (V._start[k + 1] - V._start[k]) * WorldView3D.FOE_STRIDE
+		if size == 0: continue
+		var a := PackedFloat32Array()
+		a.resize(size)
+		var b := PackedFloat32Array()
+		b.resize(size)
+		var na: int = V._write_foes(a, k, w.sw, V.hero_p)
+		var nb: int = _write_foes_ref(V, b, k, w.sw, V.hero_p)
+		written += na
+		if na != nb or a != b: diff += 1
+	ok(diff == 0 and written > 100, "the 3D view's foe instances, swarm arrays read through locals: the same buffers as 0.10.3's writer for every kind (%d foes written, %d kinds differ)" % [written, diff])
+	mn._free_world()                                  # the run's World holds reference cycles: dispose of it
+	mn.queue_free()
+	sv.data = keep
+
+## 0.10.3's WorldView3D._write_foes, kept as the reference the optimised one must match bit for bit.
+func _write_foes_ref(V: WorldView3D, buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int:
+	var c := V._kind_col[k]
+	var vc: PackedFloat32Array = V._vc[k]
+	var authored := not vc.is_empty()
+	var unit := V._foe_unit[k] if k < V._foe_unit.size() else 1.0
+	var n := 0
+	# the ground height goes into the instance transform (foe.gdshader does no terrain lookup): ground_y's
+	# window lookup inlined, through locals, since this runs for every foe on screen every frame
+	var hd := V._hd
+	var hn := V._hn
+	var hox := V._hox
+	var hoz := V._hoz
+	for v in range(V._start[k], V._start[k + 1]):
+		var i := V._order[v]
+		var p := V._ipos[i]
+		var dpl := p.distance_to(pp)
+		var f := sw.flags[i]
+		var dir := (pp - p) / maxf(0.001, dpl)
+		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
+		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]
+		elif (f & Swarm.F_ALLY) != 0 and sw.dir[i] != Vector2.ZERO: dir = sw.dir[i]
+		var gy := 0.0
+		var fx := (p.x - hox) * WorldView3D.INV_CELL - 0.5
+		var fz := (p.y - hoz) * WorldView3D.INV_CELL - 0.5
+		if hn > 0 and fx >= 0.0 and fz >= 0.0 and fx < hn - 1 and fz < hn - 1:
+			var ix := int(fx)
+			var iz := int(fz)
+			var kk := iz * hn + ix
+			var ga := lerpf(hd[kk], hd[kk + 1], fx - ix)
+			gy = lerpf(ga, lerpf(hd[kk + hn], hd[kk + hn + 1], fx - ix), fz - iz)
+		else:
+			gy = V.ground_y(p)
+		var o := n * WorldView3D.FOE_STRIDE
+		var s := sw.rad[i] * unit
+		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
+		buf[o] = dir.x * s; buf[o + 1] = 0.0; buf[o + 2] = -dir.y * s; buf[o + 3] = p.x
+		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = gy
+		buf[o + 8] = dir.y * s; buf[o + 9] = 0.0; buf[o + 10] = dir.x * s; buf[o + 11] = p.y
+		# per-instance colour and custom data reach the GPU as 16-bit halves (exact integers only to
+		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
+		# wrapped to whole cycles (it used to grow with time, and flag+256*seed decoded as random elite
+		# and ally bits: the swarm sparkled with their rim glows)
+		buf[o + 12] = c.r; buf[o + 13] = c.g; buf[o + 14] = c.b; buf[o + 15] = float(sw.uid[i] % 64) / 63.0
+		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
+		var ph := fposmod(V.time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
+		if not authored:
+			buf[o + 16] = ph
+		else:
+			# authored clips (vertex animation texture): spawn, then attack, then a flinch, else the walk
+			# cycle; the value is the frame row, which the shader blends with the next one
+			var age := V.w.t - sw.born[i]
+			var ta := V.w.t - sw.atk_t[i]
+			var th := V.w.t - sw.hit_at[i]
+			if vc[13] > 0.0 and age * vc[14] < vc[13] - 1.0:
+				buf[o + 16] = vc[12] + age * vc[14]
+			elif vc[4] > 0.0 and ta * vc[5] < vc[4] - 1.0:
+				buf[o + 16] = vc[3] + ta * vc[5]
+			elif vc[7] > 0.0 and th * vc[8] * 1.6 < vc[7] - 1.0:
+				buf[o + 16] = vc[6] + th * vc[8] * 1.6
+			else:
+				buf[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
+		buf[o + 17] = maxf(0.0, sw.flash[i])
+		buf[o + 18] = V._status_code(i)
+		# the Emberwitch's Burn stacks ride over the flag bits (flags + 256 x stacks <= 1535, exact as a half);
+		# foe.gdshader reads them back as burn_norm = stacks / 5 for the ember crust
+		buf[o + 19] = float(f & 0xff) + 256.0 * float(sw.burn_stacks[i])
+		n += 1
+	return n
+
 
 ## 0.10.3's Terrain.foe_move, from the terrain's public helpers: the reference the inlined one must match.
 func _foe_move_ref(T: Terrain, p: Vector2, np: Vector2, body_r: float) -> Vector2:

@@ -86,6 +86,16 @@ var _prop_cells := {}        # Vector2i chunk -> Node3D holding one MultiMesh pe
 var _chunk_key := ""
 var _look: Dictionary
 var cost_us := 0.0
+var profile := false                 # tests/render_bench.tscn: time each part of the frame into prof_us
+var prof_us := {}
+var _prof_t := 0
+func _prof_part(part: String, start: int = -1) -> void:
+	var now := Time.get_ticks_usec()
+	if start >= 0:
+		_prof_t = start
+		return
+	prof_us[part] = float(prof_us.get(part, 0.0)) + float(now - _prof_t)
+	_prof_t = now
 var sky_mat: ProceduralSkyMaterial
 
 func _ready() -> void:
@@ -441,16 +451,30 @@ func _process(dt: float) -> void:
 	for m in [terrain_mat, prop_mat, _aura_mm.material_override]:
 		m.set_shader_parameter("time", time)
 	for fm in foe_mats: fm.set_shader_parameter("time", time)
-	_camera(dt)
-	_lighting(dt)
-	_props()
-	_foes()
-	_hero(dt)
-	_bosses(dt)
-	env_fx.step(dt)
-	if Quality.on("effects"): _surf_fx()
-	fx.step(dt)
-	_assign_lights()
+	if profile:
+		_prof_part("start", t0)
+		_camera(dt); _prof_part("camera")
+		_lighting(dt); _prof_part("lighting")
+		_props(); _prof_part("props")
+		_foes(); _prof_part("foes")
+		_hero(dt); _prof_part("hero")
+		_bosses(dt); _prof_part("bosses")
+		env_fx.step(dt); _prof_part("env_fx")
+		if Quality.on("effects"): _surf_fx()
+		_prof_part("surf_fx")
+		fx.step(dt); _prof_part("fx")
+		_assign_lights(); _prof_part("lights")
+	else:
+		_camera(dt)
+		_lighting(dt)
+		_props()
+		_foes()
+		_hero(dt)
+		_bosses(dt)
+		env_fx.step(dt)
+		if Quality.on("effects"): _surf_fx()
+		fx.step(dt)
+		_assign_lights()
 	var sig := Quality.tier() * 131 + Quality.off.hash()
 	if sig != _feat_sig:
 		_feat_sig = sig
@@ -854,21 +878,29 @@ func _foes() -> void:
 	# pass 1: which foes are drawn (counted per kind), where (between the last two ticks), contact shadows
 	# and elite auras
 	var nv := 0
+	# through locals (0.10.4): the swarm's arrays, and this pass's own outputs (assigned back below)
+	var K := sw.kind
+	var POS := sw.pos
+	var PREV := sw.prev
+	var FL := sw.flags
+	var ipos := _ipos
+	var vis := _vis
+	var fnk := _foe_n
 	for i in sw.n:
-		var k := sw.kind[i]
+		var k := K[i]
 		if k == Content.E.BOSS or k == Content.E.HERALD or k == Content.E.EXILE:
 			continue
-		var p := sw.pos[i]
-		var q := sw.prev[i]
+		var p := POS[i]
+		var q := PREV[i]
 		if q.distance_squared_to(p) <= SNAP_DIST2: p = q.lerp(p, ap)
-		_ipos[i] = p
+		ipos[i] = p
 		var dpl := p.distance_to(pp)
 		if dpl > cull: continue
-		var f := sw.flags[i]
+		var f := FL[i]
 		if dpl > dark_r and (f & (Swarm.F_EXILE | Swarm.F_GOBLIN)) == 0: continue
-		_vis[nv] = i
+		vis[nv] = i
 		nv += 1
-		_foe_n[k] += 1
+		fnk[k] += 1
 		if (f & Swarm.F_ELITE) != 0 and dpl < 520.0:
 			var naff := 0
 			var af := sw.affix[i]
@@ -876,17 +908,24 @@ func _foes() -> void:
 				naff += af & 1
 				af >>= 1
 			_aura(p, sw.rad[i] * 2.2, Color("ffb02e") if naff >= 2 else Color("4f86ff"))
+	_ipos = ipos
+	_vis = vis
+	_foe_n = fnk
 	# bucket the drawn foes by kind (a counting sort into _vis's own order, through _order)
 	_start[0] = 0
 	for k in nk:
 		_start[k + 1] = _start[k] + _foe_n[k]
 		_cursor[k] = _start[k]
 	if _order.size() != Swarm.CAP: _order.resize(Swarm.CAP)
+	var order := _order
+	var cursor := _cursor
 	for v in nv:
-		var i := _vis[v]
-		var k := sw.kind[i]
-		_order[_cursor[k]] = i
-		_cursor[k] += 1
+		var i := vis[v]
+		var k := K[i]
+		order[cursor[k]] = i
+		cursor[k] += 1
+	_order = order
+	_cursor = cursor
 	_corpse_count()
 	# pass 2, one kind at a time: write its instances straight into that kind's own buffer (taken out of
 	# the array while it is written, so the writes go through a local) and hand the buffer over whole.
@@ -920,12 +959,15 @@ func _foes() -> void:
 		bmm.instance_count = _blob_cap
 		_bb.resize(_blob_cap * 8)
 		_bb.fill(0.0)
+	var bb := _bb
+	var RAD := sw.rad
 	for v in nb:
-		var i := _vis[v]
+		var i := vis[v]
 		var bo := v * 8
-		var br := sw.rad[i] * 1.15
-		var p := _ipos[i]
-		_bb[bo] = br; _bb[bo + 3] = p.x; _bb[bo + 5] = br; _bb[bo + 7] = p.y
+		var br := RAD[i] * 1.15
+		var p := ipos[i]
+		bb[bo] = br; bb[bo + 3] = p.x; bb[bo + 5] = br; bb[bo + 7] = p.y
+	_bb = bb
 	if nb > 0:
 		bmm.buffer = _bb
 	bmm.visible_instance_count = nb
@@ -946,15 +988,38 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 	var hn := _hn
 	var hox := _hox
 	var hoz := _hoz
+	# the swarm's arrays and the clocks through locals: a member read on another object is a lookup per use,
+	# and this loop made a dozen of them per foe (0.10.4)
+	var order := _order
+	var ipos := _ipos
+	var F := sw.flags
+	var AI := sw.ai_s
+	var DIR := sw.dir
+	var RAD := sw.rad
+	var UID := sw.uid
+	var SPD := sw.spd
+	var FRZ := sw.freeze_t
+	var BORN := sw.born
+	var ATK := sw.atk_t
+	var HIT := sw.hit_at
+	var FLASH := sw.flash
+	var BST := sw.burn_stacks
+	var BURN := sw.burn
+	var SHOCK := sw.shock_t
+	var CHILL := sw.chill_t
+	var POIS := sw.pois
+	var BLEED := sw.bleed
+	var wt := w.t
+	var tm := time
 	for v in range(_start[k], _start[k + 1]):
-		var i := _order[v]
-		var p := _ipos[i]
+		var i := order[v]
+		var p := ipos[i]
 		var dpl := p.distance_to(pp)
-		var f := sw.flags[i]
+		var f := F[i]
 		var dir := (pp - p) / maxf(0.001, dpl)
 		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
-		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]
-		elif (f & Swarm.F_ALLY) != 0 and sw.dir[i] != Vector2.ZERO: dir = sw.dir[i]
+		elif k == Content.E.CHARGER and AI[i] == 2: dir = DIR[i]
+		elif (f & Swarm.F_ALLY) != 0 and DIR[i] != Vector2.ZERO: dir = DIR[i]
 		var gy := 0.0
 		var fx := (p.x - hox) * INV_CELL - 0.5
 		var fz := (p.y - hoz) * INV_CELL - 0.5
@@ -967,7 +1032,7 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 		else:
 			gy = ground_y(p)
 		var o := n * FOE_STRIDE
-		var s := sw.rad[i] * unit
+		var s := RAD[i] * unit
 		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
 		buf[o] = dir.x * s; buf[o + 1] = 0.0; buf[o + 2] = -dir.y * s; buf[o + 3] = p.x
 		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = gy
@@ -976,17 +1041,18 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
 		# wrapped to whole cycles (it used to grow with time, and flag+256*seed decoded as random elite
 		# and ally bits: the swarm sparkled with their rim glows)
-		buf[o + 12] = c.r; buf[o + 13] = c.g; buf[o + 14] = c.b; buf[o + 15] = float(sw.uid[i] % 64) / 63.0
-		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
-		var ph := fposmod(time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
+		buf[o + 12] = c.r; buf[o + 13] = c.g; buf[o + 14] = c.b; buf[o + 15] = float(UID[i] % 64) / 63.0
+		var frz := FRZ[i]
+		var moving := 0.0 if frz > 0.0 else 1.0
+		var ph := fposmod(tm * (4.0 + SPD[i] * 0.05) * moving + float(UID[i]) * 1.37, TAU * 8.0)
 		if not authored:
 			buf[o + 16] = ph
 		else:
 			# authored clips (vertex animation texture): spawn, then attack, then a flinch, else the walk
 			# cycle; the value is the frame row, which the shader blends with the next one
-			var age := w.t - sw.born[i]
-			var ta := w.t - sw.atk_t[i]
-			var th := w.t - sw.hit_at[i]
+			var age := wt - BORN[i]
+			var ta := wt - ATK[i]
+			var th := wt - HIT[i]
 			if vc[13] > 0.0 and age * vc[14] < vc[13] - 1.0:
 				buf[o + 16] = vc[12] + age * vc[14]
 			elif vc[4] > 0.0 and ta * vc[5] < vc[4] - 1.0:
@@ -995,11 +1061,20 @@ func _write_foes(buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int
 				buf[o + 16] = vc[6] + th * vc[8] * 1.6
 			else:
 				buf[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
-		buf[o + 17] = maxf(0.0, sw.flash[i])
-		buf[o + 18] = _status_code(i)
+		buf[o + 17] = maxf(0.0, FLASH[i])
+		# _status_code(i), inlined
+		var bs := BST[i]
+		var st := 0.0
+		if frz > 0.0: st = 6.0
+		elif BURN[i] > 0.0 or bs > 0: st = 1.0
+		elif SHOCK[i] > 0.0: st = 3.0
+		elif CHILL[i] > 0.0: st = 2.0
+		elif POIS[i] > 0.0: st = 4.0
+		elif BLEED[i] > 0.0: st = 5.0
+		buf[o + 18] = st
 		# the Emberwitch's Burn stacks ride over the flag bits (flags + 256 x stacks <= 1535, exact as a half);
 		# foe.gdshader reads them back as burn_norm = stacks / 5 for the ember crust
-		buf[o + 19] = float(f & 0xff) + 256.0 * float(sw.burn_stacks[i])
+		buf[o + 19] = float(f & 0xff) + 256.0 * float(bs)
 		n += 1
 	return n
 

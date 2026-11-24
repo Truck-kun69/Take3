@@ -326,11 +326,14 @@ func _bind_view() -> void:
 ## After the ticks, the 3D view gets the fraction of a tick left over (alpha): it draws moving things
 ## between the previous tick and this one (World._snapshot), so motion is smooth at any frame rate.
 var _clock := FixedStep.new()
+var sim_us := 0.0                  # the last frame's simulation time (tests/render_bench's frame profile)
 func _sim(dt: float) -> void:
 	var n := _clock.advance(dt)
+	var t0 := Time.get_ticks_usec()
 	for k in n:
 		if world == null or world.over: break
 		world.step(FixedStep.STEP)
+	sim_us = float(Time.get_ticks_usec() - t0)
 	if view3d != null: view3d.alpha = _clock.alpha()
 
 ## Run moments main presents itself (VoiceDirector voices the rest): a Rift Echo's exchange, written, in the

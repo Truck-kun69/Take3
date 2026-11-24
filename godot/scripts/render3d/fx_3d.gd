@@ -191,17 +191,25 @@ func step(dt: float) -> void:
 	time += dt
 	(beam_mm.material_override as ShaderMaterial).set_shader_parameter("time", time)
 	decal_mat.set_shader_parameter("time", time)
+	var prof := view != null and view.profile
+	var t := Time.get_ticks_usec()
 	_consume_feed()
+	if prof: t = _pp("feed", t)
 	_step_shards(dt)
 	_echo_shards()
 	_sim_debris(dt)
 	_sim_sparks(dt)
+	if prof: t = _pp("sim", t)
 	var gn := 0
 	gn = _projectiles(gn)
+	if prof: t = _pp("projectiles", t)
 	gn = _sparks_upload(gn)
+	if prof: t = _pp("sparks", t)
 	_gems(dt)
+	if prof: t = _pp("gems", t)
 	_blades()
 	gn = _pickups(gn)
+	if prof: t = _pp("pickups", t)
 	for e in ext_glow:
 		if gn >= GLOW_CAP: break
 		_g(gn * 20, e[0], e[1], e[2], e[3])
@@ -210,16 +218,25 @@ func step(dt: float) -> void:
 	var mm := glow_mm.multimesh
 	if gn > 0: mm.buffer = _gb          # nothing to draw: skip the upload
 	mm.visible_instance_count = gn
+	if prof: t = _pp("glow_upload", t)
 	_debris_upload()
 	_contagion(dt)
+	if prof: t = _pp("debris_contagion", t)
 	_lightning()
 	_decals()
 	_event_props(dt)
+	if prof: t = _pp("lightning_decals_props", t)
 	var k := _lights.size() - 1
 	while k >= 0:
 		_lights[k][4] -= dt
 		if _lights[k][4] <= 0.0: _lights.remove_at(k)
 		k -= 1
+
+## The view's profile (tests/render_bench): the time since t, as part "fx:<part>"; returns now.
+func _pp(part: String, t: int) -> int:
+	var now := Time.get_ticks_usec()
+	view.prof_us["fx:" + part] = float(view.prof_us.get("fx:" + part, 0.0)) + float(now - t)
+	return now
 
 func light_candidates() -> Array:
 	var out: Array = []

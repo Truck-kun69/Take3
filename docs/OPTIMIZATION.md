@@ -31,3 +31,26 @@ terrain 1.6 ms (0.17 ms of that is the movement itself), timers 0.13 ms.
 Result: separation 2.6 -> 1.6 ms in the moving benchmark (1.44 ms on the frozen crowd, from 2.79), movement
 with the terrain 1.6 -> 1.27 ms, the tick 4.2-4.5 -> 3.4-4.0 ms. Tests: separation against the all-pairs
 definition on a packed crowd with and without bosses; `foe_move` bit-identical to 0.10.3's.
+
+## O2. The 3D view's CPU cost per frame
+
+`tests/render_bench.tscn` now runs headless too (`godot --headless --path godot res://tests/render_bench.tscn`):
+the dummy renderer draws nothing, so what it measures is the scripts' own time, at real frame rates, in 8
+seconds instead of minutes under Xvfb. It prints the view's frame by part (`RPROF`, including the effects'
+parts as `fx:*`), and with `BENCH_NODES=1` the HUD, overlay, touch controls, subtitles and the audio and save
+autoloads, each timed around its own `_process`.
+
+Baseline (0.10.3, 500 foes): the view 2.9-3.6 ms a frame. Foes 1.58-1.82 ms, effects 0.54-0.78, ambient
+effects 0.17-0.23, bosses 0.15-0.17, camera 0.07. Everything outside the simulation and the view (HUD, overlay,
+touch, subtitles, audio, save) is under 0.05 ms each.
+
+| Cycle | Change | Measured | Critique |
+|---|---|---|---|
+| 1 | The foe instance writer and its first pass read the swarm's arrays and the clocks through locals (a member read on another object is a lookup per use: about a dozen per foe), and the status code is inlined | foes 0.76-0.96 ms at 500 (-50%), 0.50-0.64 at 300 (-45%) | Bit-identical buffers to 0.10.3's writer on a real frame with a mixed crowd. The test's first version left its run's World undisposed: 28 objects leaked at exit, caught by the leak count. |
+
+Not done, and why: the swarm foes are 1,800 triangles each (grunt, runner, brute, charger, spitter) and
+cast sun shadows: about 1.8M of the 4M triangles a frame at 500 foes. Their imported LODs barely reduce
+them (1,124-1,324 triangles, none for the brute and spitter: their UV seams stop the simplifier), and a
+MultiMesh draws one LOD for the whole crowd. A seam-aware index-buffer simplifier (meshoptimizer) would keep
+the vertex animation valid (each vertex carries its animation column in UV2.x), but installing its Python
+package was refused in this session, and the GPU gain cannot be measured without a phone.

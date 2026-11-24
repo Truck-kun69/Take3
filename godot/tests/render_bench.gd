@@ -11,6 +11,10 @@ var acc := {"frame_ms": 0.0, "view_ms": 0.0, "draws": 0.0, "prims": 0.0}
 var results := []
 var SIZES := [150, 300, 500]
 var _last := 0
+var _prof_frames := 0
+var _whole := {"process": 0.0, "sim": 0.0}
+var _nodes: Array = []
+var _node_us := {}
 
 func _ready() -> void:
 	if OS.get_environment("BENCH_SIZES") != "":
@@ -41,6 +45,13 @@ func _process(dt: float) -> void:
 			if OS.get_environment("BENCH_NO_LOD") != "": get_viewport().mesh_lod_threshold = 0.0
 			if OS.get_environment("BENCH_LOD") != "": get_viewport().mesh_lod_threshold = float(OS.get_environment("BENCH_LOD"))
 			if OS.get_environment("BENCH_ORTHO") != "": main.view3d.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+			main.view3d.profile = true
+			if OS.get_environment("BENCH_NODES") != "":     # time these nodes' own _process here instead
+				for n in [main.hud, main.overlay, main.touch, main.subtitles,
+						get_node_or_null("/root/Sfx"), get_node_or_null("/root/Save"), get_node_or_null("/root/Voice")]:
+					if n != null and n.has_method("_process"):
+						n.set_process(false)
+						_nodes.append(n)
 		return
 	var idx := stage - 1
 	if idx >= SIZES.size():
@@ -49,9 +60,22 @@ func _process(dt: float) -> void:
 	if OS.get_environment("BENCH_NO_PROPS") != "":
 		for c in main.view3d._prop_cells: main.view3d._prop_cells[c].visible = false
 	main.world.in_move = Vector2(cos(t * 0.7), sin(t * 0.5)) * 0.6
+	for n in _nodes:
+		var n0 := Time.get_ticks_usec()
+		n._process(dt)
+		var key := String(n.name)
+		_node_us[key] = float(_node_us.get(key, 0.0)) + float(Time.get_ticks_usec() - n0)
 	var now := Time.get_ticks_usec()
 	if t > 1.5:                                      # warm up 1.5 s per size, then sample 90 frames
+		if frames == 0:
+			main.view3d.prof_us = {}     # the part timings count the sampled frames only
+			_node_us = {}
+			_whole = {"process": 0.0, "sim": 0.0}
 		frames += 1
+		_whole.process += Performance.get_monitor(Performance.TIME_PROCESS) * 1e6
+		if OS.get_environment("BENCH_FRAMES") != "": print("RF %d proc=%.2f sim=%.2f view=%.2f" % [main.world.sw.n, Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, main.sim_us / 1000.0, main.view3d.cost_us / 1000.0])
+		_whole.sim += main.sim_us
+		_prof_frames += 1
 		acc.frame_ms += (now - _last) / 1000.0
 		acc.view_ms += main.view3d.cost_us / 1000.0
 		acc.draws += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
@@ -62,6 +86,17 @@ func _process(dt: float) -> void:
 			results.append(r)
 			if stage == 1: _breakdown()
 			print("RBENCH foes=%d frame=%.1fms view=%.2fms draws=%d tris=%d" % [r.foes, r.frame_ms, r.view_ms, r.draws, r.prims])
+			var pu: Dictionary = main.view3d.prof_us
+			var total_frames := float(max(1, _prof_frames))
+			print("RPROF foes=%d " % r.foes + " ".join(pu.keys().map(func(k): return "%s=%.2fms" % [k, pu[k] / 1000.0 / total_frames])))
+			if not _nodes.is_empty():
+				print("RNODES foes=%d " % r.foes + " ".join(_node_us.keys().map(func(k): return "%s=%.2fms" % [k, _node_us[k] / 1000.0 / total_frames])))
+			var vt := 0.0
+			for k in pu: if not String(k).begins_with("fx:"): vt += pu[k]
+			print("RFRAME foes=%d process=%.2fms sim=%.2fms view=%.2fms rest=%.2fms" % [r.foes, _whole.process / 1000.0 / total_frames, _whole.sim / 1000.0 / total_frames,
+				vt / 1000.0 / total_frames, (_whole.process - _whole.sim - vt) / 1000.0 / total_frames])
+			main.view3d.prof_us = {}
+			_prof_frames = 0
 			for k in acc: acc[k] = 0.0
 			frames = 0; t = 0.0; stage += 1
 			if stage - 1 >= SIZES.size():
