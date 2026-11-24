@@ -115,15 +115,33 @@ func chunk(c: Vector2i) -> Array:
 	var ch = _chunks.get(c)
 	if ch != null:
 		return ch
-	# heights with a one-cell border so slopes at the chunk edge see their neighbours
 	var B := CN + 2
-	var hb := PackedFloat32Array()
-	hb.resize(B * B)
+	var hb: PackedFloat32Array
+	var j0 := 0
+	var g = _gen.get(c)
+	if g != null:                     # the prefetch had begun it: finish it now
+		hb = g[0]
+		j0 = int(g[1])
+		_gen.erase(c)
+	else:
+		hb = PackedFloat32Array()
+		hb.resize(B * B)
+	return _finish(c, _rows(c, hb, j0, B))
+
+## Rows j0..j1-1 of a chunk's height grid, which has a one-cell border so slopes at the chunk edge see their
+## neighbours. It returns the array: written through a parameter, a packed array is a copy, never the caller's.
+func _rows(c: Vector2i, hb: PackedFloat32Array, j0: int, j1: int) -> PackedFloat32Array:
+	var B := CN + 2
 	var x0 := c.x * CHUNK - CELL * 0.5
 	var y0 := c.y * CHUNK - CELL * 0.5
-	for j in B:
+	for j in range(j0, j1):
 		for i in B:
 			hb[j * B + i] = _raw(x0 + i * CELL, y0 + j * CELL)
+	return hb
+
+## The chunk's heights and types from its full border grid: classified, stored, counted.
+func _finish(c: Vector2i, hb: PackedFloat32Array) -> Array:
+	var B := CN + 2
 	var hs := PackedFloat32Array()
 	hs.resize(CN * CN)
 	var ty := PackedByteArray()
@@ -147,23 +165,41 @@ func chunk(c: Vector2i) -> Array:
 				if s > cliff:
 					t = CLIFF
 			ty[j * CN + i] = t
-	ch = [hs, ty]
+	var ch := [hs, ty]
 	_chunks[c] = ch
 	generated += 1
 	return ch
 
-## Generates at most `budget` missing chunks within `r` chunks of `p` (call every frame).
+## Works on the nearest missing chunk within `r` chunks of `p`, `budget` slices of GEN_ROWS rows at a time (call
+## every tick): a chunk takes three ticks, a third of its rows in each (O7). chunk() finishes one it is asked for.
+const GEN_ROWS := 14              # of the height grid's CN + 2 = 42 rows: three slices a chunk
+var _gen := {}                    # Vector2i -> [the height grid so far, its next row]
 func prefetch(p: Vector2, r: int = 3, budget: int = 1) -> void:
 	var cc := Vector2i(floori(p.x / CHUNK), floori(p.y / CHUNK))
+	var B := CN + 2
 	for ring in r + 1:
 		for dy in range(-ring, ring + 1):
 			for dx in range(-ring, ring + 1):
 				if maxi(absi(dx), absi(dy)) != ring: continue
 				var c := cc + Vector2i(dx, dy)
-				if not _chunks.has(c):
-					chunk(c)
-					budget -= 1
-					if budget <= 0: return
+				if _chunks.has(c): continue
+				var g = _gen.get(c)
+				if g == null:
+					var nb := PackedFloat32Array()
+					nb.resize(B * B)
+					g = [nb, 0]
+					_gen[c] = g
+				var j0 := int(g[1])
+				var j1 := mini(B, j0 + GEN_ROWS)
+				var hb := _rows(c, g[0], j0, j1)
+				if j1 >= B:
+					_gen.erase(c)
+					_finish(c, hb)
+				else:
+					g[0] = hb
+					g[1] = j1
+				budget -= 1
+				if budget <= 0: return
 
 ## Drops chunks far from the player (memory stays bounded on long runs).
 func trim(p: Vector2, keep: int = 6) -> void:
@@ -172,6 +208,9 @@ func trim(p: Vector2, keep: int = 6) -> void:
 	for c in _chunks.keys():
 		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > keep:
 			_chunks.erase(c)
+	for c in _gen.keys():
+		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > keep:
+			_gen.erase(c)
 	for c in _prop_chunks.keys():
 		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) > keep:
 			_prop_chunks.erase(c)

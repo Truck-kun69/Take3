@@ -2616,6 +2616,39 @@ func _stream_tests() -> void:
 					if hs[j * Terrain.CN + i] != want: gdiff += 1
 		gen_us = minf(gen_us, float(Time.get_ticks_usec() - t0))
 	ok(gdiff == 0, "terrain chunks of all five acts: heights identical to 0.10.3's (%d cells differ)" % gdiff)
+	# O7: the prefetch builds a chunk in two slices of rows; the result is the chunk built at once
+	var sdiff := 0
+	var first_ms: Array = []
+	var last_ms: Array = []
+	var whole_ms: Array = []
+	for act in 5:
+		var TA := Terrain.new(act, 501 + act, Content.TERRAIN[act])
+		var TB := Terrain.new(act, 501 + act, Content.TERRAIN[act])
+		var at := Vector2(3.2, -1.7) * Terrain.CHUNK
+		var guard := 0
+		while guard < 400:
+			var n0 := TB.generated
+			var q0 := Time.get_ticks_usec()
+			TB.prefetch(at, 2, 1)
+			var ms := (Time.get_ticks_usec() - q0) / 1000.0
+			(last_ms if TB.generated > n0 else first_ms).append(ms)
+			guard += 1
+			if TB.generated == 25: break
+		for c in TB._chunks:
+			var w0 := Time.get_ticks_usec()
+			var a2: Array = TA.chunk(c)
+			whole_ms.append((Time.get_ticks_usec() - w0) / 1000.0)
+			var b2: Array = TB._chunks[c]
+			if a2[0] != b2[0] or a2[1] != b2[1]: sdiff += 1
+		if TB.generated != 25 or not TB._gen.is_empty(): sdiff += 100
+	ok(sdiff == 0, "the prefetch builds each chunk in three slices, identical to one built at once (25 chunks a terrain, all five acts; %d differ)" % sdiff)
+	if OS.get_environment("PERF_BENCH") != "":
+		var pct := func(xs: Array, q: float) -> float:
+			var ys := xs.duplicate()
+			ys.sort()
+			return ys[clampi(int(q * ys.size()), 0, ys.size() - 1)] if not ys.is_empty() else 0.0
+		print("  PREFETCH a chunk at once: median %.2f ms, p95 %.2f | its first slices: median %.2f, p95 %.2f | its last (and the types): median %.2f, p95 %.2f" % [
+			pct.call(whole_ms, 0.5), pct.call(whole_ms, 0.95), pct.call(first_ms, 0.5), pct.call(first_ms, 0.95), pct.call(last_ms, 0.5), pct.call(last_ms, 0.95)])
 	if OS.get_environment("STREAM_PARTS") != "":         # one cell's build, in parts (best of 3 rounds of 10 chunks, terrain ready)
 		var best := [1e9, 1e9, 1e9, 1e9]
 		var items := 0
