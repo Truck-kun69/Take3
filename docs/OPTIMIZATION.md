@@ -204,6 +204,11 @@ it). Four runs of 150 s: 75-84 frames over 8 ms, worst 25-34 ms. Where they come
 | 4 | Cycle 2's critique answered: a rogue exile is common after all (weight 5 of the events' ~64, one every 28-45 s: about six eight-minute acts in ten meet one). On Medium and High its three possible models load from 30 s (it can come from 55 s); the two it did not pick are let go once it has come. The preload's paths are resolved once a run (it had probed the disk every frame, the mistake O6 removed from the prop cells) | the three load in 10-25 frames on the thread; the exile's rig builds in 1.8-2.1 ms, against 15-24 ms | Up to two hero models (~20 MB of textures) are held from 30 s until the exile comes or the run ends; Low (budget phones) keeps the old load at the spawn. |
 | 5 | The level-up's cards dealt one a frame, the arsenal after them (they already fade in one after another, from 0.08 s, 0.07 s apart; each fade still starts then). A newer screen or the next level-up stops the rest | the frame that levels up: 3.9-5.9 ms of screen building -> 1.7-2.0 ms; each later card ~1 ms in a frame of its own | The bargain screen (two choices, two or three a run) still builds whole. Soak after cycles 2-5 (four runs of 150 s): no view-side boss or exile frames left; the worst frame 15.0-20.4 ms here, from 25-34 ms. |
 
+Left as they are: the Whisperer's bargain screen (two or three a run, two cards) builds whole, since it has no
+dealt-in animation to hide a staged build behind; and the foe step's rare 12-16 ms ticks (dense piles at the
+hero) did not recur in a rerun of four 200 s runs, where its movement part peaked at 1.1 ms. The foe step is now
+split in the profile (`foes:timers`, `foes:sep`, `foes:move`, the rest) for the next time one shows.
+
 Tests (unit group "0.10.4 streaming"): the tyrant is not loaded at a run's start and is loaded on a thread 45 s
 before it comes; a new run lets the old run's models go; a pinnacle run loads the Herald from its start; a rogue
 exile's three possible models load from 30 s and only its own is kept once it comes; chunks built in three

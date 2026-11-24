@@ -1022,16 +1022,20 @@ var _shots_req: Array = []
 var _sep_parity := 0
 const CROWD_GPU_MIN := 80
 func _step_foes(dt: float) -> void:
+	var prof := profile
 	sw.tick_timers(dt)
+	if prof: _pp("foes:timers")
 	if crowd != null and crowd.ready and (sw.n >= CROWD_GPU_MIN or crowd.in_flight):
 		crowd.collect(sw)          # last frame's GPU separation result
 		if sw.n >= CROWD_GPU_MIN: crowd.dispatch(sw)         # kick off this frame's
 	else:                           # small packs: the grid pass costs less than a buffer upload, submit and read-back
 		_sep_parity = 1 - _sep_parity
 		sw.cpu_separation(grid, _sep_parity, pp, view_r + 40.0)
+	if prof: _pp("foes:sep")
 	_shots_req.clear()
 	var target := pp
 	sw.step_move(dt, target, _shots_req, 1.0, terrain)
+	if prof: _pp("foes:move")
 	for q in range(0, _shots_req.size(), 3):
 		var sp: Proj = _new_proj()
 		sp.pos = _shots_req[q]; sp.vel = _shots_req[q + 1] * 170.0; sp.life = 4.0; sp.r = 5.0
