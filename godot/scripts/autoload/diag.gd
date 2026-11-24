@@ -34,6 +34,12 @@ var crashed_last := false
 var report: PackedStringArray = PackedStringArray()   # previous session's tail (when it crashed)
 var _f: FileAccess
 var _beat_t := 0.0
+## How long this launch took to show something (Copy report, docs/OPTIMIZATION.md O4): when the engine reached
+## the first autoload, when main was ready, and when its first three frames were drawn (the first frames
+## compile the menu's shaders and pipelines: on a fresh install or update, the longest part).
+var startup := ""
+var _t_boot := 0
+var _t_main := 0
 
 func _enter_tree() -> void:
 	if FileAccess.file_exists(PATH):
@@ -55,6 +61,7 @@ func _enter_tree() -> void:
 				report.append_array(eng)
 			var pf := FileAccess.open(PREV, FileAccess.WRITE)
 			if pf != null: pf.store_string("\n".join(lines) + "\n" + "\n".join(eng))
+	_t_boot = Time.get_ticks_msec()
 	_f = FileAccess.open(PATH, FileAccess.WRITE)
 	OS.add_logger(ErrorTrail.new())
 	mark("== boot %s" % Time.get_datetime_string_from_system())
@@ -64,6 +71,15 @@ func _ready() -> void:
 	await get_tree().process_frame          # the adapter name is only known once the renderer is up
 	mark("gpu %s | %s | %s" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_api_version(), RenderingServer.get_current_rendering_method()])
 	mark("device class %d (%s) auto tier %s" % [Quality.device_class(), Quality.dev_reason, Quality.NAMES[Quality.tier()]])
+
+## main calls this when its _ready is done ("main") and on its third frame ("frames"); the line is written once.
+func startup_step(what: String) -> void:
+	if what == "main":
+		_t_main = Time.get_ticks_msec()
+	elif what == "frames" and startup == "":
+		startup = "startup: the engine up at %.2f s, main ready at %.2f s, its first frames drawn at %.2f s" % [
+			_t_boot / 1000.0, _t_main / 1000.0, Time.get_ticks_msec() / 1000.0]
+		mark(startup)
 
 ## The last error/warning lines from the previous session's engine log (Godot rotates it on boot).
 func _engine_errors() -> PackedStringArray:
@@ -123,6 +139,7 @@ func report_text() -> String:
 	var mem := OS.get_memory_info()
 	r.append("device: %s | %s %s | %d cpus | %.1f GB RAM" % [OS.get_model_name(), OS.get_name(), OS.get_version(), OS.get_processor_count(), float(mem.get("physical", 0)) / 1.0e9])
 	r.append("gpu: %s | %s | %s renderer" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_api_version(), RenderingServer.get_current_rendering_method()])
+	if startup != "": r.append(startup)
 	var ws := DisplayServer.window_get_size()
 	r.append("screen: %dx%d window, UI scale %.2f" % [ws.x, ws.y, float(Save.opt("ui_scale"))])
 	var off: Array = Save.opt("gfx_off")

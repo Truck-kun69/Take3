@@ -21,6 +21,8 @@ Tools:
   the loads print before the mark).
 - `PERF_BENCH=1 godot --headless --path godot res://tests/tests.tscn -- stream`: 8 chunk crossings and the
   walk back, timed (O6).
+- `godot --path godot res://tests/startup.tscn` (headless, or under `xvfb-run` with `--rendering-method mobile`
+  for the shader and pipeline compiles): the engine, the main scene's load and `_ready`, and the first frames (O4).
 
 ## O1. The foe step (CPU), 680 foes
 
@@ -146,3 +148,35 @@ ms before); a crossing frame 0.5-1.1 ms (30-36 ms). Tests (unit group "0.10.4 st
 hero after the crossings and the queue; a teleport builds the 3 x 3 at once and queues 16; the cells' buffers
 equal 0.10.3's per-instance transforms exactly; a cached cell equals a fresh build; chunk heights equal 0.10.3's
 on all five acts; the fire loops are the baked files, looping.
+
+## O4. Startup and the APK
+
+**What a launch spends**, `tests/startup.tscn`. Headless (scripts and loading only): the engine and its four
+autoloads 400-490 ms, loading `main.tscn` 400-490 ms (compiling `main.gd` and the 18,000 lines of script it
+reaches; the APK ships them as binary tokens, which skips only the tokenizer), `main._ready` 170-220 ms (the
+title's 3D stage 85-92 ms, its exile 25 ms, the menu 62 ms), the first frame at 1.0-1.2 s. On the Vulkan
+renderer (Mobile, Mesa's software driver under Xvfb), the shaders dominate:
+
+| Caches on disk | The title's first frame | The frame after it |
+|---|---|---|
+| None (a fresh install or an update) | 5.8 s | 5.9 s |
+| Compiled shaders (SPIR-V), no driver pipelines | 3.9 s | 8.1 s |
+| Both | 3.8 s | 7.1 s |
+
+Godot compiles every shader from source on a launch with an empty cache: here that is the 2 s between the first
+two rows (on a phone, several seconds more). The second frame is the driver building its pipelines, which no
+cache here removes (the software driver is slow at it; a phone's driver is faster).
+
+| Cycle | Change | Measured | Critique |
+|---|---|---|---|
+| 1 | A `startup:` line in Copy report and the trail: when the engine reached the first autoload, when main was ready, when its first three frames were drawn (`Diag.startup`) | in the test runner: the engine up at 2.00 s, main ready at 3.46 s, the first frames at 11.43 s | No phone can be measured from here; testers' reports now carry the real numbers. |
+| 2 | The shader baker (Godot 4.5+, `shader_baker/enabled`): the export compiles the shaders into the APK, so a fresh install skips that step | 50 shaders baked, +2.44 MB in the APK; the step the second row of the table above skips | It cannot run in a `--headless` export (no GPU), which still works and simply bakes nothing. `tools/build_android.sh` now exports under Xvfb on Vulkan when it can; CI installs Mesa's Vulkan driver for it (its render smoke had been falling back to OpenGL) and the gate fails a Vulkan-capable build that baked nothing. Pipelines are still built on the phone. |
+
+Not done, and why:
+- Scripts compiled later (main.gd's typed references to the run's classes made lazy): it would only move the
+  ~0.4 s to a run's start, at the cost of main.gd's static typing.
+- The title stage's four props load their PBR textures though the stage draws them with its own material: the
+  first run uses the same cached meshes and textures, so this is a prefetch, not waste.
+- The APK (138 MB) is 94 MB of textures, which 0.9.8 settled on keeping at their full 1,024-2,048 px. Nothing
+  shipped is unused: the files the unit suite never loads are each reached by a path built at run time (Acts
+  IV-V's terrain and props, the guardian's textures, the Emberwitch and the Herald).

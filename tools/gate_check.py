@@ -405,6 +405,13 @@ def main(build_apk=True):
             clips = len(glob.glob(os.path.join(GD, "audio", "voices", "*", "*.ogg")))
             check(any(n.endswith("data/voice_manifest.json") for n in names) and shipped == clips and not any("/tests/" in n for n in names),
                   f"the APK carries data/voice_manifest.json and {shipped} of the {clips} voice clips (each remap's imported stream), and none of tests/")
+            # the shader baker (tools/build_android.sh): with Xvfb and a Vulkan driver here, the export must bake
+            baked = [n for n in names if "/.godot/shader_cache/" in n]
+            can_bake = (not os.environ.get("NO_SHADER_BAKE") and shutil.which("xvfb-run") is not None and
+                        bool(glob.glob("/usr/share/vulkan/icd.d/*.json") + glob.glob("/etc/vulkan/icd.d/*.json")))
+            check(len(baked) > 0 or not can_bake,
+                  f"the APK carries {len(baked)} baked shaders ({sum(z.getinfo(n).compress_size for n in baked) / 1e6:.2f} MB)" +
+                  ("" if can_bake else "; this machine has no xvfb-run or Vulkan driver, so none were expected"))
         check(ok, f"APK {apk}: " + (f"{os.path.getsize(apk)} bytes = {os.path.getsize(apk) / 1e6:.2f} MB" if os.path.exists(apk) else "missing"))
     print(f"\ngate_check: {len(FAILS)} failed check(s)")
     return 1 if FAILS else 0

@@ -69,6 +69,7 @@ func _ready() -> void:
 	_render_scale()
 	_ui_scale()
 	_menu()
+	Diag.startup_step("main")
 	var st: Dictionary = Save.data.get("selftest", {})
 	if st.get("running", false):
 		if Diag.crashed_last:                     # the pass that was running took the app down
@@ -627,7 +628,11 @@ func _dyn_res(dt: float) -> void:
 		_apply_scale()
 		Diag.mark("dyn res %.2f (avg %.1f ms)" % [_base_scale * _dyn, avg * 1000.0])
 
+var _boot_frames := 0
 func _process(dt: float) -> void:
+	if _boot_frames < 3:
+		_boot_frames += 1
+		if _boot_frames == 3: Diag.startup_step("frames")
 	if subtitles != null: subtitles.in_run = state == "play"     # modal screens and menus: subtitles along the top
 	if world == null:
 		return

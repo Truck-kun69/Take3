@@ -25,10 +25,25 @@ BT="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)"
 mkdir -p "$ROOT/build"
 cd "$ROOT/godot"
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
+# The shader baker (export_presets.cfg shader_baker/enabled; docs/OPTIMIZATION.md O4) puts the compiled shaders
+# into the APK, so a fresh install skips compiling them on its first launch. It needs the editor running on a
+# Vulkan device with the Mobile renderer: with xvfb-run and a Vulkan driver (Mesa's lavapipe will do) the export
+# runs the editor under Xvfb; otherwise headless, which exports the same APK without baked shaders.
+# NO_SHADER_BAKE=1 forces the headless export.
+vulkan_icd() { ls /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json 2>/dev/null | head -1; }
+godot_export() {
+  if [ -z "${NO_SHADER_BAKE:-}" ] && command -v xvfb-run >/dev/null 2>&1 && [ -n "$(vulkan_icd)" ]; then
+    echo "exporting under Xvfb on Vulkan: the shaders are baked into the APK"
+    xvfb-run -a "$GODOT" --rendering-driver vulkan --rendering-method mobile --path . "$@"
+  else
+    echo "note: exporting headless (no xvfb-run or Vulkan driver, or NO_SHADER_BAKE set): shaders are not baked"
+    "$GODOT" --headless --path . "$@"
+  fi
+}
 case "$MODE" in
   debug)
     OUT="$ROOT/build/shardfall-debug.apk"
-    "$GODOT" --headless --path . --export-debug "Android" "$OUT" ;;
+    godot_export --export-debug "Android" "$OUT" ;;
   release)
     if [ -z "${SHARDFALL_KEYSTORE:-}" ]; then
       echo "note: no SHARDFALL_KEYSTORE; signing with the shared test key (fine for sideloading, not for the Play Store)"
@@ -39,7 +54,7 @@ case "$MODE" in
     export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$SHARDFALL_KEYSTORE_USER"
     export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$SHARDFALL_KEYSTORE_PASS"
     OUT="$ROOT/build/shardfall.apk"
-    "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
+    godot_export --export-release "Android" "$OUT" ;;
   aab)
     # Gradle builds need res://android/build (installed from the export templates' android_source.zip).
     if [ ! -d android/build ]; then
@@ -54,7 +69,7 @@ case "$MODE" in
     cp export_presets.cfg "$ROOT/build/.export_presets.cfg.bak"
     trap 'cp "$ROOT/build/.export_presets.cfg.bak" "$ROOT/godot/export_presets.cfg"' EXIT
     sed -i 's/^gradle_build\/use_gradle_build=false/gradle_build\/use_gradle_build=true/; s/^gradle_build\/export_format=0/gradle_build\/export_format=1/' export_presets.cfg
-    "$GODOT" --headless --path . --export-release "Android" "$OUT" ;;
+    godot_export --export-release "Android" "$OUT" ;;
   *)
     echo "unknown mode: $MODE (release, debug or aab)" >&2; exit 2 ;;
 esac

@@ -2464,6 +2464,8 @@ func _perf_view_tests() -> void:
 		written += na
 		if na != nb or a != b: diff += 1
 	ok(diff == 0 and written > 100, "the 3D view's foe instances, swarm arrays read through locals: the same buffers as 0.10.3's writer for every kind (%d foes written, %d kinds differ)" % [written, diff])
+	ok(Diag.startup.begins_with("startup: the engine up at") and Diag.report_text().contains(Diag.startup),
+		"a launch records when its first frames were drawn, and Copy report carries it (%s)" % Diag.startup.trim_prefix("startup: "))
 	mn._free_world()                                  # the run's World holds reference cycles: dispose of it
 	mn.queue_free()
 	sv.data = keep

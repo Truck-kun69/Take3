@@ -42,11 +42,12 @@ jobs:
           path: /home/runner/apk-repack-cache
           key: apk-repack-${{ hashFiles('tools/provision.sh') }}
       # zopfli for the APK repack; numpy and Pillow for the gate's model and texture checks; ffmpeg for the voice
-      # pipeline's selftest and the drop-in check; xvfb for the gate's combat render smoke
+      # pipeline's selftest and the drop-in check; xvfb and Mesa's software Vulkan (lavapipe) for the gate's combat
+      # render smoke on the phones' renderer and for the export's shader baker (tools/build_android.sh)
       - name: Install the gate's tools
         run: |
           python3 -m pip install --user zopfli numpy pillow
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg xvfb
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg xvfb mesa-vulkan-drivers
           ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libvorbis
       - name: Import assets
         run: ~/toolchains/godot/godot --headless --path godot --import || true

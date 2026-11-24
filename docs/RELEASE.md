@@ -16,11 +16,11 @@ The files are attached to the workflow run as the `shardfall-android` artifact f
 
 ## The version
 
-One setting holds it: `application/config/version` in `godot/project.godot` (0.10.3-alpha). The title
+One setting holds it: `application/config/version` in `godot/project.godot` (0.10.4-alpha). The title
 screen, Options and every copied report show it (`Diag.version()`), and the APK's versionName follows it
 because the preset's `version/name` is left empty. The gate fails if the built APK says anything else.
 
-`version/code` in `godot/export_presets.cfg` (15 from 0.10.3) is the number Android compares: it must go
+`version/code` in `godot/export_presets.cfg` (16 from 0.10.4) is the number Android compares: it must go
 up for every build testers install over the last one, or the phone refuses the update.
 
 ## Moving a save to a new install
@@ -39,6 +39,9 @@ travel with a save and stay as the phone has them: the graphics self-test result
 not to a copied text).
 
 ## APK size
+
+0.10.4: 140.88 MB (140,883,262 bytes). The baked shaders add 2.34 MB (50 files), the Emberwitch's two baked fire
+loops 93 KB.
 
 0.10.3: 138.41 MB (138,410,476 bytes). The voice pack adds 2.56 MB: 61 clips shipped as Godot's imported
 Ogg Vorbis streams (2.69 MB unpacked).
@@ -68,6 +71,13 @@ and `classes.dex` are recompressed with zopfli (26.3 -> 25.5 MB, needs `pip inst
 content hash). Every entry's content is checked to be byte-identical (CRC and size). The APK is then
 aligned (`zipalign -p 4`) and signed again with the same key, v2 and v3 only (minSdkVersion is 24).
 Imported scenes use zstd level 19 with long-distance matching (`project.godot`, `[compression]`).
+
+From 0.10.4 the export bakes the shaders (`shader_baker/enabled` in the preset): the APK carries them
+compiled, so a fresh install or an update skips compiling them on its first launch (docs/OPTIMIZATION.md O4).
+The baker needs the editor running on a Vulkan device with the Mobile renderer, so `tools/build_android.sh`
+exports under `xvfb-run` when a Vulkan driver is installed (Mesa's software one, `mesa-vulkan-drivers`, will
+do; CI installs it) and headless otherwise, which builds the same APK without baked shaders.
+`NO_SHADER_BAKE=1` forces the headless export. The gate fails a build that could bake and did not.
 
 ## The release key
 
@@ -117,6 +127,8 @@ bash tools/provision.sh
 ```bash
 bash tools/build_android.sh
 ```
+
+With `xvfb-run` and a Vulkan driver installed, it bakes the shaders (see APK size above).
 
 With a release key: set `SHARDFALL_KEYSTORE`, `SHARDFALL_KEYSTORE_USER` and `SHARDFALL_KEYSTORE_PASS`
 in the environment first; `bash tools/build_android.sh aab` builds the bundle.
