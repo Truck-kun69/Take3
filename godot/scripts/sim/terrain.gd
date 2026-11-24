@@ -61,6 +61,11 @@ func _init(stage_i: int, seed_i: int, profile: Dictionary, flat_radius: float = 
 	level0 = level
 	_lv_mark = level
 	deep_d = float(prof.get("deep", 9.0))
+	_amp = float(prof.get("amp", 80.0))
+	_steps = int(prof.get("terraces", 0))
+	_rw = float(prof.get("river", 0.0))
+	_rdepth = float(prof.get("river_depth", 26.0))
+	_det = float(prof.get("detail", 4.0))
 	for n in [_base, _ramp, _river, _detail]:
 		n.noise_type = FastNoiseLite.TYPE_PERLIN
 	_base.seed = tseed
@@ -77,11 +82,17 @@ func _init(stage_i: int, seed_i: int, profile: Dictionary, flat_radius: float = 
 	_detail.frequency = 1.0 / 140.0
 
 # ---------------------------------------------------------------- generation
+## The act profile's shape values, read once (_raw runs 1,764 times a chunk: O6)
+var _amp := 80.0
+var _steps := 0
+var _rw := 0.0
+var _rdepth := 26.0
+var _det := 4.0
 func _raw(x: float, y: float) -> float:
-	var amp: float = prof.get("amp", 80.0)
+	var amp := _amp
 	var b := clampf(_base.get_noise_2d(x, y) * 1.6, -1.0, 1.0)
 	var h := b * amp
-	var steps := int(prof.get("terraces", 0))
+	var steps := _steps
 	if steps > 0:
 		# terraces: plateaus joined by ramps; where the ramp noise is low the step is a cliff
 		var u := (b * 0.5 + 0.5) * steps
@@ -89,12 +100,12 @@ func _raw(x: float, y: float) -> float:
 		var w := lerpf(0.035, 0.42, clampf(_ramp.get_noise_2d(x, y) * 1.4 + 0.5, 0.0, 1.0))
 		var s := smoothstep(0.5 - w, 0.5 + w, f)
 		h = ((floorf(u) + s) / steps * 2.0 - 1.0) * amp
-	var rw: float = prof.get("river", 0.0)
+	var rw := _rw
 	if rw > 0.0:
 		var rv := absf(_river.get_noise_2d(x, y))
 		var carve := smoothstep(rw, rw * 0.35, rv)
-		h = lerpf(h, level0 - float(prof.get("river_depth", 26.0)), carve)   # river beds sit under the act's starting surface: a rising tide never reshapes the ground
-	h += _detail.get_noise_2d(x, y) * float(prof.get("detail", 4.0))
+		h = lerpf(h, level0 - _rdepth, carve)   # river beds sit under the act's starting surface: a rising tide never reshapes the ground
+	h += _detail.get_noise_2d(x, y) * _det
 	var d := sqrt(x * x + y * y)
 	if d < flat_r + 220.0:
 		h = lerpf(h, flat_h, smoothstep(flat_r + 220.0, flat_r, d))

@@ -13,6 +13,14 @@ Tools:
   by about 10% between runs.
 - `PERF_BENCH=1 godot --headless --path godot res://tests/tests.tscn -- perf`: the same functions on a frozen
   crowd, best of several rounds: the number to compare between versions.
+- `godot --headless --path godot res://tests/tests.tscn -- lodprobe`: the foe meshes' triangles and imported
+  LODs (the numbers at the end of O2).
+- `godot --headless --fixed-fps 60 --path godot res://tests/soak.tscn -- [runs] [seconds]`: bot-played runs
+  back to back on the real game scene (O3, O6). `SOAK_NODES=1` times every node's `_process` and the view's
+  parts in each frame over 25 ms; `SOAK_LOADS=1` marks the frames that loaded a resource (with `--verbose`,
+  the loads print before the mark).
+- `PERF_BENCH=1 godot --headless --path godot res://tests/tests.tscn -- stream`: 8 chunk crossings and the
+  walk back, timed (O6).
 
 ## O1. The foe step (CPU), 680 foes
 
@@ -78,3 +86,63 @@ within a minute. Story lines (priority 3: act openings, boss lines, intros, deat
 voice pack itself is unchanged (no new lines, no cost). Tests (unit group "0.10.4 voice pacing", on a stepped
 clock): eight cast barks over 488 s, none repeated within 90 s; an escalation line refused as a repeat 61 s
 later and allowed after 180 s; an intro said twice in a row both times.
+
+## O3. Memory and long sessions
+
+`tests/soak.tscn` plays runs back to back on the real game scene: every act and exile in turn, a bot playing
+(level-ups, bargains, the merchant), each run ending through the end screen or Pause > Main Menu. At each
+run's start (the menu, the last run's world freed) it records the engine's object, resource and node counts,
+orphan nodes, static memory and the process's resident memory, and the sizes of every container in the
+autoloads and the static caches. Headless, so the renderer draws nothing: no GPU memory is measured.
+
+10 runs of 4 minutes (40 minutes of play, 324 s here):
+
+| At run start | Run 1 | Runs 2-10 | After the last |
+|---|---|---|---|
+| Objects | 3,794 | 3,908-4,083 | 4,009 |
+| Resources | 239 | 253-274 (each act's models load once) | 288 |
+| Nodes | 726 | 714-784 | 708 |
+| Orphan nodes | 0 | 0 | 0 |
+| Resident memory | 278 MB | 284-298 MB | 306 MB |
+
+Nothing grows run over run. Every cache holds a bounded set: 16 voice clips (its LRU cap), 35 sounds, 41
+models (all five acts), 33 lines' repeat times (of 61), 93 first-occurrence marks. The profile's JSON grows
+from 1.2 to 20.4 KB over the first five runs (unlocks, codex, stash) and then holds. Inside a run, the
+containers that grow do so with the fight and empty again: surface pools (10-30 s each), frozen cells, the
+terrain's prop cells (pruned around the hero), corpses.
+
+The first soak's exit reported 5-11 leaked resources: the sounds still playing when it quit hold their streams
+past the audio server's shutdown. The soak now stops its players before quitting, and reports none. The
+headless renderer also prints `Parameter "material" is null` (material_get_instance_shader_parameters); the
+same runs under Xvfb on the Vulkan renderer do not, so it is the dummy renderer's.
+
+## O6. Hitches: what the first frames of new ground cost
+
+The soak (O3) also logs every frame over 25 ms. Baseline, three runs of 100-150 s: 3-7 such frames a run, the
+worst 49-153 ms (on a phone, 3-5 times that). Per node and per part (`SOAK_NODES=1`), nearly all of them are
+the 3D view at a chunk crossing (every 640 units the hero walks, every few seconds): `_props` built the five
+new prop cells of the 5 x 5 around the hero (12-27 ms) and `_terrain_tex` recomposed the 7 x 7 height window,
+generating the seven chunks that enter it (12-15 ms). The other: 115-153 ms in main, 3-4 s into the
+Emberwitch's runs: the fire bed's two loops, synthesized sample by sample on the first fire.
+
+`-- stream` measures a crossing on its own: the hero walks east through 8 chunks of Act I, the world ticking
+between crossings as walking does, and each crossing frame's parts are timed. Baseline: props 23.7-24.9 ms,
+terrain textures 3.6-3.9 ms (benchmark order), worst crossing 30-36 ms.
+
+| Cycle | Change | Measured (a crossing) | Critique |
+|---|---|---|---|
+| 1 | Each prop batch's MultiMesh written as one buffer (it was a call per instance) | no change: 5.6-6.0 ms a cell before and after, on the Vulkan renderer too | The calls were not the cost. Kept: one upload instead of 300 calls, the same bytes (checked on the real renderer, where MultiMesh keeps them). Timing a cell in parts found ~2 ms in `Models.prop_mesh`, which probes up to ten file paths with ResourceLoader.exists before it checks its cache, for every kind of every cell. |
+| 2 | The prop and foe mesh lookups memoized per (kind, act, tier) | props 15.5-16.6 ms (a cell 4.5 -> 2.15 ms) | The benchmark ran the props before the textures; a frame runs `_camera` (the textures) first. |
+| 3 | The benchmark in the frame's order | props 7.4 ms, textures 13.1 ms | The seven new chunks are generated inside the crossing frame (1.3 ms each): the world prefetches chunks one a tick, but only out to ring 3, the window's own radius. |
+| 4 | Prefetch to ring 4 | textures 0.5 ms; no chunk generated in a crossing frame; worst crossing 7.9 ms | Generation moved to the walk, a chunk a tick, 2.0-2.7 ms each. `_raw` read five values of the act's profile dictionary for each of a chunk's 1,764 height samples. |
+| 5 | Those read once per act | 1.36 ms a chunk (-33%); heights identical on all five acts | The five cells of a crossing still land in one frame. |
+| 6 | The outer ring of cells queued, one built a frame, nearest first; the hero's chunk and its ring at once (a run's start, a teleport) | crossing frame 0.5-1.1 ms; the worst frame after it 1.7-4.7 ms (one cell) | A cell is still ~2 ms: the layout 0.8, the transforms 1.2. |
+| 7 | Upright props written straight into the buffers, no Basis or Transform3D | no gain; reverted | The per-prop cost is GDScript's own (array reads, the height lookup), not the basis math. The first version also wrote through a copy of each batch's buffer per prop (copy-on-write). |
+| 8 | Built cells' batches cached (81 cells, ~1.3 MB): a run circles over the same chunks | walking back over 4 crossings: the worst frame 1.5 ms | That frame is the texture window's recompose (0.4 ms) and any cell the cache no longer held. |
+| 9 | The fire loops baked to Ogg (`tools/bake_loops.sh`, the game's own synthesizer and seeds, 93 KB) | 127 ms of synthesis -> 0.4-0.9 ms to load | |
+
+Result, the same three soak runs: no frame over 25 ms (3-7 a run before); the worst frame 10.6-16.6 ms (49-153
+ms before); a crossing frame 0.5-1.1 ms (30-36 ms). Tests (unit group "0.10.4 streaming"): 25 cells around the
+hero after the crossings and the queue; a teleport builds the 3 x 3 at once and queues 16; the cells' buffers
+equal 0.10.3's per-instance transforms exactly; a cached cell equals a fresh build; chunk heights equal 0.10.3's
+on all five acts; the fire loops are the baked files, looping.

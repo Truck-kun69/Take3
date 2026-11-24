@@ -480,7 +480,7 @@ func _step(dt: float) -> void:
 	sw.clock = t
 	Sfx.listener = pp
 	terrain.step(dt)
-	terrain.prefetch(pp, 3, 1)
+	terrain.prefetch(pp, 4, 1)      # one chunk a tick, one ring past the 3D view's 7 x 7 window: a crossing finds it ready (O6)
 	if terrain.tide > 0.0:
 		_step_tide()
 	_trim_t -= dt

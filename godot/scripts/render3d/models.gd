@@ -86,6 +86,13 @@ static func _first_mesh(n: Node) -> Mesh:
 
 ## stage >= 0 prefers an act-specific variant: res://models/foes/<kind>_<stage>.glb (props likewise).
 static func foe_mesh(kind: String, stage: int = -1) -> Mesh:
+	var ask := "foe?%s:%d:%d" % [kind, stage, int(Quality.high())]       # the resolved mesh, without probing the files again
+	if _cache.has(ask): return _cache[ask]
+	var m := _foe_mesh(kind, stage)
+	_cache[ask] = m
+	return m
+
+static func _foe_mesh(kind: String, stage: int) -> Mesh:
 	if stage >= 0 and find_asset("foes", "%s_%d" % [kind, stage]) != "":
 		kind = "%s_%d" % [kind, stage]
 	var hi := Quality.high() and find_asset("foes_hi", kind) != ""     # High tier: the detailed variant
@@ -142,7 +149,16 @@ static func foe_vat(kind: String, stage: int = -1) -> Dictionary:
 	_cache[key] = out
 	return out
 
+## Every prop cell asks for each of its kinds' meshes (WorldView3D.cell_parts): the answer is cached per
+## (kind, act, tier), since resolving it probes up to ten paths with ResourceLoader.exists (O6).
 static func prop_mesh(kind: String, stage: int = -1) -> Mesh:
+	var ask := "prop?%s:%d:%d" % [kind, stage, int(Quality.high())]
+	if _cache.has(ask): return _cache[ask]
+	var m := _prop_mesh(kind, stage)
+	_cache[ask] = m
+	return m
+
+static func _prop_mesh(kind: String, stage: int) -> Mesh:
 	if stage >= 0 and find_asset("props", "%s_%d" % [kind, stage]) != "":
 		kind = "%s_%d" % [kind, stage]
 	var hi := Quality.high() and find_asset("props_hi", kind) != ""

@@ -237,10 +237,20 @@ func _fire_player(st: AudioStream) -> AudioStreamPlayer:
 
 ## The two fire loops: crackle (sparse pops over a faint hiss) and rumble (low roaring noise and a 38 Hz
 ## growl under slow swells). The last quarter second crossfades into the first, so each loops seamlessly.
+## They ship baked (res://audio/sfx/fire_*.ogg, tools/bake_loops.sh): synthesizing them took 127 ms on a
+## desktop in the middle of a run's first fire, about half a second on a phone (O6). The synthesizer stays
+## as the source of those files and the fallback without them.
 func _fire_loop(key: String, secs: float, rumble: bool) -> AudioStream:
 	var ov := _override("res://audio/sfx/" + key)
-	if ov != null: return ov
+	if ov != null:
+		if ov is AudioStreamOggVorbis: (ov as AudioStreamOggVorbis).loop = true
+		elif ov is AudioStreamWAV and (ov as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_DISABLED:
+			(ov as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+		return ov
 	if streams.has(key): return streams[key]
+	return _synth_fire_loop(key, secs, rumble)
+
+func _synth_fire_loop(key: String, secs: float, rumble: bool) -> AudioStreamWAV:
 	var n := int(RATE * secs)
 	var fade := int(RATE * 0.25)
 	var buf := PackedFloat32Array()

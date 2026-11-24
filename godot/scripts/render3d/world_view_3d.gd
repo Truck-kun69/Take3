@@ -589,11 +589,19 @@ func _lighting(dt: float) -> void:
 ## Props are batched per 640-unit chunk and kind (optimisation pass): a cell off screen is frustum-culled
 ## as a whole, and a distant cell draws the imported mesh's automatic lower LOD. One batch per kind for
 ## the whole 5x5 neighbourhood drew every prop every frame (props were ~70% of all triangles).
+## The 5 x 5 chunks of props around the hero. The hero's chunk and the ring around it are built at once
+## (a run's start, a teleport); the outer ring, which is all a chunk crossing adds, is queued and built a
+## cell a frame, nearest first: five cells in one frame made every crossing a hitch (O6). The outer ring
+## starts 640-1280 units from the hero, at the edge of the screen.
+var _prop_queue: Array[Vector2i] = []
 func _props() -> void:
 	var cx := floori(w.pp.x / CHUNK)
 	var cy := floori(w.pp.y / CHUNK)
 	var key := "%d:%d" % [cx, cy]
 	if key == _chunk_key:
+		if not _prop_queue.is_empty():
+			var q: Vector2i = _prop_queue.pop_front()
+			if not _prop_cells.has(q): _prop_cells[q] = _build_cell(q)
 		return
 	_chunk_key = key
 	var want := {}
@@ -604,14 +612,39 @@ func _props() -> void:
 		if not want.has(c):
 			_prop_cells[c].queue_free()
 			_prop_cells.erase(c)
+	_prop_queue.clear()
+	var here := Vector2i(cx, cy)
 	for c in want:
-		if not _prop_cells.has(c):
-			_prop_cells[c] = _build_cell(c)
+		if _prop_cells.has(c): continue
+		if maxi(absi(c.x - cx), absi(c.y - cy)) <= 1: _prop_cells[c] = _build_cell(c)
+		else: _prop_queue.append(c)
+	_prop_queue.sort_custom(func(a: Vector2i, b: Vector2i): return (a - here).length_squared() < (b - here).length_squared())
 
 func _clear_props() -> void:
 	for c in _prop_cells: _prop_cells[c].queue_free()
 	_prop_cells.clear()
+	_prop_queue.clear()
+	_cell_cache.clear()
+	_cell_lru.clear()
 	_chunk_key = ""
+
+## Recently built cells' batches (meshes, boxes, buffers), kept after a cell leaves the 5 x 5: a run circles
+## over the same few chunks, and walking back into one builds no layout again, only its nodes (O6). At most
+## CELL_CACHE cells (about 16 KB of buffers each, 1.3 MB in all); cleared with the props (a new run, a graphics change).
+const CELL_CACHE := 81                 # a 9 x 9 area of chunks: the 5 x 5 moving about inside it
+var _cell_cache := {}                 # Vector2i chunk -> cell_parts(chunk)
+var _cell_lru: Array[Vector2i] = []   # oldest first
+func _cell_data(c: Vector2i) -> Array:
+	var d = _cell_cache.get(c)
+	if d != null:
+		_cell_lru.erase(c)
+		_cell_lru.append(c)
+		return d
+	var parts := cell_parts(c)
+	_cell_cache[c] = parts
+	_cell_lru.append(c)
+	while _cell_lru.size() > CELL_CACHE: _cell_cache.erase(_cell_lru.pop_front())
+	return parts
 
 # ---------------------------------------------------------------- terrain textures
 ## The 7 x 7 chunks around the player as one R32F height texture (1 texel per 16-unit cell) plus an
@@ -774,6 +807,35 @@ func _build_cell(c: Vector2i) -> Node3D:
 	var cell := Node3D.new()
 	add_child(cell)
 	if not Quality.on("props"): return cell
+	for part in _cell_data(c):
+		var kind: String = part[0]
+		var mesh: Mesh = part[1]
+		var pmi := MultiMeshInstance3D.new()
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = int(part[4])
+		mm.buffer = part[3]                      # one upload for the part (it was a call per instance)
+		mm.custom_aabb = (part[2] as AABB).grow(160.0)
+		pmi.multimesh = mm
+		# imported PBR props draw their own materials (albedo, normal, roughness maps); the procedural and
+		# vertex-coloured ones (grass, crystals, the act variants) keep the shared prop shader (sway, tint)
+		if not Models.has_pbr(mesh): pmi.material_override = prop_mat
+		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if CLUTTER.has(kind) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if NEAR_ONLY.has(kind):
+			pmi.visibility_range_end = _near_end
+			pmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+			pmi.add_to_group("near_only")
+		cell.add_child(pmi)
+	return cell
+
+## One chunk's props as MultiMesh data, nodes aside: [kind, mesh, AABB, buffer, instances] per batch. A kind
+## is one batch per chunk; grass (NEAR_ONLY) is four, one per quarter: a range test on a whole chunk measures
+## to its centre, up to ~450 units from where the hero stands in it, so its own grass could blink out; a
+## quarter's centre is never far. The buffer holds 12 floats an instance (TRANSFORM_3D: the basis rows, each
+## followed by its origin component), as MultiMesh.set_instance_transform writes them.
+func cell_parts(c: Vector2i) -> Array:
+	var out := []
 	var lists := dress_chunk(c)
 	for kind in lists:
 		var list: Array = lists[kind]
@@ -783,8 +845,6 @@ func _build_cell(c: Vector2i) -> Node3D:
 		var parts := [list]
 		var boxes := [AABB(Vector3(c.x * CHUNK, -200.0, c.y * CHUNK), Vector3(CHUNK, 600.0, CHUNK))]
 		if NEAR_ONLY.has(kind):
-			# quarters: a range test on a whole chunk measures to its centre, up to ~450 units from where the
-			# hero stands in it, so its own grass could blink out; a quarter's centre is never far
 			parts = [[], [], [], []]
 			boxes = []
 			var half := CHUNK * 0.5
@@ -798,24 +858,24 @@ func _build_cell(c: Vector2i) -> Node3D:
 		for pi in parts.size():
 			var part: Array = parts[pi]
 			if part.is_empty(): continue
-			var pmi := MultiMeshInstance3D.new()
-			var mm := MultiMesh.new()
-			mm.transform_format = MultiMesh.TRANSFORM_3D
-			mm.mesh = mesh
-			mm.instance_count = part.size()
-			for i in part.size(): mm.set_instance_transform(i, part[i])
-			mm.custom_aabb = (boxes[pi] as AABB).grow(160.0)
-			pmi.multimesh = mm
-			# imported PBR props draw their own materials (albedo, normal, roughness maps); the procedural and
-			# vertex-coloured ones (grass, crystals, the act variants) keep the shared prop shader (sway, tint)
-			if not Models.has_pbr(mesh): pmi.material_override = prop_mat
-			pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if CLUTTER.has(kind) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			if NEAR_ONLY.has(kind):
-				pmi.visibility_range_end = _near_end
-				pmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
-				pmi.add_to_group("near_only")
-			cell.add_child(pmi)
-	return cell
+			out.append([kind, mesh, boxes[pi], tbuf(part), part.size()])
+	return out
+
+## Transform3Ds as a MultiMesh TRANSFORM_3D buffer (checked against set_instance_transform on a real renderer).
+static func tbuf(list: Array) -> PackedFloat32Array:
+	var b := PackedFloat32Array()
+	b.resize(list.size() * 12)
+	var o := 0
+	for t: Transform3D in list:
+		var x := t.basis.x
+		var y := t.basis.y
+		var z := t.basis.z
+		var p := t.origin
+		b[o] = x.x; b[o + 1] = y.x; b[o + 2] = z.x; b[o + 3] = p.x
+		b[o + 4] = x.y; b[o + 5] = y.y; b[o + 6] = z.y; b[o + 7] = p.y
+		b[o + 8] = x.z; b[o + 9] = y.z; b[o + 10] = z.z; b[o + 11] = p.z
+		o += 12
+	return b
 
 ## Grass and bushes stop at NEAR_END from the camera at its 600-unit distance; the boss zoom and portrait
 ## screens pull the camera back, and the range follows it (else their near ground would go bare).

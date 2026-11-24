@@ -50,6 +50,7 @@ func _ready() -> void:
 		await _fit_tests()
 		_perf_tests()
 		await _perf_view_tests()
+		await _stream_tests()
 		_pacing_tests()
 	elif "voice" in args:
 		_voice_tests()
@@ -65,6 +66,9 @@ func _ready() -> void:
 	elif "perf" in args:
 		_perf_tests()
 		await _perf_view_tests()
+		await _stream_tests()
+	elif "stream" in args:
+		await _stream_tests()
 	elif "lodprobe" in args:
 		for kind in ["grunt", "runner", "brute", "charger", "spitter", "breach"]:
 			var m: Mesh = Models.foe_mesh(kind)
@@ -2463,6 +2467,245 @@ func _perf_view_tests() -> void:
 	mn._free_world()                                  # the run's World holds reference cycles: dispose of it
 	mn.queue_free()
 	sv.data = keep
+
+## 0.10.4 streaming (docs/OPTIMIZATION.md O6): what a chunk crossing costs the 3D view. The hero walks east
+## through 8 chunks of Act I (the world ticking between crossings, as walking does), and each crossing frame's
+## prop cells (WorldView3D._props) and terrain textures (_terrain_tex) are timed; PERF_BENCH=1 prints them.
+func _stream_tests() -> void:
+	print("== 0.10.4 streaming")
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	await get_tree().process_frame
+	mn.start({"mode": "campaign", "stage": int(OS.get_environment("STREAM_ACT")) if OS.get_environment("STREAM_ACT") != "" else 0})
+	var w: World = mn.world
+	w.stats.set_source("t", [["max_hp", "add", 1e6]])
+	w.hp = 1e6
+	for f in 4: await get_tree().process_frame
+	var V: WorldView3D = mn.view3d
+	mn.set_process(false)                       # the walk below drives the world and the view itself
+	V.set_process(false)
+	var T := w.terrain
+	var rows: Array = []
+	while not V._prop_queue.is_empty(): V._props()     # the start's outer ring (the first frames build it)
+	var gen0 := T.generated
+	for k in 8:
+		var x := (k + 1) * Terrain.CHUNK + 8.0
+		# the walk up to the border: 90 ticks inside the chunk before (the world prefetches as it goes)
+		w.pp = Vector2(x - Terrain.CHUNK * 0.5, 40.0)
+		w.prev_pp = w.pp
+		for i in 90: w.step(FixedStep.STEP)
+		w.pp = Vector2(x, 40.0)
+		w.prev_pp = w.pp
+		var g := T.generated
+		var t0 := Time.get_ticks_usec()
+		V._terrain_tex(FixedStep.STEP)              # the frame's order: _camera (the textures), then _props
+		var t1 := Time.get_ticks_usec()
+		V._props()
+		var t2 := Time.get_ticks_usec()
+		# and the frames after it, while the crossing's queued cells are built (the worst of them)
+		var after := 0.0
+		for f in 8:
+			var f0 := Time.get_ticks_usec()
+			V._terrain_tex(FixedStep.STEP)
+			V._props()
+			after = maxf(after, (Time.get_ticks_usec() - f0) / 1000.0)
+		rows.append([(t2 - t1) / 1000.0, (t1 - t0) / 1000.0, T.generated - g, after])
+	# then back west over the same ground: the cells come from the cache (only their nodes are made)
+	var back := 0.0
+	for k in 4:
+		var x := (7 - k) * Terrain.CHUNK - 8.0
+		w.pp = Vector2(x + Terrain.CHUNK * 0.5, 40.0)
+		w.prev_pp = w.pp
+		for i in 30: w.step(FixedStep.STEP)
+		w.pp = Vector2(x, 40.0)
+		w.prev_pp = w.pp
+		for f in 9:
+			var f0 := Time.get_ticks_usec()
+			V._terrain_tex(FixedStep.STEP)
+			V._props()
+			back = maxf(back, (Time.get_ticks_usec() - f0) / 1000.0)
+	var props := 0.0
+	var tex := 0.0
+	var worst := 0.0
+	var worst_after := 0.0
+	var gen_in := 0
+	for r in rows:
+		props += r[0]
+		tex += r[1]
+		worst = maxf(worst, r[0] + r[1])
+		worst_after = maxf(worst_after, r[3])
+		gen_in += int(r[2])
+	if OS.get_environment("PERF_BENCH") != "":
+		print("  STREAM crossings %d: props %.2f ms, terrain textures %.2f ms a crossing (worst crossing %.2f ms; worst frame after one %.2f ms), %d chunks generated in crossing frames (%d in all)" % [
+			rows.size(), props / rows.size(), tex / rows.size(), worst, worst_after, gen_in, T.generated - gen0])
+		print("  STREAM walking back over 4 crossings: the worst frame %.2f ms (cells from the cache)" % back)
+		print("  STREAM per crossing [props ms, textures ms, chunks generated, worst frame after]: " + str(rows.map(func(r): return [snappedf(r[0], 0.01), snappedf(r[1], 0.01), r[2], snappedf(r[3], 0.01)])))
+	ok(rows.size() == 8 and V._prop_cells.size() == 25 and V._prop_queue.is_empty(), "the hero walks through 8 chunk crossings; 25 prop cells stand around it once the queue drains (%d)" % V._prop_cells.size())
+	var want_cells := 0
+	var cc := Vector2i(floori(w.pp.x / WorldView3D.CHUNK), floori(w.pp.y / WorldView3D.CHUNK))
+	for c in V._prop_cells:
+		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) <= 2: want_cells += 1
+	ok(want_cells == 25, "and they are the 5 x 5 around the hero's chunk (%d of 25)" % want_cells)
+	# a teleport (a run's start, a portal) builds the hero's chunk and its ring at once, the outer ring after
+	w.pp = Vector2(50.0 * Terrain.CHUNK + 300.0, 7.0 * Terrain.CHUNK + 300.0)
+	w.prev_pp = w.pp
+	for dy in range(-3, 4):
+		for dx in range(-3, 4): T.chunk(Vector2i(50 + dx, 7 + dy))
+	V._terrain_tex(FixedStep.STEP)
+	V._props()
+	var core := 0
+	for c in V._prop_cells:
+		if maxi(absi(c.x - 50), absi(c.y - 7)) <= 1: core += 1
+	ok(core == 9 and V._prop_queue.size() == 16, "a teleport: the 3 x 3 around the hero at once (%d), the outer 16 queued (%d)" % [core, V._prop_queue.size()])
+	# cell_parts writes upright props straight into the buffers: the same as dress_chunk's transforms, batched
+	# as 0.10.3's _build_cell did (rotation within float rounding, positions exact), on chunks of every act
+	var worst_d := 0.0
+	var bad := 0
+	var inst := 0
+	for k in 12:
+		var c := Vector2i(50 + (k % 3) - 1, 7 + (k / 3) % 3 - 1)
+		var got := V.cell_parts(c)
+		var want := _cell_parts_ref(V, c)
+		if got.size() != want.size():
+			bad += 1
+			continue
+		for i in got.size():
+			var a: PackedFloat32Array = got[i][3]
+			var b2: PackedFloat32Array = want[i][3]
+			if got[i][0] != want[i][0] or got[i][4] != want[i][4] or got[i][2] != want[i][2] or a.size() != b2.size():
+				bad += 1
+				continue
+			inst += int(got[i][4])
+			for j in a.size():
+				var d := absf(a[j] - b2[j])
+				if j % 4 == 3:
+					if d != 0.0: bad += 1               # the origin column: exact
+				else: worst_d = maxf(worst_d, d)
+	ok(bad == 0 and worst_d == 0.0 and inst > 1000, "prop cells as one buffer a batch: the same batches and transforms as 0.10.3's per-instance writes (%d instances, %d differ)" % [inst, bad])
+	var cached: Array = V._cell_data(Vector2i(50, 7))
+	var again: Array = V._cell_data(Vector2i(50, 7))
+	var fresh := V.cell_parts(Vector2i(50, 7))
+	var same := cached == again and cached.size() == fresh.size()
+	for i in mini(cached.size(), fresh.size()):
+		if cached[i][3] != fresh[i][3] or cached[i][0] != fresh[i][0]: same = false
+	ok(same and V._cell_cache.size() <= WorldView3D.CELL_CACHE, "a cached cell is the one cell_parts builds; the cache holds at most %d (%d)" % [WorldView3D.CELL_CACHE, V._cell_cache.size()])
+	# chunk generation: every act's heights and types, the same as 0.10.3's _raw (its profile read per sample)
+	var gdiff := 0
+	var gen_us := 1e9
+	for act in 5:
+		var TT := Terrain.new(act, 77 + act, Content.TERRAIN[act])
+		var t0 := Time.get_ticks_usec()
+		for k in 6:
+			var c := Vector2i(k - 3, (k * 7) % 5 - 2)
+			var ch: Array = TT.chunk(c)
+			var B := Terrain.CN + 2
+			var x0 := c.x * Terrain.CHUNK - Terrain.CELL * 0.5
+			var y0 := c.y * Terrain.CHUNK - Terrain.CELL * 0.5
+			var hs: PackedFloat32Array = ch[0]
+			for j in Terrain.CN:
+				for i in Terrain.CN:
+					var want := PackedFloat32Array([_raw_ref(TT, x0 + (i + 1) * Terrain.CELL, y0 + (j + 1) * Terrain.CELL)])[0]
+					if hs[j * Terrain.CN + i] != want: gdiff += 1
+		gen_us = minf(gen_us, float(Time.get_ticks_usec() - t0))
+	ok(gdiff == 0, "terrain chunks of all five acts: heights identical to 0.10.3's (%d cells differ)" % gdiff)
+	if OS.get_environment("STREAM_PARTS") != "":         # one cell's build, in parts (best of 3 rounds of 10 chunks, terrain ready)
+		var best := [1e9, 1e9, 1e9, 1e9]
+		var items := 0
+		for c in range(40, 50):
+			for dy in range(2, 5):
+				for dx in range(-1, 2): T.chunk(Vector2i(c + dx, dy))
+		for round in 3:
+			var us := [0.0, 0.0, 0.0, 0.0]
+			items = 0
+			for k in 10:
+				var c := Vector2i(40 + k, 3)
+				var a0 := Time.get_ticks_usec()
+				var lay := PropLayout.chunk(c, w.stage, T, Quality.prop_density())
+				var a1 := Time.get_ticks_usec()
+				var lists := V.dress_chunk(c)
+				var a2 := Time.get_ticks_usec()
+				var parts := V.cell_parts(c)
+				var a3 := Time.get_ticks_usec()
+				var cell := V._build_cell(c)
+				var a4 := Time.get_ticks_usec()
+				us[0] += a1 - a0
+				us[1] += a2 - a1
+				us[2] += a3 - a2
+				us[3] += a4 - a3
+				items += lay.items.size()
+				cell.free()
+			for i in 4: best[i] = minf(best[i], us[i])
+		print("  STREAM a cell (best of 3 x 10 fresh chunks): PropLayout.chunk %.2f ms, dress_chunk (layout + transforms) %.2f ms, cell_parts (+ batches, buffers) %.2f ms, _build_cell (all of it) %.2f ms, %d items" % [
+			best[0] / 10000.0, best[1] / 10000.0, best[2] / 10000.0, best[3] / 10000.0, items / 10])
+	# the Emberwitch's fire loops ship baked (tools/bake_loops.sh): loading them is not synthesizing 10 s of audio
+	var sfx := get_node("/root/Sfx")
+	for spec in [["fire_crackle", 4.0, false], ["fire_rumble", 6.0, true]]:
+		sfx.streams.erase(spec[0])
+		var f0 := Time.get_ticks_usec()
+		var st: AudioStream = sfx._fire_loop(spec[0], spec[1], spec[2])
+		var ms := (Time.get_ticks_usec() - f0) / 1000.0
+		ok(st is AudioStreamOggVorbis and (st as AudioStreamOggVorbis).loop and absf(st.get_length() - float(spec[1])) < 0.05 and ms < 25.0,
+			"the %s loop is the baked file, looping, %.2f s, loaded in %.1f ms" % [spec[0], st.get_length() if st != null else 0.0, ms])
+	mn._free_world()
+	mn.queue_free()
+	sv.data = keep
+
+## 0.10.3's prop batching (_build_cell: dress_chunk's transforms, grass by quarter), as [kind, mesh, AABB, buffer, n].
+func _cell_parts_ref(V: WorldView3D, c: Vector2i) -> Array:
+	var out := []
+	var lists := V.dress_chunk(c)
+	for kind in lists:
+		var list: Array = lists[kind]
+		if list.is_empty(): continue
+		var mesh := Models.prop_mesh(kind, V.w.stage)
+		if mesh == null: continue
+		var parts := [list]
+		var boxes := [AABB(Vector3(c.x * WorldView3D.CHUNK, -200.0, c.y * WorldView3D.CHUNK), Vector3(WorldView3D.CHUNK, 600.0, WorldView3D.CHUNK))]
+		if WorldView3D.NEAR_ONLY.has(kind):
+			parts = [[], [], [], []]
+			boxes = []
+			var half := WorldView3D.CHUNK * 0.5
+			for q in 4:
+				boxes.append(AABB(Vector3(c.x * WorldView3D.CHUNK + (q % 2) * half, -200.0, c.y * WorldView3D.CHUNK + (q / 2) * half), Vector3(half, 600.0, half)))
+			for t in list:
+				var o: Vector3 = (t as Transform3D).origin
+				var qx := 1 if o.x - c.x * WorldView3D.CHUNK >= half else 0
+				var qz := 1 if o.z - c.y * WorldView3D.CHUNK >= half else 0
+				parts[qz * 2 + qx].append(t)
+		for pi in parts.size():
+			if (parts[pi] as Array).is_empty(): continue
+			out.append([kind, mesh, boxes[pi], WorldView3D.tbuf(parts[pi]), (parts[pi] as Array).size()])
+	return out
+
+## 0.10.3's Terrain._raw: the act profile read per sample (the reference for the hoisted one).
+func _raw_ref(T: Terrain, x: float, y: float) -> float:
+	var prof := T.prof
+	var amp: float = prof.get("amp", 80.0)
+	var b := clampf(T._base.get_noise_2d(x, y) * 1.6, -1.0, 1.0)
+	var h := b * amp
+	var steps := int(prof.get("terraces", 0))
+	if steps > 0:
+		var u := (b * 0.5 + 0.5) * steps
+		var f := u - floorf(u)
+		var w := lerpf(0.035, 0.42, clampf(T._ramp.get_noise_2d(x, y) * 1.4 + 0.5, 0.0, 1.0))
+		var s := smoothstep(0.5 - w, 0.5 + w, f)
+		h = ((floorf(u) + s) / steps * 2.0 - 1.0) * amp
+	var rw: float = prof.get("river", 0.0)
+	if rw > 0.0:
+		var rv := absf(T._river.get_noise_2d(x, y))
+		var carve := smoothstep(rw, rw * 0.35, rv)
+		h = lerpf(h, T.level0 - float(prof.get("river_depth", 26.0)), carve)
+	h += T._detail.get_noise_2d(x, y) * float(prof.get("detail", 4.0))
+	var d := sqrt(x * x + y * y)
+	if d < T.flat_r + 220.0:
+		h = lerpf(h, T.flat_h, smoothstep(T.flat_r + 220.0, T.flat_r, d))
+	return h
 
 ## 0.10.3's WorldView3D._write_foes, kept as the reference the optimised one must match bit for bit.
 func _write_foes_ref(V: WorldView3D, buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int:
