@@ -16,11 +16,11 @@ The files are attached to the workflow run as the `shardfall-android` artifact f
 
 ## The version
 
-One setting holds it: `application/config/version` in `godot/project.godot` (0.10.2-alpha). The title
+One setting holds it: `application/config/version` in `godot/project.godot` (0.10.3-alpha). The title
 screen, Options and every copied report show it (`Diag.version()`), and the APK's versionName follows it
 because the preset's `version/name` is left empty. The gate fails if the built APK says anything else.
 
-`version/code` in `godot/export_presets.cfg` (14 from 0.10.2) is the number Android compares: it must go
+`version/code` in `godot/export_presets.cfg` (15 from 0.10.3) is the number Android compares: it must go
 up for every build testers install over the last one, or the phone refuses the update.
 
 ## Moving a save to a new install

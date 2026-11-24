@@ -1,0 +1,159 @@
+{
+ "calls": {
+  "05a862ec10e9ea7f4ac3e3a5": {
+   "at": "2026-11-24T09:34:30+00:00",
+   "chars": 45,
+   "id": "tyrant_die_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "05a862ec10e9ea7f4ac3e3a5",
+   "provider": "fal",
+   "usd": 0.0045,
+   "voice_id_env": "EL_VOICE_TYRANT"
+  },
+  "3deea4ad9c2f11828d179f2f": {
+   "at": "2026-11-24T09:35:01+00:00",
+   "chars": 64,
+   "id": "warden_cast_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0064,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "46cfa2a284e609e31541fa77": {
+   "at": "2026-11-24T09:35:07+00:00",
+   "chars": 53,
+   "id": "warden_cast_2",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0053,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "62394549dfb97a1288001d87": {
+   "at": "2026-11-24T09:35:33+00:00",
+   "chars": 42,
+   "id": "warden_low_hp_1",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0042,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "6596bc4f264fc7201257220b": {
+   "at": "2026-11-24T09:34:58+00:00",
+   "chars": 131,
+   "id": "warden_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0131,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "870ee131714cad9928b3a86d": {
+   "at": "2026-11-24T09:35:17+00:00",
+   "chars": 58,
+   "id": "warden_kill_streak_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0058,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "93ee959ee0ca68febe3eb7cc": {
+   "at": "2026-11-24T09:35:47+00:00",
+   "chars": 55,
+   "id": "spark_cast_1",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0055,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "9749e6ad4aa6e933c6ea3451": {
+   "at": "2026-11-24T09:35:28+00:00",
+   "chars": 54,
+   "id": "warden_low_hp_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "9a934a9f1cdcd0c6043451fe": {
+   "at": "2026-11-24T09:35:42+00:00",
+   "chars": 125,
+   "id": "spark_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0125,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "9b69b2ef38a640397e3a8344": {
+   "at": "2026-11-24T09:35:36+00:00",
+   "chars": 63,
+   "id": "warden_boss_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0063,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "a2b47e7d4a8859c9fce15181": {
+   "at": "2026-11-24T09:35:44+00:00",
+   "chars": 65,
+   "id": "spark_cast_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0065,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "a2d940a7facd3b6dc142cc9d": {
+   "at": "2026-11-24T09:35:22+00:00",
+   "chars": 55,
+   "id": "warden_kill_streak_1",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0055,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "a5fd664012cca394d0ba5a9c": {
+   "at": "2026-11-24T09:34:24+00:00",
+   "chars": 122,
+   "id": "tyrant_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "a5fd664012cca394d0ba5a9c",
+   "provider": "fal",
+   "usd": 0.0122,
+   "voice_id_env": "EL_VOICE_TYRANT"
+  },
+  "a76a477610f825ce6bc2e0e2": {
+   "at": "2026-11-24T09:35:10+00:00",
+   "chars": 59,
+   "id": "warden_ult_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0059,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "ba6798382b0c79c38486c275": {
+   "at": "2026-11-24T09:35:14+00:00",
+   "chars": 44,
+   "id": "warden_ult_1",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0044,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "cdb93b89b43a7bb69c5f697d": {
+   "at": "2026-11-24T09:35:39+00:00",
+   "chars": 50,
+   "id": "warden_death_0",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.005,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "f352a2da75e40fc1bbcf1950": {
+   "at": "2026-11-24T09:35:04+00:00",
+   "chars": 54,
+   "id": "warden_cast_1",
+   "model_id": "eleven_multilingual_v2",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  }
+ }
+}
