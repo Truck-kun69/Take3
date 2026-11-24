@@ -6,9 +6,9 @@ exiles, the narrator and the two bosses, with the ElevenLabs casting for each sp
 fails if a script repeats one. (The story's written half, the act banners, Rift Echoes and bios, lives in
 `godot/scripts/data/story.gd` and never repeats a spoken line.)
 
-Until the voice pack exists, each line plays a short chime of its speaker's own and shows its subtitle for the
-manifest's estimated length. Drop the clips in and the game plays them instead, timed to their real length.
-No script changes are needed.
+The voice pack is in (0.10.3): 61 clips, 248 s of speech, 2.48 MB, generated through fal on 24 November 2026 for
+$0.406 (`tools/voice_cache.json`). The game plays each clip and times its subtitle to the clip's length. A line
+whose clip goes missing plays a short chime of its speaker's own instead, for the manifest's estimated length.
 
 ## Making the voice pack (two commands)
 
@@ -78,8 +78,11 @@ The generator never pays twice for a line:
 1. ElevenLabs text-to-speech: `eleven_multilingual_v2` with the speaker's stability, similarity boost and
    style. Requested as 44.1 kHz MP3 (`POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}`).
 2. ffmpeg trims leading and trailing silence (`silenceremove`, −50 dB).
-3. Two-pass `loudnorm` brings it to **−16 LUFS, −1.0 dBTP**.
-4. It is encoded as **44.1 kHz mono Ogg Vorbis, `-q:a 4`** (about 64 kbps for speech).
+3. It is measured, gained to **−16 LUFS** in one step, and a limiter holds its peaks at −2 dBFS (true peak about
+   −1 dBTP after encoding). `loudnorm`'s linear mode was dropped in 0.10.3: it stops its gain where a peak meets
+   the ceiling, which left short shouted barks 2-9 LU quiet. The pack now spans −17.2 to −15.8 LUFS.
+4. It is encoded as **44.1 kHz mono Ogg Vorbis, `-q:a 2.5`** (about 80 kbps for speech; `-q:a 4` made the pack
+   2.67 MB and `-q:a 3` 2.55 MB, over its 2.5 MB budget).
 5. A `.ogg.import` with `loop=false` is written beside it; Godot fills in the rest on its next import.
 
 The whole pack must stay under **2.5 MB** (the generator fails a run that ends over it, and so does the gate).

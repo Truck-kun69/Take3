@@ -40,6 +40,9 @@ not to a copied text).
 
 ## APK size
 
+0.10.3: 138.41 MB (138,410,476 bytes). The voice pack adds 2.56 MB: 61 clips shipped as Godot's imported
+Ogg Vorbis streams (2.69 MB unpacked).
+
 0.10.1: 135.85 MB (135,845,361 bytes). 0.10.0's texel budget brings the foes' albedo maps to 1024 px; the
 0.10.1 features (Copy report, save transfer, the pinned page buttons) are script only.
 

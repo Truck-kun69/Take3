@@ -2,10 +2,13 @@
 
 importer="oggvorbisstr"
 type="AudioStreamOggVorbis"
+uid="uid://buhhnnpqpvig"
+path="res://.godot/imported/spawn_0.ogg-3ed149c7d9d133031cddb6ce7187634e.oggvorbisstr"
 
 [deps]
 
 source_file="res://audio/voices/tyrant/spawn_0.ogg"
+dest_files=["res://.godot/imported/spawn_0.ogg-3ed149c7d9d133031cddb6ce7187634e.oggvorbisstr"]
 
 [params]
 

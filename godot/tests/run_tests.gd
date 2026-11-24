@@ -44,11 +44,13 @@ func _ready() -> void:
 		_look_tests()
 		_remediation_tests()
 		_voice_tests()
+		_pack_tests()
 		await _alpha10_tests()
 		_ops_tests()
 		await _fit_tests()
 	elif "voice" in args:
 		_voice_tests()
+		_pack_tests()
 	elif "alpha10" in args:
 		await _alpha10_tests()
 	elif "ops" in args:
@@ -2298,6 +2300,35 @@ func _small_buttons(root: Node, label: String) -> Array:
 			if h < UIKit.MIN_TOUCH: out.append("%s: %s (%d)" % [label, (n as Button).text, int(h)])
 		stack.append_array(n.get_children())
 	return out
+
+## 0.10.3: the voice pack is in. Every manifest line has its clip, imported and never looping, and VoiceBank plays
+## each from the pack at the clip's own length (a speaker's chime is now only for a clip that goes missing).
+func _pack_tests() -> void:
+	print("== 0.10.3 voice pack")
+	var vb := _voice_bank()
+	var missing: Array = []
+	var looping: Array = []
+	var not_played: Array = []
+	var total := 0.0
+	for id in vb.entries:
+		var e: Dictionary = vb.entries[id]
+		if not ResourceLoader.exists(String(e.file)):
+			missing.append(id)
+			continue
+		var st := load(String(e.file)) as AudioStreamOggVorbis
+		if st == null or st.loop: looping.append(id)
+		vb.stop_now()
+		vb.step(60.0)                                   # past every cooldown and the gap between lines
+		var r := vb.say(String(e.speaker), String(e.cue), int(e.variant))
+		if not bool(r.played) or not bool(r.using_pack) or st == null or absf(float(r.duration) - st.get_length()) > 0.001:
+			not_played.append("%s (%s)" % [id, r.get("reason", "chime") if not bool(r.get("using_pack", false)) else "length"])
+		else:
+			total += float(r.duration)
+	vb.stop_now()
+	vb.queue_free()
+	ok(missing.is_empty() and looping.is_empty(), "all %d lines have their clip, imported as Ogg Vorbis that never loops%s" % [vb.entries.size(),
+		("  (missing: " + ", ".join(missing.slice(0, 6)) + ")") if not missing.is_empty() else (("  (looping: " + ", ".join(looping) + ")") if not looping.is_empty() else "")])
+	ok(not_played.is_empty(), "each plays from the pack at its own length: %.0f s of speech in all%s" % [total, ("  (" + ", ".join(not_played.slice(0, 6)) + ")") if not not_played.is_empty() else ""])
 
 ## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
 ## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.

@@ -20,7 +20,7 @@ default_voice_id, one of ElevenLabs' stock (premade) voices (through fal a voice
 
 Each line: text-to-speech with its speaker's casting (model_id, stability, similarity_boost, style) ->
 tools/.voice_raw/<key>.mp3, kept so that re-encoding never pays again -> ffmpeg: the silence trimmed at both ends,
-loudness normalised to -16 LUFS / -1.0 dBTP (two-pass loudnorm), 44.1 kHz mono Ogg Vorbis at -q:a 4 ->
+loudness normalised to -16 LUFS / -1.0 dBTP (two-pass loudnorm), 44.1 kHz mono Ogg Vorbis at -q:a 2.5 ->
 godot/audio/voices/<speaker>/<cue>_<variant>.ogg, with a .ogg.import (loop=false) beside it. The game picks the
 clip up on the next build and times the subtitle, the ducking and the intro to its real length.
 tools/voice_cache.json records every paid call under a content key, sha256 of (id, text, voice_id, model_id,
@@ -48,6 +48,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GODOT = os.path.join(ROOT, "godot")
 MANIFEST = os.path.join(GODOT, "data", "voice_manifest.json")
 RAW = os.path.join(ROOT, "tools", ".voice_raw")
+VORBIS_Q = 2.5      # speech: about 70 kbps mono (q4 made the 248 s pack 2.67 MB and q3 2.55 MB, over its 2.5 MB budget)
 CACHE = os.path.join(ROOT, "tools", "voice_cache.json")
 
 HEROES = ("warden", "spark", "ember", "storm")
@@ -404,15 +405,20 @@ def measure(path, pre=""):
     return json.loads(err[err.rindex("{"):err.rindex("}") + 1])
 
 
+LIMIT = 0.79        # the limiter's ceiling, linear (-2 dBFS): the Vorbis encode can overshoot a peak by about 0.5 dB
+
+
 def encode(raw, out):
-    """raw (any format ffmpeg reads) -> the trimmed, loudness-normalised 44.1 kHz mono Vorbis clip at out, + .import."""
+    """raw (any format ffmpeg reads) -> the trimmed, loudness-normalised 44.1 kHz mono Vorbis clip at out, + .import.
+    The whole gain to TARGET_LUFS is applied and a limiter takes the peaks: loudnorm's linear mode stops its gain where
+    a peak meets the ceiling, which left short shouted barks 2-9 LU under the target (0.10.3's first pack)."""
     m = measure(raw, TRIM)
     af = TRIM
-    if m.get("input_i") not in (None, "-inf") and m.get("input_tp") not in (None, "-inf"):
-        af += (f",loudnorm=I={TARGET_LUFS}:TP={TARGET_TP}:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}"
-               f":measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
+    if m.get("input_i") not in (None, "-inf"):
+        gain = TARGET_LUFS - float(m["input_i"])
+        af += f",volume={gain:.2f}dB,alimiter=limit={LIMIT}:attack=1:release=60:level=false:latency=true"
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    _ffmpeg(["-loglevel", "error", "-y", "-i", raw, "-af", af, "-ar", "44100", "-ac", "1", "-c:a", "libvorbis", "-q:a", "4", out])
+    _ffmpeg(["-loglevel", "error", "-y", "-i", raw, "-af", af, "-ar", "44100", "-ac", "1", "-c:a", "libvorbis", "-q:a", str(VORBIS_Q), out])
     write_import(out)
 
 

@@ -41,7 +41,8 @@
    (com.shardfall.riftsurvivors: no Web, no Lite); no web build tools
    (tools/build_web.sh, pack_web.py) and no web renderer override in project.godot; tools/build_android.sh has
    no lite mode and refuses an unsigned CI release; built, its size and the .ctex bytes inside printed, the
-   voice manifest inside it; its versionName is project.godot's config/version (the preset's version/name is empty)
+   voice manifest and every voice clip in the project inside it (each .ogg.import remap and the imported stream it
+   names); its versionName is project.godot's config/version (the preset's version/name is empty)
 """
 import glob
 import io
@@ -239,7 +240,7 @@ def main(build_apk=True):
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
     lines = out.splitlines()
-    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer"):
+    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:
@@ -395,9 +396,15 @@ def main(build_apk=True):
             raw = sum(i.file_size for i in ct)
             print(f"      .ctex inside the APK: {len(ct)} files, {packed / 1e6:.2f} MB as stored ({raw / 1e6:.2f} MB unpacked)")
             names = z.namelist()
-            vo = [n for n in names if "/audio/voices/" in n and not n.endswith(".import")]
-            check(any(n.endswith("data/voice_manifest.json") for n in names) and not any("/tests/" in n for n in names),
-                  f"the APK carries data/voice_manifest.json ({len(vo)} voice clip files) and none of tests/")
+            # a clip ships as its .ogg.import remap and the imported stream it names, never as the .ogg itself
+            shipped = 0
+            for n in names:
+                if re.search(r"/audio/voices/.+\.ogg\.import$", n):
+                    m = re.search(r'path="res://(.+?)"', z.read(n).decode("utf-8", "replace"))
+                    if m and "assets/" + m.group(1) in names: shipped += 1
+            clips = len(glob.glob(os.path.join(GD, "audio", "voices", "*", "*.ogg")))
+            check(any(n.endswith("data/voice_manifest.json") for n in names) and shipped == clips and not any("/tests/" in n for n in names),
+                  f"the APK carries data/voice_manifest.json and {shipped} of the {clips} voice clips (each remap's imported stream), and none of tests/")
         check(ok, f"APK {apk}: " + (f"{os.path.getsize(apk)} bytes = {os.path.getsize(apk) / 1e6:.2f} MB" if os.path.exists(apk) else "missing"))
     print(f"\ngate_check: {len(FAILS)} failed check(s)")
     return 1 if FAILS else 0
