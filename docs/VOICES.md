@@ -147,8 +147,17 @@ can also come up as an ordinary low-life line later in a run.
   - The priorities are: 3 intros, boss lines, an exile's boss reply and death, act openings; 2 low life and
     ultimate; 1 kill streak; 0 cast.
 - **Cooldowns.**
-  - Each cue waits its own `cooldown_s` from its start: cast 7 s, kill streak 10 s, low life 15 s, ultimate 4 s.
+  - Each cue waits its own `cooldown_s` from its start: cast 60 s, kill streak 30 s, low life 15 s, ultimate
+    4 s (cast and kill streak were 7 s and 10 s until 0.10.4).
   - A priority 0–1 bark also waits 2.8 s after the last line ended (or after the current one started).
+  - In a fight, one cast in five tries a bark (`VoiceDirector.cast_chance`); the rules above still decide.
+- **No repeats (0.10.4).** A line of priority 0–2 is not said again within 90 s (`VoiceBank.REPEAT_S`), and an
+  escalation line within 180 s. A random bark picks among its cue's lines not said that recently, and is
+  skipped when all were. Story lines (priority 3: intros, boss lines, act openings, death) always play.
+- **How often, in a real run** (`godot --headless --path godot res://tests/tests.tscn -- voicesim`: a bot plays
+  up to 8 minutes of an act, I to III, with each exile): 2.2–2.6 lines a minute, a voice heard 14–15% of the time, no line
+  repeated within a minute, the longest silence about a minute. Before 0.10.4 it was 7.7–9.0 lines a minute and
+  41–52% of the time, with 43–57 repeats. docs/OPTIMIZATION.md (O5) has the cycles.
 - **Ducking.** While a line plays, the Music bus drops 6 dB and SFX 3 dB, fading in over 0.12 s and back over
   0.25 s.
 - **Stopping.** `VoiceBank.stop_all()` is immediate: every voice stops, the ducking is cancelled and the Music

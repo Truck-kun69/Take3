@@ -121,7 +121,7 @@
    "file": "res://audio/voices/warden/cast_0.ogg",
    "text": "Steel answers, as it has always answered me, without hesitation.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.6
   },
   {
@@ -132,7 +132,7 @@
    "file": "res://audio/voices/warden/cast_1.ogg",
    "text": "Hold fast. These old blades still remember their work.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.2
   },
   {
@@ -143,7 +143,7 @@
    "file": "res://audio/voices/warden/cast_2.ogg",
    "text": "Step closer, then, and bleed for the privilege of it.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.6
   },
   {
@@ -176,7 +176,7 @@
    "file": "res://audio/voices/warden/kill_streak_0.ogg",
    "text": "They fall like summer wheat before the scythe, row on row.",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 5.1
   },
   {
@@ -187,7 +187,7 @@
    "file": "res://audio/voices/warden/kill_streak_1.ogg",
    "text": "Another rank broken. Send me the next one, and quickly.",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 4.6
   },
   {
@@ -254,7 +254,7 @@
    "file": "res://audio/voices/spark/cast_0.ogg",
    "text": "Chill out, would you? Honestly, everyone around here is so tense.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.0
   },
   {
@@ -265,7 +265,7 @@
    "file": "res://audio/voices/spark/cast_1.ogg",
    "text": "Brr! Bet that one really stings, doesn't it, big fella?",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 3.6
   },
   {
@@ -276,7 +276,7 @@
    "file": "res://audio/voices/spark/cast_2.ogg",
    "text": "Off the stone, twice, and straight through all of you!",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 3.6,
    "escalation": "ricochet_2",
    "random": false
@@ -311,7 +311,7 @@
    "file": "res://audio/voices/spark/kill_streak_0.ogg",
    "text": "Ha! Was that the entire army? Seriously, was that really it?",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 4.0
   },
   {
@@ -322,7 +322,7 @@
    "file": "res://audio/voices/spark/kill_streak_1.ogg",
    "text": "Keep them coming, I'm only just starting to warm up!",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 3.6
   },
   {
@@ -388,7 +388,7 @@
    "file": "res://audio/voices/ember/cast_0.ogg",
    "text": "Burn for me, darling, and then pass it on to a friend.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 5.8
   },
   {
@@ -399,7 +399,7 @@
    "file": "res://audio/voices/ember/cast_1.ogg",
    "text": "Catch the fever, little one. Spread it nice and wide.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.8
   },
   {
@@ -410,7 +410,7 @@
    "file": "res://audio/voices/ember/cast_2.ogg",
    "text": "Ash to ash, and every bit of flesh to hungry flame.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 5.3
   },
   {
@@ -443,7 +443,7 @@
    "file": "res://audio/voices/ember/kill_streak_0.ogg",
    "text": "Look how beautifully they smoulder, all of them together now.",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 4.8
   },
   {
@@ -454,7 +454,7 @@
    "file": "res://audio/voices/ember/kill_streak_1.ogg",
    "text": "A dozen candles lit and counting! Burn brighter for me, darlings!",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 5.3,
    "escalation": "burning_12",
    "random": false
@@ -522,7 +522,7 @@
    "file": "res://audio/voices/storm/cast_0.ogg",
    "text": "Observe closely. The sky strikes precisely where I say it will.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.9
   },
   {
@@ -533,7 +533,7 @@
    "file": "res://audio/voices/storm/cast_1.ogg",
    "text": "Precisely as I calculated. Do take note of that, please.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 4.5
   },
   {
@@ -544,7 +544,7 @@
    "file": "res://audio/voices/storm/cast_2.ogg",
    "text": "The water conducts. Every one of you is wired to my storm.",
    "priority": 0,
-   "cooldown_s": 7.0,
+   "cooldown_s": 60.0,
    "duration_fallback_s": 5.3,
    "escalation": "conduct",
    "random": false
@@ -579,7 +579,7 @@
    "file": "res://audio/voices/storm/kill_streak_0.ogg",
    "text": "The hypothesis holds. They break, exactly as I predicted.",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 4.0
   },
   {
@@ -590,7 +590,7 @@
    "file": "res://audio/voices/storm/kill_streak_1.ogg",
    "text": "A most thorough demonstration, if I do say so myself.",
    "priority": 1,
-   "cooldown_s": 10.0,
+   "cooldown_s": 30.0,
    "duration_fallback_s": 4.5
   },
   {

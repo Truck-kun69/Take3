@@ -240,7 +240,7 @@ def main(build_apk=True):
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
     lines = out.splitlines()
-    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack", "== 0.10.4 performance"):
+    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack", "== 0.10.4 performance", "== 0.10.4 voice pacing"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:

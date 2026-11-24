@@ -59,7 +59,7 @@ EXPECTED = {**{h: HERO_CUES for h in HEROES}, "narrator": NARRATOR_CUES, "tyrant
 TOTAL_LINES = sum(sum(c.values()) for c in EXPECTED.values())          # 61
 # intro, boss_spawn and death (and the act openings and the bosses' lines) > ult and low_hp > kill_streak > cast
 PRIORITY = {"cast": 0, "kill_streak": 1, "low_hp": 2, "ult": 2, "boss_spawn": 3, "death": 3, "spawn": 3, "die": 3, "intro": 3}
-COOLDOWN = {"cast": 7.0, "kill_streak": 10.0, "low_hp": 15.0, "ult": 4.0}
+COOLDOWN = {"cast": 60.0, "kill_streak": 30.0, "low_hp": 15.0, "ult": 4.0}   # 0.10.4: casts 7 and streaks 10 made 8 barks a minute
 BARK_WORDS = (3, 12)           # combat barks
 LONG_WORDS = (10, 26)          # the exiles' intros, act openings and the bosses' arrivals
 BEAT_WORDS = (4, 8)            # the narrator's cold-open beats: about 2.5 s each, a 12 s intro

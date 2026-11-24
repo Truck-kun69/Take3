@@ -50,6 +50,7 @@ func _ready() -> void:
 		await _fit_tests()
 		_perf_tests()
 		await _perf_view_tests()
+		_pacing_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -58,6 +59,9 @@ func _ready() -> void:
 	elif "ops" in args:
 		_ops_tests()
 		await _fit_tests()
+	elif "voicesim" in args:
+		_pacing_tests()
+		_voice_sim()
 	elif "perf" in args:
 		_perf_tests()
 		await _perf_view_tests()
@@ -1340,7 +1344,7 @@ func _voice_tests() -> void:
 		for c in ["spawn", "die"]:
 			if vb.variants(b, c) != 1: miss.append("%s/%s" % [b, c])
 	ok(miss.is_empty(), "each exile resolves its 7 cues (12 lines), the narrator 4 intro beats and 5 act openings, both bosses spawn and die%s" % ("" if miss.is_empty() else ": missing " + str(miss)))
-	var rules := {"cast": [0, 7.0], "kill_streak": [1, 10.0], "low_hp": [2, 15.0], "ult": [2, 4.0], "boss_spawn": [3, 0.0], "death": [3, 0.0], "spawn": [3, 0.0], "die": [3, 0.0], "intro": [3, 0.0]}
+	var rules := {"cast": [0, 60.0], "kill_streak": [1, 30.0], "low_hp": [2, 15.0], "ult": [2, 4.0], "boss_spawn": [3, 0.0], "death": [3, 0.0], "spawn": [3, 0.0], "die": [3, 0.0], "intro": [3, 0.0]}
 	var off: Array = []
 	for id in vb.entries:
 		var e: Dictionary = vb.entries[id]
@@ -1387,6 +1391,7 @@ func _voice_tests() -> void:
 	ub.queue_free()
 	# cooldowns: per cue, and a 2.8 s gap after any line before the next priority 0-1 bark
 	var cb := _voice_bank()
+	var ccd := float(cb.line("storm", "cast", 0).cooldown_s)
 	var fired := 0
 	var first_len := 0.0
 	for k in 20:
@@ -1395,9 +1400,12 @@ func _voice_tests() -> void:
 			fired += 1
 			first_len = float(rr.duration)
 		cb.step(0.3)
-	ok(fired == 1, "rapid casts fire once and are held back through the 7 s cooldown (%d fired in 6 s)" % fired)
-	cb.step(maxf(7.0, first_len + VoiceBank.GLOBAL_GAP_S) - 6.0 + 0.05)      # past the cooldown and the 2.8 s gap after the line
-	ok(bool(cb.say("storm", "cast").played), "and fire again once it has passed")
+	ok(fired == 1, "rapid casts fire once and are held back through the %.0f s cooldown (%d fired in 6 s)" % [ccd, fired])
+	cb.step(ccd - 6.0 - 0.5)
+	var early := cb.say("storm", "cast")
+	cb.step(maxf(ccd, first_len + VoiceBank.GLOBAL_GAP_S) - (ccd - 0.5) + 0.05)      # past the cooldown and the 2.8 s gap after the line
+	var again := cb.say("storm", "cast")
+	ok(not bool(early.played) and String(early.reason) == "cooldown" and bool(again.played), "still held 0.5 s before it ends (%s), and fire again once it has passed (another variant: no repeats)" % early.get("reason", ""))
 	cb.queue_free()
 	var gb := _voice_bank()
 	var g0 := gb.say("spark", "cast", 0)
@@ -2583,6 +2591,94 @@ func _sep_check(w: World) -> Array:
 				if sw.sep[i].distance_to(ref[i]) > 1e-3: differ += 1
 				elif ref[i] != Vector2.ZERO: compared += 1
 	return [compared, differ, by_boss]
+
+## 0.10.4 voice pacing (docs/OPTIMIZATION.md O5): a cast bark at most once a minute per exile, a streak bark every 30 s,
+## no line of priority 0-2 again within 90 s (an escalation line within 180 s), story lines (priority 3) always.
+func _pacing_tests() -> void:
+	print("== 0.10.4 voice pacing")
+	var vb := _voice_bank()
+	var cd := float(vb.line("spark", "cast", 0).cooldown_s)
+	# random cast barks, each tried just after the cue's cooldown: no line twice within REPEAT_S
+	var said: Array = []
+	var twice := 0
+	for k in 8:
+		var r := vb.say("spark", "cast")
+		if bool(r.played):
+			for e in said:
+				if e[1] == String(r.id) and vb.now - float(e[0]) < VoiceBank.REPEAT_S: twice += 1
+			said.append([vb.now, String(r.id)])
+		vb.stop_now()
+		vb.step(cd + 1.0)
+	ok(cd >= 60.0 and twice == 0 and said.size() >= 6, "cast barks: a %.0f s cooldown, and in %d plays over %.0f s none repeats within %.0f s" % [cd, said.size(), vb.now, VoiceBank.REPEAT_S])
+	# an escalation line (the Sparkcaller's second ricochet): once, then not again for 2 x REPEAT_S
+	var esc := vb.escalation_variant("spark", "ricochet_2")
+	vb.stop_now()
+	vb.step(VoiceBank.REPEAT_S * 2.0 + 1.0)
+	var e1 := vb.say("spark", "cast", esc)
+	vb.stop_now()
+	vb.step(cd + 1.0)
+	var e2 := vb.say("spark", "cast", esc)
+	vb.stop_now()
+	vb.step(VoiceBank.REPEAT_S * 2.0)
+	var e3 := vb.say("spark", "cast", esc)
+	ok(esc >= 0 and bool(e1.played) and not bool(e2.played) and String(e2.get("reason", "")) == "repeat" and bool(e3.played),
+		"an escalation line plays, is refused as a repeat %.0f s later, and plays again after %.0f s" % [cd + 1.0, VoiceBank.REPEAT_S * 2.0])
+	# story lines are never held back as repeats: an exile's intro twice in a row
+	vb.stop_now()
+	var i1 := vb.say("ember", "intro", 0)
+	vb.stop_now()
+	var i2 := vb.say("ember", "intro", 0)
+	ok(bool(i1.played) and bool(i2.played), "story lines (priority 3) always play: the Emberwitch's intro twice in a row")
+	vb.stop_now()
+	vb.queue_free()
+
+## How often the voices speak in a real run: bot-played campaign acts (8 minutes, the boss at the end) for each
+## exile, with the game's VoiceDirector and VoiceBank on the run's clock. Prints, per run, lines a minute by cue,
+## the share of the time someone is speaking, the same line again within a minute, and the longest silence.
+func _voice_sim() -> void:
+	print("== voice frequency (bot-played acts)")
+	var dt := 1.0 / 60.0
+	for hero in 4:
+		var w := _world({"mode": "campaign", "stage": hero % 3, "hero": hero, "seed": 300 + hero})
+		var vb := _voice_bank()
+		var vd := VoiceDirector.new()
+		vd.manual_clock = true
+		vd.bank = vb
+		add_child(vd)
+		vd.bind(w)
+		var log: Array = []
+		vb.line_started.connect(func(info): log.append([vb.now, String(info.id), String(info.cue), String(info.speaker), float(info.duration)]))
+		var bot := Bot.new(w, 11 + hero)
+		while not w.over and w.t < 480.0:
+			bot.think()
+			w.step(dt)
+			vd.step(dt)
+			vb.step(dt)
+			if not w.whisper_offer.is_empty(): w.accept_bargain(Bot.bargain(w.whisper_offer, hero))
+			while w.pending > 0: w.apply_choice(Bot.pick(w.make_choices(), w))
+		var mins := maxf(0.01, w.t / 60.0)
+		var by := {}
+		var talk := 0.0
+		var again := 0
+		var last_at := {}
+		var gap := 0.0
+		var prev_end := 0.0
+		for e in log:
+			by[e[2]] = int(by.get(e[2], 0)) + 1
+			talk += e[4]
+			if last_at.has(e[1]) and e[0] - float(last_at[e[1]]) < 60.0:
+				again += 1
+				if OS.get_environment("VOICE_SIM_REPEATS") != "": print("    repeat %s after %.0f s" % [e[1], e[0] - float(last_at[e[1]])])
+			last_at[e[1]] = e[0]
+			gap = maxf(gap, e[0] - prev_end)
+			prev_end = e[0] + e[4]
+		gap = maxf(gap, w.t - prev_end)
+		print("  %s, act %d, %.1f min%s: %d lines, %.1f a minute, speaking %.0f%% of the time, %d repeats within a minute, longest silence %.0f s" % [
+			Content.HEROES[hero].name, w.stage + 1, mins, (" (died)" if w.over and not w.won else ""), log.size(), log.size() / mins, 100.0 * talk / maxf(1.0, w.t), again, gap])
+		print("    by cue: " + ", ".join(by.keys().map(func(k): return "%s %.1f/min" % [k, by[k] / mins])))
+		vd.unbind()
+		vd.queue_free()
+		vb.queue_free()
 
 ## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
 ## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.

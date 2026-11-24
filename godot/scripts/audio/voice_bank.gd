@@ -30,6 +30,10 @@ signal line_ended(info: Dictionary)       # id, stopped (cut off or stopped, rat
 const MANIFEST := "res://data/voice_manifest.json"
 const GLOBAL_GAP_S := 2.8
 const GAP_MAX_PRIORITY := 1
+const REPEAT_S := 90.0                   # a line of priority 0-2 is not said again within this (an escalation line,
+                                         # twice this); a random bark with every variant that recent is skipped
+                                         # ("repeat"), never repeated. Story lines (priority 3) always play.
+const REPEAT_MAX_PRIORITY := 2
 const DUCK_MUSIC_DB := -6.0
 const DUCK_SFX_DB := -3.0
 const DUCK_ATTACK_S := 0.12
@@ -54,6 +58,7 @@ var _cur := {}                       # the line speaking: line, start, ends, pla
 var _cool := {}                      # "speaker/cue" -> when it may play again
 var _last_end := -1.0e9
 var _last_variant := {}
+var _said := {}                       # line id -> when it last started (the barks' REPEAT_S)
 var _fades: Array = []               # [player, seconds left, seconds total, from dB]
 var _duck := 0.0
 var _duck_applied := -1.0
@@ -179,6 +184,11 @@ func say(speaker: String, cue: String, variant: int = -1, opts: Dictionary = {})
 	if variant >= 0:
 		if variant >= list.size(): return _no("no variant %d of %s" % [variant, key])
 		ln = list[variant]
+		if int(ln.priority) <= REPEAT_MAX_PRIORITY and _said_lately(ln): return _no("repeat")
+	elif int(list[0].priority) <= GAP_MAX_PRIORITY:     # a bark: only lines not said lately
+		var fresh := list.filter(func(e): return bool(e.get("random", true)) and not _said_lately(e))
+		if fresh.is_empty(): return _no("repeat")
+		ln = _pick(key, fresh)
 	else:
 		ln = _pick(key, list)
 	var pr := int(ln.priority)
@@ -209,6 +219,7 @@ func say(speaker: String, cue: String, variant: int = -1, opts: Dictionary = {})
 	_cur = {"line": ln, "start": now, "ends": now + dur, "player": p, "using_pack": using_pack}
 	_cool[key] = now + float(ln.cooldown_s)
 	_last_variant[key] = int(ln.variant)
+	_said[String(ln.id)] = now
 	var prof: Dictionary = casting.get(speaker, {})
 	line_started.emit({"id": String(ln.id), "speaker": speaker, "name": String(opts.get("name", "")) if String(opts.get("name", "")) != "" else String(prof.get("name", speaker.capitalize())),
 		"color": Color(String(prof.get("color", "e9e1cf"))), "cue": cue, "text": String(ln.text), "duration": dur, "using_pack": using_pack,
@@ -327,6 +338,11 @@ func _free_player() -> AudioStreamPlayer:
 		if _fades[i][0] == q: _fades.remove_at(i)
 	q.stop()
 	return q
+
+## Whether a line started within its repeat window: REPEAT_S, or twice that for an escalation line ("random": false).
+func _said_lately(e: Dictionary) -> bool:
+	var win := REPEAT_S * (2.0 if not bool(e.get("random", true)) else 1.0)
+	return now - float(_said.get(String(e.id), -1.0e9)) < win
 
 func _pick(key: String, list: Array) -> Dictionary:
 	var open := list.filter(func(e): return bool(e.get("random", true)))     # escalation-only lines wait for their moment

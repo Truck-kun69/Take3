@@ -18,7 +18,7 @@ const FRENZY_REARM := 8          # ... and again once fewer than this burn
 const REPLY_GAP_S := 0.4
 var bank: VoiceBank
 var manual_clock := false
-var cast_chance := 0.3          # how often a cast in a fight tries a bark (the bank's 7 s cooldown and 2.8 s gap still apply)
+var cast_chance := 0.2          # how often a cast in a fight tries a bark (the bank's 60 s cooldown, 2.8 s gap and 90 s no-repeat still apply)
 var cast_min_foes := 8          # "in a fight": at least this many foes alive
 var w: World
 var hero := ""
