@@ -18,13 +18,13 @@ table below), so no voice IDs are needed; set any `EL_VOICE_*` variable to cast 
 | Variable | What |
 |---|---|
 | `ELEVENLABS_API_KEY` | your ElevenLabs API key (sent as the `xi-api-key` header) |
-| `EL_VOICE_WARDEN` | optional: a voice ID for the Warden (default: stock Clyde) |
-| `EL_VOICE_SPARK` | optional: the Sparkcaller (default: stock Freya) |
+| `EL_VOICE_WARDEN` | optional: a voice ID for the Warden (default: stock Brian) |
+| `EL_VOICE_SPARK` | optional: the Sparkcaller (default: stock Jessica) |
 | `EL_VOICE_EMBER` | optional: the Emberwitch (default: stock Charlotte) |
 | `EL_VOICE_STORM` | optional: the Stormwright (default: stock Daniel) |
 | `EL_VOICE_NARRATOR` | optional: the narrator (default: stock George) |
 | `EL_VOICE_TYRANT` | optional: the act bosses and the Rift Guardian (default: stock Callum) |
-| `EL_VOICE_HERALD` | optional: the Shard Herald (default: stock Emily) |
+| `EL_VOICE_HERALD` | optional: the Shard Herald (default: stock Alice) |
 | `FAL_KEY` | only with `--provider fal` (fal's ElevenLabs endpoint; there a voice name such as "Aria" also works) |
 
 In a Claude cloud session, add the key as a network secret for `api.elevenlabs.io` (header `xi-api-key`)
@@ -50,7 +50,11 @@ estimates the cost and lists which clips are present. It makes no network calls.
 
 Other modes:
 - `--speaker ember` generates one speaker only (`--all` is the default).
-- `--provider fal` goes through fal.ai instead of ElevenLabs' own API.
+- `--provider fal` goes through fal.ai instead of ElevenLabs' own API, with no ElevenLabs account. fal takes a voice
+  name, not an ID: each speaker's `default_voice_name`, or its `EL_VOICE_*` variable when set. The generator stops
+  before any paid call if a name is not one fal lists (`FAL_VOICES`, from fal's OpenAPI schema). The Warden,
+  Sparkcaller and Herald were recast in 0.10.2 from Clyde, Freya and Emily (older ElevenLabs voices fal does not
+  list) to Brian, Jessica and Alice, the closest listed voices to their directions.
 - `--force` regenerates lines that haven't changed (and pays again).
 - `--reencode` rebuilds the `.ogg` files from the kept downloads (free).
 - `--selftest` runs the ffmpeg chain on a synthetic clip (free).
@@ -59,8 +63,8 @@ Other modes:
 
 The pack is 4,064 characters (the manifest must stay within 4,000-5,500). At $0.10 per 1,000 characters (fal's
 ElevenLabs Multilingual v2 price, and ElevenLabs' usage-based API rate; some of their pages show $0.08), it
-costs about **$0.41**. On an ElevenLabs subscription it spends 4,064 credits. One unconfirmed listing says fal
-bills each request as at least 1,000 characters; if so, the 61 requests would cost about $6.10.
+costs about **$0.41**. On an ElevenLabs subscription it spends 4,064 credits. fal's model page states "$0.1 per
+1000 character" and no per-request minimum (checked Nov 2026).
 
 The generator never pays twice for a line:
 - `tools/voice_cache.json` records every call under a content key: sha256 of the line's id, text, voice ID,
@@ -84,13 +88,13 @@ The whole pack must stay under **2.5 MB** (the generator fails a run that ends o
 
 | Speaker | Voice direction | Default voice | Variable | Stability | Similarity | Style | Bus |
 |---|---|---|---|---|---|---|---|
-| Warden | stoic, gravelly, oath-bound vanguard baritone | Clyde `2EiwWnXFnvU5JabPnv8n` | `EL_VOICE_WARDEN` | 0.68 | 0.78 | 0.25 | VoiceHero |
-| Sparkcaller | fast, bright, irreverent arcane skirmisher | Freya `jsCqWAovK2LkecY7zXl4` | `EL_VOICE_SPARK` | 0.38 | 0.74 | 0.65 | VoiceHero |
+| Warden | stoic, gravelly, oath-bound vanguard baritone | Brian `nPczCjzI2devNBz1zQrb` | `EL_VOICE_WARDEN` | 0.68 | 0.78 | 0.25 | VoiceHero |
+| Sparkcaller | fast, bright, irreverent arcane skirmisher | Jessica `cgSgspJ2msm6clMCkdW9` | `EL_VOICE_SPARK` | 0.38 | 0.74 | 0.65 | VoiceHero |
 | Emberwitch | low, smoky, feverish contagion pyromancer | Charlotte `XB0fDUnXU5powFXDhCwa` | `EL_VOICE_EMBER` | 0.33 | 0.82 | 0.75 | VoiceHero |
 | Stormwright | cold, commanding, formal tempest scholar | Daniel `onwK4e9ZLuTAKqWW03F9` | `EL_VOICE_STORM` | 0.72 | 0.80 | 0.35 | VoiceHero |
 | Narrator | weathered dark-fantasy chronicler | George `JBFqnCBsd6RMkjVDRZzb` | `EL_VOICE_NARRATOR` | 0.78 | 0.76 | 0.18 | VoiceNarrator |
 | Tyrant (act bosses, Rift Guardian) | menacing warlord | Callum `N2lVS1w4EtoT3dr4eOWO` | `EL_VOICE_TYRANT` | 0.50 | 0.85 | 0.55 | VoiceBoss |
-| The Shard Herald | cold crystalline entity | Emily `LcfcDJNUP1GQjkzn1xUU` | `EL_VOICE_HERALD` | 0.62 | 0.70 | 0.45 | VoiceBoss |
+| The Shard Herald | cold crystalline entity | Alice `Xb7hH8MSUJpSbSDYk0k2` | `EL_VOICE_HERALD` | 0.62 | 0.70 | 0.45 | VoiceBoss |
 
 All use `eleven_multilingual_v2`. No two speakers share a stability, similarity boost or style value, and no
 two share a default voice; the dry run and the gate check both. The boss bus pitches its voices down to 0.90

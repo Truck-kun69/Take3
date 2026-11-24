@@ -220,6 +220,12 @@ and the fixes:
 The unit group "0.10.1" checks the same at 2340x1080 and 1080x2340: every button named is inside the screen
 and inside every scroll area around it (`_fit_tests`).
 
+0.10.2: the pause menu puts Build & Stats, Gear & Crafting and Settings on one row (Settings sat alone on a
+second). The Shard Web places each notable's and keystone's name at the first spot that overlaps no other name
+(`WebView.label_layout`: above or below a node on the side arms, right or left on the upright ones), so on each
+side arm one name goes below; it pins Take, Reset and Back, and its graph takes the height left above them.
+The tests check every name at six view sizes and the whole graph on screen in both orientations.
+
 ## Optimisation pass (render benchmark)
 
 `tests/render_bench.tscn` plays a real run with the full 3D view at 150, 300 and 500 foes and reports

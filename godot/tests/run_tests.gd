@@ -1736,9 +1736,17 @@ func _fit_tests() -> void:
 	mn.screens._sel_item = leg if leg >= 0 else 2
 	mn.screens.show_stash(false)
 	var stash_r := await _off_screen(mn.screens, stash_want)
+	var pause_want := ["Resume", "Build & Stats", "Gear & Crafting", "Settings", "Restart Run", "Main Menu"]
+	mn.screens.show_pause(w)
+	var pause_r := await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear & Crafting", "Settings"])
+	mn.screens._sel_passive = "a6"
+	mn.screens.show_web()
+	var web_want := ["Not yet reachable", "Reset web  (refund all)", "Back"]      # a6 from a fresh profile: not reachable yet
+	var web_r := await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
 	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again and Return to menu on screen%s" % [vs.x, vs.y, end_r])
 	ok(crash_r == "" and opt_r == "" and bench_r == "", "and so do the crash report's Copy report and Continue, Options' Back and the benchmark's buttons%s%s%s" % [crash_r, opt_r, bench_r])
 	ok(stash_r == "", "the stash keeps the selected item's %s on screen with Back%s" % [" / ".join(stash_want.slice(0, stash_want.size())), stash_r])
+	ok(pause_r == "" and web_r == "", "the pause menu: Build & Stats, Gear & Crafting and Settings on one row, every button on screen; the Shard Web's whole graph, Take, Reset and Back on screen%s%s" % [pause_r, web_r])
 	# held upright: the S22's 1080x2340, which main._ui_scale answers by scaling the UI up 1.9x
 	win.size = Vector2i(1080, 2340)
 	await get_tree().process_frame
@@ -1750,11 +1758,51 @@ func _fit_tests() -> void:
 		if String(l.text) == "THE LAST SESSION ENDED UNEXPECTEDLY": title_lines = (l as Label).get_line_count()
 	mn.screens.show_stash(false)
 	up_r += await _off_screen(mn.screens, stash_want)
+	mn.screens.show_pause(w)
+	up_r += await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear & Crafting", "Settings"])
+	mn.screens.show_web()
+	up_r += await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
 	win.size = size0
 	await get_tree().process_frame
-	ok(pv.x < 700.0 and up_r == "" and title_lines >= 2, "held upright (%dx%d UI), the crash report's title wraps (%d lines) and its buttons, and the stash's, stay on screen%s" % [pv.x, pv.y, title_lines, up_r])
+	ok(pv.x < 700.0 and up_r == "" and title_lines >= 2, "held upright (%dx%d UI), the crash report's title wraps (%d lines) and its buttons, the stash's, the pause menu's and the Shard Web's stay on screen%s" % [pv.x, pv.y, title_lines, up_r])
+	# the Shard Web's names: none on another, all inside the view, at the sizes its page gives it
+	var wv := Screens.WebView.new()
+	var web_bad: Array = []
+	var named := 0
+	for sz in [Vector2(560, 420), Vector2(600, 420), Vector2(700, 310), Vector2(830, 310), Vector2(830, 390), Vector2(1000, 480)]:
+		wv.size = sz
+		var lay: Dictionary = wv.label_layout()
+		named = lay.size()
+		var ids: Array = lay.keys()
+		for i in ids.size():
+			var a: Rect2 = lay[ids[i]]
+			if not Rect2(Vector2.ZERO, sz).encloses(a): web_bad.append("%s outside at %dx%d" % [ids[i], sz.x, sz.y])
+			for j in range(i + 1, ids.size()):
+				if a.intersects(lay[ids[j]]): web_bad.append("%s on %s at %dx%d" % [ids[i], ids[j], sz.x, sz.y])
+	wv.free()
+	ok(named == 8 and web_bad.is_empty(), "the Shard Web's 8 notable and keystone names never overlap and stay inside the view%s" % (("  (" + "; ".join(web_bad) + ")") if not web_bad.is_empty() else ""))
 	mn.queue_free()
 	sv.data = keep
+
+## "" when the Shard Web's graph is drawn whole: inside the screen and every scroll area around it.
+func _graph_shown(root: Control) -> String:
+	for g in root.find_children("*", "Control", true, false):
+		if not (g is Screens.WebView): continue
+		var r := (g as Control).get_global_rect()
+		var n := g.get_parent()
+		while n != null:
+			if n is ScrollContainer and not (n as Control).get_global_rect().grow(0.5).encloses(r):
+				return "  (the web's graph %s runs past its scroll area %s)" % [str(r), str((n as Control).get_global_rect())]
+			n = n.get_parent()
+		return "" if root.get_viewport_rect().grow(0.5).encloses(r) else "  (the web's graph is off the screen)"
+	return "  (no Shard Web graph)"
+
+## "" when the buttons named share one row (the same top edge); else where each one is.
+func _one_row(root: Control, labels: Array) -> String:
+	var ys := {}
+	for b in root.find_children("*", "Button", true, false):
+		if labels.has(String(b.text)) and (b as Control).is_visible_in_tree(): ys[String(b.text)] = roundi((b as Control).global_position.y)
+	return "" if ys.size() == labels.size() and ys.values().all(func(y): return y == ys.values()[0]) else "  (not one row: %s)" % str(ys)
 
 ## "" when every button named is visible, inside the screen and inside every scroll area around it; else what is not.
 func _off_screen(root: Control, labels: Array) -> String:

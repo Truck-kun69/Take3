@@ -108,6 +108,16 @@ def voice_id(cast_entry):
     return os.environ.get(str(cast_entry.get("voice_id_env", ""))) or str(cast_entry.get("default_voice_id", ""))
 
 
+# the voices fal's fal-ai/elevenlabs/tts/multilingual-v2 lists for its `voice` input (a name; its OpenAPI schema, Nov 2026)
+FAL_VOICES = {"Aria", "Roger", "Sarah", "Laura", "Charlie", "George", "Callum", "River", "Liam", "Charlotte", "Alice", "Matilda",
+              "Will", "Jessica", "Eric", "Chris", "Brian", "Daniel", "Lily", "Bill", "Rachel"}
+
+
+def voice_name(cast_entry):
+    """What fal is sent for a speaker: its env var when set (fal documents names only), else the casting's stock voice name."""
+    return os.environ.get(str(cast_entry.get("voice_id_env", ""))) or str(cast_entry.get("default_voice_name", ""))
+
+
 def words(text):
     return len(re.findall(r"[A-Za-z0-9']+", text))
 
@@ -284,7 +294,7 @@ def dry_run(man):
           f"intros, acts and boss arrivals {LONG_WORDS[0]}-{LONG_WORDS[1]}")
     print(f"estimated cost: ${chars / 1000 * PRICE_PER_1K['elevenlabs']:.2f} on ElevenLabs' API (${PRICE_PER_1K['elevenlabs']:.2f} per 1,000 "
           f"characters; a subscription spends {chars} credits), ${chars / 1000 * PRICE_PER_1K['fal']:.2f} through fal "
-          f"(${len(lines) * PRICE_PER_1K['fal']:.2f} if fal bills each request as at least 1,000 characters)")
+          f"(\"$0.1 per 1000 character\", no per-request minimum stated)")
     for sp, c in cast.items():
         print(f"  {sp:9s} {c.get('voice_id_env', '?'):18s} {c.get('model_id', '?')}  stability {c.get('stability')}  similarity {c.get('similarity_boost')}  "
               f"style {c.get('style')}  -> {c.get('bus')}  (voice: {'env ' + str(c.get('voice_id_env')) if os.environ.get(str(c.get('voice_id_env'))) else 'stock ' + str(c.get('default_voice_name', c.get('default_voice_id')))})")
@@ -481,7 +491,12 @@ def generate(man, provider, speaker, force, max_chars, reencode_only):
     calls = cache.setdefault("calls", {})
     voice = {}
     if not reencode_only:
-        voice = {sp: voice_id(c) for sp, c in cast.items()}
+        voice = {sp: (voice_name(c) if provider == "fal" else voice_id(c)) for sp, c in cast.items()}
+        if provider == "fal":                               # refused here, before any paid call
+            unknown = sorted(f"{sp} ({voice[sp]})" for sp in {l["speaker"] for l in lines} if voice[sp] not in FAL_VOICES)
+            if unknown:
+                print("ERROR fal lists no voice for " + ", ".join(unknown) + f"; its voices: {', '.join(sorted(FAL_VOICES))}")
+                return 1
         for sp in sorted({l["speaker"] for l in lines}):
             c = cast[sp]
             src = f"${c['voice_id_env']}" if os.environ.get(c["voice_id_env"]) else f"the stock voice {c.get('default_voice_name', '')} ({c['default_voice_id']})"

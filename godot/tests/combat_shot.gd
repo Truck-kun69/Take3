@@ -2,7 +2,8 @@ extends Node
 ## The release gate's combat render smoke (tools/gate_check.py, when Xvfb and a Vulkan driver are present):
 ## a real run through main.tscn on the Mobile renderer, the Emberwitch's contagion burning through a pack,
 ## one frame saved for the gate to measure (central playfield contrast and brightness).
-##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/combat_shot.tscn -- <out.png> [hero] [stage]
+##   xvfb-run -a godot --path godot --rendering-method mobile --resolution 1280x720 res://tests/combat_shot.tscn -- <out.png> [hero] [stage] [store]
+## "store": a Play Store screenshot, the hero kept alive by invulnerability so the life globe shows their own life.
 ## Prints "SMOKE foes=<n> burning=<n> hero=<id> stage=<i>" before it quits.
 var main: Node
 var out := "user://combat.png"
@@ -10,12 +11,14 @@ var hero := 2
 var stage := 0
 var t := 0.0
 var phase := 0
+var store := false
 
 func _ready() -> void:
 	var a := OS.get_cmdline_user_args()
 	if a.size() > 0: out = a[0]
 	if a.size() > 1: hero = int(a[1])
 	if a.size() > 2: stage = int(a[2])
+	if a.size() > 3: store = a[3] == "store"
 	var sv := get_node("/root/Save")
 	sv.path = "user://combat_shot_profile.json"
 	sv.data = sv.defaults()
@@ -34,8 +37,11 @@ func _process(dt: float) -> void:
 		t = 0.0
 		main.start({"mode": "campaign", "stage": stage})
 		var w: World = main.world
-		w.stats.set_source("smoke", [["max_hp", "add", 1e6]])
-		w.hp = 1e6
+		if store:
+			w.stats.set_source("smoke", [["invuln", "add", 1.0]])
+		else:
+			w.stats.set_source("smoke", [["max_hp", "add", 1e6]])
+			w.hp = 1e6
 		w.need = 1e12                                    # no level-up screen over the fight
 	elif phase == 1:
 		var w: World = main.world

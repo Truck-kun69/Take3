@@ -644,7 +644,8 @@ func show_web() -> void:
 	var view := WebView.new()
 	view.taken = taken
 	view.selected = _sel_passive
-	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(700, mini(480, int(get_viewport_rect().size.y) - 250))
+	# held sideways the page is 720 units: the graph gets what the title, the subtitle band and the pinned row leave
+	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(700, clampi(int(get_viewport_rect().size.y) - 410, 300, 480))
 	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	view.picked.connect(func(id: String): _sel_passive = id; show_web())
 	body.add_child(view)
@@ -679,15 +680,22 @@ func show_web() -> void:
 			Sfx.play("craft")
 		show_web(), 54)
 	take.disabled = not can
-	side.add_child(take)
 	var reset := UIKit.button("Reset web  (refund all)", func():
 		Save.data.echoes = int(Save.data.echoes) + Save.data.passives.size() - 1
 		Save.data.passives = ["start"]
 		Save.mark_dirty()
 		show_web(), 48)
 	reset.disabled = taken.size() <= 1
-	side.add_child(reset)
-	side.add_child(UIKit.button("Back", func(): act.emit("upgrades", null), 48))
+	var back := UIKit.button("Back", func(): act.emit("upgrades", null), 48)
+	# pinned, so held sideways the web keeps its height: one row; upright, Take over Reset and Back
+	var ft := UIKit.foot(v)
+	for b in [take, reset, back]: b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var fr := _grid(2 if portrait else 3, 10)
+	if portrait: ft.add_child(take)
+	else: fr.add_child(take)
+	fr.add_child(reset)
+	fr.add_child(back)
+	ft.add_child(fr)
 
 ## Codex & Story: the acts (Story: what each one is, its boss, and the Rift Echoes found in it), the exiles'
 ## bios, then the bestiary, lore pages, extracted powers, records and the arsenal. From the main menu (back:
@@ -1282,7 +1290,7 @@ func show_pause(w: World) -> void:
 	page = "pause"
 	_title(v, "Paused", "%s - %s" % [Content.HEROES[w.hero].name, (Story.act(w.stage).title if w.mode == "campaign" else w.mode.capitalize())])
 	v.add_child(UIKit.button("Resume", func(): act.emit("resume", null)))
-	var row := _grid(2, 8)
+	var row := _grid(3, 8)                           # the three pages on one row, Restart and Main Menu under them
 	for e in [["Build & Stats", func(): show_build(w)], ["Gear & Crafting", func(): show_stash(true)], ["Settings", func(): show_options("resume_pause")]]:
 		var b := UIKit.button(e[0], e[1], 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1542,7 +1550,7 @@ class WebView extends Control:
 		for id in Content.PASSIVES:
 			var P: Dictionary = Content.PASSIVES[id]
 			var p := _pos(id)
-			var r := {"start": 15.0, "minor": 9.0, "notable": 15.0, "keystone": 20.0}[P.kind] as float
+			var r := _radius(String(P.kind))
 			var col := branch_col(id)
 			var own := taken.has(id)
 			var can := Content.passive_can_take(id, taken)
@@ -1560,14 +1568,50 @@ class WebView extends Control:
 				draw_arc(p, r + 5.0 + sin(t * 4.0) * 1.5, 0, TAU, 32, Color(col, 0.7), 1.5, true)
 			if id == selected:
 				draw_arc(p, r + 8.0, 0, TAU, 40, Color.WHITE, 2.0, true)
-			if P.kind == "notable" or P.kind == "keystone":
-				var nm := String(P.name)
-				var fs := 13
-				var tw := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-				var horizontal := absf(float(P.y)) < 0.05             # side branches: label above, clear of the next node
-				var tp := p + (Vector2(-tw * 0.5, -r - 9.0) if horizontal else Vector2(r + 10.0, 5.0))      # vertical branches: label to the right
-				draw_string_outline(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.9))
-				draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col.lightened(0.3) if own else Color(0.7, 0.66, 0.6))
+		var lay := label_layout()
+		for id in lay:
+			var nm := String(Content.PASSIVES[id].name)
+			var tp: Vector2 = (lay[id] as Rect2).position + Vector2(0, font.get_ascent(LABEL_FS))
+			draw_string_outline(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS, 4, Color(0, 0, 0, 0.9))
+			draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS, branch_col(id).lightened(0.3) if taken.has(id) else Color(0.7, 0.66, 0.6))
+
+	const LABEL_FS := 13
+	static func _radius(kind: String) -> float:
+		return {"start": 15.0, "minor": 9.0, "notable": 15.0, "keystone": 20.0}.get(kind, 9.0)
+
+	## Where each notable's and keystone's name goes (id -> its rectangle): above or below a node on the side arms,
+	## right or left of one on the upright arms, the first spot that overlaps no name placed before it, moved inside
+	## the view. On the side arms a notable and its keystone sit closer than their names are wide, so one of the two
+	## goes below.
+	func label_layout() -> Dictionary:
+		if font == null: font = UIKit.font("display")
+		var out := {}
+		var placed: Array = []
+		var bounds := Rect2(Vector2(2, 2), size - Vector2(4, 4))
+		for id in Content.PASSIVES:
+			var P: Dictionary = Content.PASSIVES[id]
+			if P.kind != "notable" and P.kind != "keystone": continue
+			var ts := font.get_string_size(String(P.name), HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS)
+			var p := _pos(id)
+			var r := _radius(String(P.kind))
+			var above := Rect2(p + Vector2(-ts.x * 0.5, -r - 9.0 - ts.y), ts)
+			var below := Rect2(p + Vector2(-ts.x * 0.5, r + 9.0), ts)
+			var right := Rect2(p + Vector2(r + 10.0, -ts.y * 0.5), ts)
+			var left := Rect2(p + Vector2(-r - 10.0 - ts.x, -ts.y * 0.5), ts)
+			var tries := [above, below, right, left] if absf(float(P.y)) < 0.05 else [right, left, above, below]
+			var pick := _inside(tries[0], bounds)
+			for c in tries:
+				var cc := _inside(c, bounds)
+				if placed.all(func(q): return not (q as Rect2).intersects(cc)):
+					pick = cc
+					break
+			placed.append(pick)
+			out[id] = pick
+		return out
+
+	static func _inside(r: Rect2, b: Rect2) -> Rect2:
+		return Rect2(Vector2(clampf(r.position.x, b.position.x, maxf(b.position.x, b.end.x - r.size.x)),
+			clampf(r.position.y, b.position.y, maxf(b.position.y, b.end.y - r.size.y))), r.size)
 	func _gui_input(ev: InputEvent) -> void:
 		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
 			var best := ""
