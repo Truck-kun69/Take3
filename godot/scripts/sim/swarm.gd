@@ -367,34 +367,103 @@ func step_move(dt: float, target: Vector2, shots_out: Array, slow_mul: float, te
 		kb[i] *= decay
 
 ## CPU separation (fallback for devices without compute): each foe is pushed out of overlapping
-## neighbours found through the spatial grid.
+## neighbours.
 ## Staggered: only foes with i % 2 == parity are solved each frame; the others keep last frame's
 ## push. Separation is a soft force, so 30 Hz is visually identical and halves the cost.
 ## Foes outside `vis_r` of `center` are not solved at all (cycle 3): nobody sees them overlap.
-func cpu_separation(grid: SpatialGrid, parity: int = -1, center: Vector2 = Vector2.ZERO, vis_r: float = INF) -> void:
+## 0.10.4: its own finer grid (SEP_CELL, rebuilt here each call) instead of the world's 64-unit one. A foe's
+## neighbours are found in about half the area, so far fewer candidates are tested in a packed crowd; the
+## grid walk is inlined and each candidate gets one distance test. `grid` is no longer read (kept for callers).
+const SEP_CELL := 32.0
+const SEP_INV := 1.0 / SEP_CELL
+const SEP_TABLE := 4096
+const SEP_SMALL_R := 18.0                 # the largest swarm foe (Shardhulk); bigger bodies (bosses) push in their own pass
+var _sep_head := PackedInt32Array()
+var _sep_next := PackedInt32Array()
+var _sep_seen := PackedInt32Array()
+var _sep_q := 0
+
+func cpu_separation(_grid: SpatialGrid = null, parity: int = -1, center: Vector2 = Vector2.ZERO, vis_r: float = INF) -> void:
+	if _sep_head.size() != SEP_TABLE:
+		_sep_head.resize(SEP_TABLE)
+		_sep_next.resize(CAP)
+		_sep_seen.resize(CAP)
+		_sep_seen.fill(0)
+	_sep_head.fill(-1)
+	for i in n:                                   # the fine grid: buckets as singly linked lists, as SpatialGrid's
+		var p0 := pos[i]
+		var b := ((floori(p0.x * SEP_INV) * 73856093) ^ (floori(p0.y * SEP_INV) * 19349663)) & (SEP_TABLE - 1)
+		_sep_next[i] = _sep_head[b]
+		_sep_head[b] = i
 	var start := 0 if parity < 0 else parity
 	var stride := 1 if parity < 0 else 2
 	var vr2 := vis_r * vis_r
+	var q := _sep_q
+	# locals, not members, inside the loop (a member read costs more in GDScript); `seen` is copied on its first
+	# write, which is fine: q only grows, so stale stamps never match
+	var P := pos
+	var R := rad
+	var head := _sep_head
+	var nxt := _sep_next
+	var seen := _sep_seen
+	var out := sep
+	var big := PackedInt32Array()
+	for i in n:
+		if R[i] > SEP_SMALL_R: big.append(i)
 	for i in range(start, n, stride):
-		var p := pos[i]
+		var p := P[i]
 		if p.distance_squared_to(center) > vr2:
-			sep[i] = Vector2.ZERO
+			out[i] = Vector2.ZERO
 			continue
-		var r := rad[i]
+		var r := R[i]
+		var reach := r + SEP_SMALL_R              # every small neighbour that can overlap is within this
+		var x0 := floori((p.x - reach) * SEP_INV)
+		var x1 := floori((p.x + reach) * SEP_INV)
+		var y0 := floori((p.y - reach) * SEP_INV)
+		var y1 := floori((p.y + reach) * SEP_INV)
+		q += 1
 		var push_v := Vector2.ZERO
-		var c := grid.query(p, r * 1.6, self)
-		var res := grid.results
-		for q in c:
-			var j := res[q]
-			if j == i:
-				continue
-			var dv := p - pos[j]
-			var dd := dv.length_squared()
-			var rr := r + rad[j]
-			if dd < rr * rr and dd > 0.0001:
-				var dl := sqrt(dd)
-				push_v += dv / dl * (rr - dl)
-		sep[i] = push_v * 6.0
+		for cx in range(x0, x1 + 1):
+			for cy in range(y0, y1 + 1):
+				var j := head[((cx * 73856093) ^ (cy * 19349663)) & (SEP_TABLE - 1)]
+				while j >= 0:
+					if seen[j] != q:
+						seen[j] = q
+						var pj := P[j]
+						var dd := p.distance_squared_to(pj)      # the built-in first: most candidates stop here
+						var rj := R[j]
+						var rr := r + rj
+						if dd < rr * rr and dd > 0.0001 and rj <= SEP_SMALL_R:   # (j == i has dd == 0; big bodies push below)
+							var dl := sqrt(dd)
+							push_v += (p - pj) / dl * (rr - dl)
+					j = nxt[j]
+		out[i] = push_v * 6.0
+	# a big body pushes the solved foes it overlaps: their cell range above only reached small neighbours
+	for b in big:
+		var pb := P[b]
+		var rb := R[b]
+		var reach := rb + SEP_SMALL_R
+		var x0 := floori((pb.x - reach) * SEP_INV)
+		var x1 := floori((pb.x + reach) * SEP_INV)
+		var y0 := floori((pb.y - reach) * SEP_INV)
+		var y1 := floori((pb.y + reach) * SEP_INV)
+		q += 1
+		for cx in range(x0, x1 + 1):
+			for cy in range(y0, y1 + 1):
+				var j := head[((cx * 73856093) ^ (cy * 19349663)) & (SEP_TABLE - 1)]
+				while j >= 0:
+					if seen[j] != q:
+						seen[j] = q
+						if R[j] <= SEP_SMALL_R and (stride == 1 or j % 2 == start) and P[j].distance_squared_to(center) <= vr2:
+							var pj := P[j]
+							var dd := pj.distance_squared_to(pb)
+							var rr := R[j] + rb
+							if dd < rr * rr and dd > 0.0001:
+								var dl := sqrt(dd)
+								out[j] += (pj - pb) / dl * (rr - dl) * 6.0
+					j = nxt[j]
+	sep = out
+	_sep_q = q
 
 ## GPU separation result, mapped by uid (the swarm may have been reordered since dispatch).
 func apply_sep(out: PackedFloat32Array, uids: PackedInt32Array, count: int) -> void:

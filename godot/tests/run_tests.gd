@@ -48,6 +48,7 @@ func _ready() -> void:
 		await _alpha10_tests()
 		_ops_tests()
 		await _fit_tests()
+		_perf_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -56,6 +57,8 @@ func _ready() -> void:
 	elif "ops" in args:
 		_ops_tests()
 		await _fit_tests()
+	elif "perf" in args:
+		_perf_tests()
 	if "voice_dropin" in args: _voice_dropin_tests()
 	if "sim" in args: _sims()
 	if "bench" in args: _bench()
@@ -2330,6 +2333,129 @@ func _pack_tests() -> void:
 		("  (missing: " + ", ".join(missing.slice(0, 6)) + ")") if not missing.is_empty() else (("  (looping: " + ", ".join(looping) + ")") if not looping.is_empty() else "")])
 	ok(not_played.is_empty(), "each plays from the pack at its own length: %.0f s of speech in all%s" % [total, ("  (" + ", ".join(not_played.slice(0, 6)) + ")") if not not_played.is_empty() else ""])
 
+## 0.10.4 performance: each optimised hot loop is checked against the plain definition of what it computes.
+func _perf_tests() -> void:
+	print("== 0.10.4 performance")
+	var w := _world({"mode": "rift", "hero": 3, "gr": 1, "seed": 5})
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	while w.sw.n < 400:                               # a packed crowd: about 13 foes to every 64-unit square
+		w.spawn_foe(Content.E.GRUNT + w.sw.n % 4, w.pp + Vector2(rng.randf_range(-200, 200), rng.randf_range(-150, 150)), 0, 0, 50.0)
+	var a := _sep_check(w)
+	# two boss-sized bodies in the crowd: their pushes come from separation's own pass for big bodies
+	for k in 2:
+		w.sw.add(Content.E.GRUNT, w.pp + Vector2(60.0 - 120.0 * k, 20.0), 1000.0, 0.0, [36.0, 44.0][k], 0.0, 0.0, Swarm.F_BOSS, 0)
+	var b := _sep_check(w)
+	ok(a[1] == 0 and b[1] == 0 and a[0] > 500 and b[2] > 10, "separation on its own fine grid matches the all-pairs definition for every swarm foe: %d pushes, then %d with two bosses in the crowd (%d of them by a boss); %d and %d differ by over 1e-3" % [a[0], b[0], b[2], a[1], b[1]])
+	# the swarm's terrain step, inlined: bit-identical to 0.10.3's foe_move on moves through Act I's forest
+	var fw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 41})
+	var T := fw.terrain
+	var frng := RandomNumberGenerator.new()
+	frng.seed = 7
+	var moves := 0
+	var fdiff := 0
+	var pushed_by_props := 0
+	var cases: Array = []
+	for k in 6000:
+		var p0 := fw.pp + Vector2(frng.randf_range(-1400, 1400), frng.randf_range(-1400, 1400))
+		var step := Vector2.from_angle(frng.randf() * TAU) * (frng.randf_range(0.5, 3.0) if k % 5 != 0 else frng.randf_range(8.0, 40.0))
+		var br := frng.randf_range(7.0, 18.0)
+		cases.append([p0, p0 + step, br])
+	for c in cases:
+		var ref := _foe_move_ref(T, c[0], c[1], c[2])
+		if T.props_resolve(c[1], c[2]) != c[1]: pushed_by_props += 1
+		var got: Vector2 = T.foe_move(c[0], c[1], c[2])
+		moves += 1
+		if got != ref: fdiff += 1
+	# Act V with its tide risen 20 units: cells reclassify live, shallows slow and deep water blocks
+	var tw := _world({"mode": "campaign", "stage": 4, "hero": 0, "seed": 41})
+	var TT := tw.terrain
+	TT.level = TT.level0 + 20.0
+	var wet := 0
+	for c in cases:
+		var p5: Vector2 = tw.pp + (c[0] - fw.pp)
+		var n5: Vector2 = tw.pp + (c[1] - fw.pp)
+		if TT.is_liquid(p5): wet += 1
+		if TT.foe_move(p5, n5, c[2]) != _foe_move_ref(TT, p5, n5, c[2]): fdiff += 1
+		moves += 1
+	ok(fdiff == 0 and pushed_by_props > 100 and TT.tide > 0.0 and wet > 200, "foe_move, one-step case and cell lookup inlined: identical to 0.10.3's on %d moves through Act I's forest and Act V under a risen tide (%d pushed by a prop, %d starting in water), %d differ" % [moves, pushed_by_props, wet, fdiff])
+	if OS.get_environment("PERF_BENCH") != "":
+		var tb := INF
+		var tr := INF
+		for round in 5:
+			var t0 := Time.get_ticks_usec()
+			for c in cases: T.foe_move(c[0], c[1], c[2])
+			var t1 := Time.get_ticks_usec()
+			for c in cases: _foe_move_ref(T, c[0], c[1], c[2])
+			var t2 := Time.get_ticks_usec()
+			tb = minf(tb, (t1 - t0) / float(cases.size()))
+			tr = minf(tr, (t2 - t1) / float(cases.size()))
+		print("  PERF foe_move: %.2f us a move (0.10.3: %.2f us)" % [tb, tr])
+	if OS.get_environment("PERF_BENCH") != "":     # timing on the frozen crowd: best of 7 rounds of 60 calls
+		var best := INF
+		for round in 7:
+			var t0 := Time.get_ticks_usec()
+			for k in 60: w.sw.cpu_separation(w.grid, k % 2, w.pp, INF)
+			best = minf(best, (Time.get_ticks_usec() - t0) / 60000.0)
+		print("  PERF separation, %d foes: %.3f ms a call" % [w.sw.n, best])
+
+## 0.10.3's Terrain.foe_move, from the terrain's public helpers: the reference the inlined one must match.
+func _foe_move_ref(T: Terrain, p: Vector2, np: Vector2, body_r: float) -> Vector2:
+	var cp := T.cell_of(p)
+	var t := T.cell_type(cp.x, cp.y)
+	if t == Terrain.SHALLOW and not T.frozen.has(cp):
+		np = p + (np - p) * 0.65
+	if body_r <= 0.0 or not T.props_on:
+		return np if T.cell_of(np) == cp else T._move_cells(p, np)
+	var d := np - p
+	if d.length_squared() <= body_r * body_r: return _foe_step_ref(T, p, np, body_r)
+	var n := ceili(d.length() / body_r)
+	var at := p
+	for k in n:
+		var q := _foe_step_ref(T, at, at + d / n, body_r)
+		if q == at: break
+		at = q
+	return at
+
+func _foe_step_ref(T: Terrain, p: Vector2, np: Vector2, body_r: float) -> Vector2:
+	var q := np if T.cell_of(np) == T.cell_of(p) else T._move_cells(p, np)
+	var r := T.props_resolve(q, body_r)
+	if r != q and not T.passable(r) and T.passable(q): return p
+	return r
+
+## [pushes compared, pushes differing by over 1e-3, swarm foes a boss overlaps] for both parities, with and without
+## the visibility cull, against the all-pairs definition (bosses ignore their own push, so only swarm foes count).
+func _sep_check(w: World) -> Array:
+	var sw := w.sw
+	var compared := 0
+	var differ := 0
+	var by_boss := 0
+	for par in [0, 1]:
+		for vis in [INF, 160.0]:
+			var ref := sw.sep.duplicate()
+			var start: int = par
+			for i in range(start, sw.n, 2):
+				var p := sw.pos[i]
+				if p.distance_squared_to(w.pp) > vis * vis:
+					ref[i] = Vector2.ZERO
+					continue
+				var push := Vector2.ZERO
+				for j in sw.n:
+					if j == i: continue
+					var dd := p.distance_squared_to(sw.pos[j])
+					var rr := sw.rad[i] + sw.rad[j]
+					if dd < rr * rr and dd > 0.0001:
+						var dl := sqrt(dd)
+						push += (p - sw.pos[j]) / dl * (rr - dl)
+						if sw.rad[j] > Swarm.SEP_SMALL_R and par == 0 and vis == INF: by_boss += 1
+				ref[i] = push * 6.0
+			sw.cpu_separation(w.grid, par, w.pp, vis)
+			for i in sw.n:
+				if sw.rad[i] > Swarm.SEP_SMALL_R: continue
+				if sw.sep[i].distance_to(ref[i]) > 1e-3: differ += 1
+				elif ref[i] != Vector2.ZERO: compared += 1
+	return [compared, differ, by_boss]
+
 ## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
 ## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.
 func _voice_dropin_tests() -> void:
@@ -2688,5 +2814,42 @@ func _bench() -> void:
 		out[k] = snappedf(probes[k] / 1000.0 / frames, 0.01)
 		line += "%s=%.2fms " % [k, out[k]]
 	print(line)
+	# the foe step's own parts, through the same Swarm calls World._step_foes makes
+	var fp := {"timers": 0, "separation": 0, "move": 0, "move_no_terrain": 0}
+	var shots: Array = []
+	for f in frames:
+		w.grid.build(w.sw)
+		var a0 := Time.get_ticks_usec()
+		w.sw.tick_timers(dt)
+		var a1 := Time.get_ticks_usec()
+		w.sw.cpu_separation(w.grid, f % 2, w.pp, w.view_r + 40.0)
+		var a2 := Time.get_ticks_usec()
+		shots.clear()
+		w.sw.step_move(dt, w.pp, shots, 1.0, w.terrain)
+		var a3 := Time.get_ticks_usec()
+		shots.clear()
+		w.sw.step_move(dt, w.pp, shots, 1.0, null)
+		var a4 := Time.get_ticks_usec()
+		fp.timers += a1 - a0; fp.separation += a2 - a1; fp.move += a3 - a2; fp.move_no_terrain += a4 - a3
+	if OS.get_environment("BENCH_EXP") != "":
+		var vr2 := (w.view_r + 40.0) * (w.view_r + 40.0)
+		var inside := 0
+		for i in w.sw.n:
+			if w.sw.pos[i].distance_squared_to(w.pp) <= vr2: inside += 1
+		var e0 := Time.get_ticks_usec()
+		for f in 60:
+			shots.clear(); w.sw.step_move(dt, w.pp, shots, 1.0, w.terrain)
+		var e1 := Time.get_ticks_usec()
+		w.terrain.props_on = false
+		for f in 60:
+			shots.clear(); w.sw.step_move(dt, w.pp, shots, 1.0, w.terrain)
+		var e2 := Time.get_ticks_usec()
+		w.terrain.props_on = true
+		print("  EXP view_r=%.0f inside=%d/%d move+terrain=%.2fms cells_only=%.2fms" % [w.view_r, inside, w.sw.n, (e1 - e0) / 60000.0, (e2 - e1) / 60000.0])
+	var fl := "  foe step:"
+	for k in fp:
+		out["foe_" + k] = snappedf(fp[k] / 1000.0 / frames, 0.01)
+		fl += " %s=%.2fms" % [k, out["foe_" + k]]
+	print(fl)
 	report["bench"] = out
 	ok(true, "bench ran")

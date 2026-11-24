@@ -268,14 +268,32 @@ func _move_cells(a: Vector2, b: Vector2) -> Vector2:
 ## move()'s guard: a prop never shoves a foe onto a cliff or into deep water. A step longer than the body's
 ## radius (a charger's dash, a hard knockback) is sub-stepped like move()'s.
 func foe_move(p: Vector2, np: Vector2, body_r: float = 0.0) -> Vector2:
-	var cp := cell_of(p)
-	var t := cell_type(cp.x, cp.y)
+	var cp := Vector2i(floori(p.x / CELL), floori(p.y / CELL))
+	# cell_type(cp.x, cp.y), inlined (0.10.4): the same chunk cache and the same live tide reclassification
+	var cc := Vector2i(floori(float(cp.x) / CN), floori(float(cp.y) / CN))
+	if cc != _lc:
+		_lch = chunk(cc)
+		_lc = cc
+	var ck := (cp.y - cc.y * CN) * CN + (cp.x - cc.x * CN)
+	var t: int = (_lch[1] as PackedByteArray)[ck]
+	if tide > 0.0 and t != CLIFF:
+		var h: float = (_lch[0] as PackedFloat32Array)[ck]
+		t = LAND if h >= level else (SHALLOW if level - h < deep_d else DEEP)
 	if t == SHALLOW and not frozen.has(cp):
 		np = p + (np - p) * 0.65
 	if body_r <= 0.0 or not props_on:
 		return np if cell_of(np) == cp else _move_cells(p, np)
 	var d := np - p
-	if d.length_squared() <= body_r * body_r: return _foe_step(p, np, body_r)
+	if d.length_squared() <= body_r * body_r:
+		# _foe_step inlined for the one-step case (nearly every foe, every tick; 0.10.4)
+		var q := np if (floori(np.x / CELL) == cp.x and floori(np.y / CELL) == cp.y) else _move_cells(p, np)
+		if _prop_test_on: return _foe_step(p, np, body_r)
+		var pa = _prop_cells.get(Vector2i(floori(q.x * INV_PCELL), floori(q.y * INV_PCELL)))
+		if pa == null: return _foe_step(p, np, body_r)          # the first visit files the cell's circles
+		if (pa as PackedFloat32Array).is_empty(): return q       # open ground: nothing to push out of
+		var r := _resolve_circles(q, body_r, false, pa)
+		if r != q and not passable(r) and passable(q): return p
+		return r
 	var n := ceili(d.length() / body_r)
 	var at := p
 	for k in n:
@@ -285,7 +303,11 @@ func foe_move(p: Vector2, np: Vector2, body_r: float = 0.0) -> Vector2:
 	return at
 
 func _foe_step(p: Vector2, np: Vector2, body_r: float) -> Vector2:
-	var q := np if cell_of(np) == cell_of(p) else _move_cells(p, np)
+	var q := np if (floori(np.x / CELL) == floori(p.x / CELL) and floori(np.y / CELL) == floori(p.y / CELL)) else _move_cells(p, np)
+	# no prop circle reaches q's cell (open ground, the common case): props_resolve would return q as it is
+	if not _prop_test_on:
+		var pa = _prop_cells.get(Vector2i(floori(q.x * INV_PCELL), floori(q.y * INV_PCELL)))
+		if pa != null and (pa as PackedFloat32Array).is_empty(): return q
 	var r := props_resolve(q, body_r)
 	if r != q and not passable(r) and passable(q): return p
 	return r
@@ -365,7 +387,10 @@ func crystals_near(p: Vector2, r: float) -> int:
 ## skip_low: boulders and walls do not count.
 func props_resolve(p: Vector2, br: float, skip_low: bool = false) -> Vector2:
 	if not props_on: return p
-	var a := props_near(p)
+	return _resolve_circles(p, br, skip_low, props_near(p))
+
+## props_resolve's work, given the circles of p's cell (foe_move has already looked them up).
+func _resolve_circles(p: Vector2, br: float, skip_low: bool, a: PackedFloat32Array) -> Vector2:
 	var n := a.size()
 	if n == 0: return p
 	var cell := Vector2i(floori(p.x * INV_PCELL), floori(p.y * INV_PCELL))
