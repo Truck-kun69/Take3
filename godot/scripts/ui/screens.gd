@@ -10,6 +10,7 @@ var page := ""                 # what is showing: "menu", "pause", "" (closed) o
 var _sel_item := -1           # index into the combined gear list in the stash screen
 var _sel_node := -1
 var _craft_msg := ""
+var parent_page := ""          # "camp" while a Camp station (or a page opened from the Camp) is up: Back returns there
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -20,6 +21,7 @@ var _choices: Array = []       # level-up choices, so number keys can pick them
 func close() -> void:
 	_choices = []
 	page = ""
+	parent_page = ""
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -49,6 +51,7 @@ func _title(v: VBoxContainer, t: String, sub: String = "") -> void:
 		v.add_child(l)
 
 func _back(v: VBoxContainer, what: String = "menu") -> void:
+	if what == "menu" and parent_page == "camp": what = "camp"          # opened from the Camp: back to the Camp
 	UIKit.foot(v).add_child(UIKit.button("Back", func(): act.emit(what, null)))
 
 func _grid(cols: int, sep: int = 10) -> GridContainer:
@@ -93,6 +96,7 @@ func show_menu() -> void:
 	_choices = []
 	UIKit.clear(self)
 	page = "menu"
+	parent_page = ""
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var d: Dictionary = Save.data
 	var vs := get_viewport_rect().size
@@ -204,16 +208,17 @@ func _play_block(d: Dictionary) -> VBoxContainer:
 	b.add_child(play)
 	return b
 
-## Gear, Upgrades (Shard Web and powers) and Modes (the endgame) in one compact row.
+## The Camp (its NPCs, and Gear & Stash), Upgrades (Shard Web and powers) and Modes (the endgame) in one compact row.
 func _menu_bar(d: Dictionary) -> HBoxContainer:
 	var row := UIKit.hbox(6)
 	var unspent := int(d.get("echoes", 0)) > 0
 	var prophecy := not (d.prophecy.active as Dictionary).is_empty()
-	for e in [["Gear", "stash"], ["Upgrades", "upgrades"], ["Modes", "endgame"]]:
+	var camp := Camp.has_news(d) or not bool(d.get("camp_seen", false))
+	for e in [["Camp", "camp"], ["Upgrades", "upgrades"], ["Modes", "endgame"]]:
 		var b := UIKit.button(e[0], func(): act.emit(e[1], null), 50)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 16)
-		if (e[1] == "upgrades" and unspent) or (e[1] == "endgame" and prophecy):
+		if (e[1] == "upgrades" and unspent) or (e[1] == "endgame" and prophecy) or (e[1] == "camp" and camp):
 			b.add_theme_color_override("font_color", Color("ffd27a"))        # something waits in there
 		row.add_child(b)
 	return row
@@ -618,7 +623,7 @@ func show_stash(in_run: bool = false) -> void:
 		var hint := UIKit.label("Select an item to inspect, equip or craft.", 19, UIKit.DIM, true, "italic")
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		right.add_child(hint)
-	var back_to := "resume_pause" if in_run else "menu"
+	var back_to := "resume_pause" if in_run else ("camp" if parent_page == "camp" else "menu")
 	if foot_acts.is_empty():
 		_back(v, back_to)
 	else:                       # one row held sideways; upright, four buttons go two by two
@@ -1467,6 +1472,7 @@ func show_end(w: World) -> void:
 	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
 	if w.daily: rows.push_front(["Rift score" + ("  NEW BEST" if w.daily_best else ""), str(w.daily_score)])
 	rows.append(["Echoes", "+%d" % w.echoes_run])
+	if not w.daily: rows.append(["Rift Ore", "+%d" % w.ore_run])
 	if w.hoard_banked > 0.0: rows.append(["Hoard banked", str(int(w.hoard_banked))])
 	if w.hoard_lost > 0.0: rows.append(["Hoard lost", str(int(w.hoard_lost))])
 	if w.torment > 0: rows.append(["Difficulty", String(Content.TORMENT[w.torment].name)])
@@ -1511,8 +1517,8 @@ func show_end(w: World) -> void:
 		var bl := UIKit.label(best.trim_suffix(", "), 17, UIKit.GOLD, true, "display")
 		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(bl)
-	var row := _grid(2, 10)
-	for pair in [["Play again", "retry"], ["Return to menu", "menu"]]:
+	var row := _grid(3, 10)
+	for pair in [["Play again", "retry"], ["Camp", "camp"], ["Main menu", "menu"]]:
 		var bt := UIKit.button(pair[0], func(): act.emit(pair[1], null), 58)
 		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(bt)

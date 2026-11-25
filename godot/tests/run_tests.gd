@@ -53,8 +53,10 @@ func _ready() -> void:
 		await _stream_tests()
 		_pacing_tests()
 		_camp_tests()
+		await _camp_ui_tests()
 	elif "camp" in args:
 		_camp_tests()
+		await _camp_ui_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -1744,7 +1746,7 @@ func _fit_tests() -> void:
 	rng.seed = 3
 	for k in 6: w.loot_run.append(Items.make(Content.SLOTS[k % 4], Content.Rarity.RARE + k % 2, 20, rng))
 	mn.screens.show_end(w)
-	var end_r := await _off_screen(mn.screens, ["Play again", "Return to menu"])
+	var end_r := await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
 	var trail: Array = []
 	for i in 60: trail.append("[%d.0] line %d of the session's trail" % [i, i])
 	mn.screens.show_crash(PackedStringArray(trail))
@@ -1773,7 +1775,7 @@ func _fit_tests() -> void:
 	mn.screens.show_web()
 	var web_want := ["Not yet reachable", "Reset web  (refund all)", "Back"]      # a6 from a fresh profile: not reachable yet
 	var web_r := await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
-	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again and Return to menu on screen%s" % [vs.x, vs.y, end_r])
+	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again, Camp and Main menu on screen%s" % [vs.x, vs.y, end_r])
 	ok(crash_r == "" and opt_r == "" and bench_r == "", "and so do the crash report's Copy report and Continue, Options' Back and the benchmark's buttons%s%s%s" % [crash_r, opt_r, bench_r])
 	ok(stash_r == "", "the stash keeps the selected item's %s on screen with Back%s" % [" / ".join(stash_want.slice(0, stash_want.size())), stash_r])
 	ok(pause_r == "" and web_r == "", "the pause menu: Build & Stats, Gear & Crafting and Settings on one row, every button on screen; the Shard Web's whole graph, Take, Reset and Back on screen%s%s" % [pause_r, web_r])
@@ -3471,6 +3473,138 @@ func _camp_tests() -> void:
 	Save._normalise()
 	ok(int(Save.data.temper.bolt) == Camp.TEMPER_MAX and not Save.data.temper.has("nope"), "a bad save's ranks are clamped and unknown weapons dropped")
 	Save.data = keep
+
+## The Camp's pages (CampPages): the title's bar opens the hub; each NPC's card opens their station, which keeps
+## Back on screen sideways and upright, with every button touch-sized, and returns to the hub (Back, and Android
+## Back via main.back); each station's main action works through its button; the end of a run offers the Camp.
+## Not on a page that is being replaced (UIKit.clear frees a page's root at the end of the frame).
+func _live(n: Node) -> bool:
+	while n != null:
+		if n.is_queued_for_deletion(): return false
+		n = n.get_parent()
+	return true
+
+func _btn(root: Node, txt: String) -> Button:
+	for b in root.find_children("*", "Button", true, false):
+		if String(b.text) == txt and (b as Control).is_visible_in_tree() and _live(b): return b
+	return null
+
+func _npc_card(root: Node, id: String) -> Button:
+	for b in root.find_children("*", "Button", true, false):
+		if b.has_meta("npc") and String(b.get_meta("npc")) == id and _live(b): return b
+	return null
+
+func _press(root: Node, txt: String) -> bool:
+	var b := _btn(root, txt)
+	if b == null or b.disabled: return false
+	b.pressed.emit()
+	return true
+
+func _camp_ui_tests() -> void:
+	print("== the Camp pages")
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	win.size = Vector2i(2340, 1080)
+	await get_tree().process_frame
+	mn._menu()
+	ok(_btn(mn.screens, "Camp") != null and _btn(mn.screens, "Gear") == null, "the title's bar has Camp in place of Gear")
+	_press(mn.screens, "Camp")
+	await get_tree().process_frame
+	var n_cards := 0
+	for id in CampPages.NPC_ORDER:
+		if _npc_card(mn.screens, id) != null: n_cards += 1
+	ok(n_cards == CampPages.NPC_ORDER.size(), "the hub shows the %d friendly NPCs (%d)" % [CampPages.NPC_ORDER.size(), n_cards])
+	ok(bool(sv.data.camp_seen), "the first visit is remembered")
+	var rng := RandomNumberGenerator.new(); rng.seed = 9
+	sv.data.gold = 20000; sv.data.materials = {"scrap": 200, "ore": 40}
+	for k in 3: sv.data.stash.append(Items.make("ring", Content.Rarity.MAGIC, 12, rng))
+	for k in 2: sv.data.stash.append(Items.make("boots", Content.Rarity.NORMAL, 8, rng))
+	var nav := ""
+	var small: Array = []
+	for id in ["smith", "kiln", "nim", "sella", "brask"]:
+		var card := _npc_card(mn.screens, id)
+		if card == null:
+			nav += "  (%s: no card)" % id
+			continue
+		card.pressed.emit()
+		await get_tree().process_frame
+		if mn.screens.parent_page != "camp": nav += "  (%s: not a camp station)" % id
+		nav += await _off_screen(mn.screens, ["Back"])
+		small.append_array(_small_buttons(mn.screens, id))
+		mn.back()                                          # Android Back: to the hub, not the title
+		await get_tree().process_frame
+		if _npc_card(mn.screens, "smith") == null: nav += "  (%s: Back did not return to the Camp)" % id
+	ok(nav == "", "each station opens from its card, keeps Back on screen sideways and Android Back returns to the Camp%s" % nav)
+	# the stations' actions, through their buttons
+	CampPages.show_smith(mn.screens)
+	ok(_press(mn.screens, "Temper") and Camp.temper_rank(sv.data, "bolt") == 1, "the smith's first Temper tempers Rime Bolt")
+	CampPages.show_bench(mn.screens)
+	var b_ok := _press(mn.screens, "Salvage all")                    # Normal: one tap
+	var normals_gone := Camp.bulk_list(sv.data, 0).is_empty()
+	CampPages.show_bench(mn.screens)
+	var buttons: Array = mn.screens.find_children("*", "Button", true, false).filter(func(b): return String(b.text) == "Salvage all" and _live(b) and not b.disabled)
+	var armed_ok := false
+	if not buttons.is_empty():
+		buttons[0].pressed.emit()                                    # Magic: the first tap arms
+		armed_ok = Camp.bulk_list(sv.data, 1).size() == 3 and _btn(mn.screens, "Tap to confirm") != null
+	var confirm_ok := _press(mn.screens, "Tap to confirm") and Camp.bulk_list(sv.data, 1).is_empty()
+	ok(b_ok and normals_gone and armed_ok and confirm_ok, "the bench salvages Normal in one tap and asks twice for Magic (%s %s %s %s)" % [b_ok, normals_gone, armed_ok, confirm_ok])
+	for k in 3: sv.data.stash.append(Items.make("amulet", Content.Rarity.MAGIC, 16, rng))
+	CampPages._furnace_tab = 0
+	CampPages.show_furnace(mn.screens)
+	var n0: int = sv.data.stash.size()
+	var fused := _press(mn.screens, "Fuse")
+	var rare_amulet := false
+	for it in sv.data.stash:
+		if it.slot == "amulet" and int(it.rarity) == Content.Rarity.RARE: rare_amulet = true
+	ok(fused and rare_amulet and sv.data.stash.size() == n0 - 2, "the furnace's Fuse turns three Magic amulets into a Rare one")
+	CampPages._furnace_tab = 1
+	CampPages._pick = ["orbit", "bolt"]
+	CampPages.show_furnace(mn.screens)
+	ok(_press(mn.screens, "Kindle") and Camp.kindled(sv.data, "bolt+orbit"), "the furnace kindles the picked pair")
+	CampPages.show_trader(mn.screens)
+	var s0: int = sv.data.stash.size()
+	ok(_press(mn.screens, "Buy") and sv.data.stash.size() == s0 + 1, "the trader's Buy puts the item in the stash")
+	CampPages.show_drill(mn.screens)
+	var tips0 := bool(sv.data.tutorial.on)
+	_press(mn.screens, "Tutorial tips: On")
+	var tips1 := bool(sv.data.tutorial.on)
+	sv.data.tutorial.done = ["move"]
+	_press(mn.screens, "Replay tutorial")
+	ok(tips0 and not tips1 and bool(sv.data.tutorial.on) and (sv.data.tutorial.done as Array).is_empty(), "the drillmaster turns the tips off, and Replay turns them back on from the start")
+	# upright: every station keeps Back on screen, every button touch-sized
+	win.size = Vector2i(1080, 2340)
+	await get_tree().process_frame
+	var up := ""
+	for id in ["smith", "kiln", "nim", "sella", "brask"]:
+		CampPages.show(mn.screens, id)
+		up += await _off_screen(mn.screens, ["Back"])
+		small.append_array(_small_buttons(mn.screens, id + " upright"))
+	CampPages.show_camp(mn.screens)
+	small.append_array(_small_buttons(mn.screens, "camp upright"))
+	ok(up == "", "held upright, every station keeps Back on screen%s" % up)
+	ok(small.is_empty(), "every Camp button is at least %d tall%s" % [UIKit.MIN_TOUCH, ("" if small.is_empty() else ": " + str(small.slice(0, 4)))])
+	win.size = Vector2i(2340, 1080)
+	await get_tree().process_frame
+	# the end of a run offers the Camp, which frees the run
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	ok(_press(mn.screens, "Camp") and mn.world == null and mn.state == "menu" and _npc_card(mn.screens, "kiln") != null, "the end of a run's Camp button frees the run and opens the Camp")
+	win.size = size0
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
 
 # ================================================================= bot-played runs
 func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:

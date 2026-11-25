@@ -47,12 +47,15 @@ static func part_col(k: String) -> Color:
 	if MATERIALS.has(k): return Color(String(MATERIALS[k].col))
 	return Content.col(Content.CURRENCY[k].col) if Content.CURRENCY.has(k) else Color.WHITE
 
-## "120 Gold · 1 Rift Ore · 6 Shard Scrap"
-static func cost_text(cost: Dictionary) -> String:
+## "120 Gold · 1 Rift Ore · 6 Shard Scrap"; short: "120 Gold · 1 Ore · 6 Scrap" (under a button).
+static func cost_text(cost: Dictionary, short: bool = false) -> String:
 	var parts := PackedStringArray()
 	for k in ["gold", "ore", "scrap"] + Content.CURRENCY_IDS:
-		if cost.has(k) and int(cost[k]) > 0: parts.append("%d %s" % [int(cost[k]), part_name(k)])
-	return "  ·  ".join(parts)
+		if cost.has(k) and int(cost[k]) > 0:
+			var nm := part_name(k)
+			if short and MATERIALS.has(k): nm = nm.split(" ")[-1]
+			parts.append("%d %s" % [int(cost[k]), nm])
+	return (" · " if short else "  ·  ").join(parts)
 
 ## The weapons a profile can take into a run: the four starters and every one it has earned (Save.weapon_pool).
 static func pool(d: Dictionary) -> Array:

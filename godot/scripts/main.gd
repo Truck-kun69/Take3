@@ -410,7 +410,9 @@ func back() -> void:
 			if screens.page != "pause": screens.show_pause(world)
 			else: _resume()
 		"menu":
-			if screens.page != "menu": _menu()
+			if screens.page != "menu":
+				if screens.parent_page == "camp": CampPages.show_camp(screens)    # a Camp station: back to the Camp
+				else: _menu()
 		"levelup", "merchant", "whisper": pass
 		_: _menu()
 
@@ -700,6 +702,10 @@ func _on_act(what: String, arg) -> void:
 			Save.mark_dirty()
 			start({"mode": "pinnacle"})
 		"stash": screens.show_stash(false)
+		"camp":                                      # the Camp's hub (from the title's bar, the end of a run, a station's Back)
+			if state != "menu": _menu()
+			CampPages.show_camp(screens)
+		"camp_page": CampPages.show(screens, String(arg))
 		"upgrades": screens.show_upgrades()
 		"endgame": screens.show_endgame()
 		"codex": screens.show_codex(String(arg) if arg != null else "upgrades")
