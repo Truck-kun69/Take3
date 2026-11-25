@@ -52,6 +52,9 @@ func _ready() -> void:
 		await _perf_view_tests()
 		await _stream_tests()
 		_pacing_tests()
+		_camp_tests()
+	elif "camp" in args:
+		_camp_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -3273,6 +3276,201 @@ func _world(cfg: Dictionary) -> World:
 	w.setup(cfg)
 	_worlds.append(w)
 	return w
+
+# ================================================================= the Camp (0.11.0)
+## docs/superpowers/specs/2026-11-25-camp-tutorial-crafting-design.md: materials, the Weaponsmith, the Salvager's
+## bench, the Fusion Furnace (gear and weapon pairs), the Trader, and the run's ore.
+func _camp_item(d: Dictionary, slot: String, r: int, ilvl: int, rng: RandomNumberGenerator) -> Dictionary:
+	var it := Items.make(slot, r, ilvl, rng)
+	d.stash.append(it)
+	return it
+
+func _camp_tests() -> void:
+	print("== the Camp")
+	var rng := RandomNumberGenerator.new(); rng.seed = 77
+	var d: Dictionary = Save.defaults()
+	ok(d.has("materials") and int(d.materials.scrap) == 0 and int(d.materials.ore) == 0, "a new profile holds no scrap or ore")
+	ok((d.temper as Dictionary).is_empty() and (d.kindled as Array).is_empty() and (d.locked as Array).is_empty(), "nothing tempered, kindled or locked")
+	ok(bool(d.tutorial.on) and (d.tutorial.done as Array).is_empty(), "the tutorial starts on, no step done")
+	# ---- materials and costs
+	Camp.add_mat(d, "scrap", 5)
+	ok(Camp.mat(d, "scrap") == 5, "materials add up")
+	d.gold = 100
+	ok(Camp.can_pay(d, {"gold": 100, "scrap": 5}) and not Camp.can_pay(d, {"gold": 101}), "can_pay checks every part of a cost")
+	ok(not Camp.can_pay(d, {"ore": 1}) and not Camp.can_pay(d, {"divine": 1}), "can_pay checks ore and crafting shards")
+	Camp.pay(d, {"gold": 40, "scrap": 2})
+	ok(int(d.gold) == 60 and Camp.mat(d, "scrap") == 3, "pay takes gold and scrap")
+	ok(Camp.cost_text({"gold": 120, "ore": 1, "scrap": 6}).contains("120") and Camp.cost_text({"gold": 120, "ore": 1, "scrap": 6}).contains("Ore"), "a cost reads as text")
+	# ---- the Weaponsmith
+	d.gold = 0
+	ok(Camp.temper_rank(d, "bolt") == 0, "an untouched weapon is rank 0")
+	ok(Camp.temper(d, "bolt") != "" and Camp.temper_rank(d, "bolt") == 0, "tempering without the cost is refused and changes nothing")
+	ok(Camp.temper(d, "lance") != "", "a locked weapon cannot be tempered (lance is earned first)")
+	d.gold = 100000; d.materials.ore = 100; d.materials.scrap = 1000
+	var g0 := int(d.gold)
+	ok(Camp.temper(d, "bolt") == "" and Camp.temper_rank(d, "bolt") == 1, "tempering raises the rank")
+	ok(int(d.gold) == g0 - int(Camp.TEMPER_COST[0].gold), "rank 1 costs its gold")
+	for k in 6: Camp.temper(d, "bolt")
+	ok(Camp.temper_rank(d, "bolt") == Camp.TEMPER_MAX, "ranks stop at %d" % Camp.TEMPER_MAX)
+	ok(Camp.temper_cost(d, "bolt").is_empty() and Camp.temper(d, "bolt") != "", "a masterwork has no next rank")
+	var st := Stats.new()
+	st.set_source("temper", Camp.temper_mods(5))
+	ok(absf(st.value("damage", 1.0) - 1.4 * 1.1) < 0.001, "rank 5: +40%% damage and a further 10%% more (%.3f)" % st.value("damage", 1.0))
+	ok(absf(st.value("cooldown", 1.0) - 0.92) < 0.001, "rank 3 and up: 8% faster")
+	var st2 := Stats.new()
+	st2.set_source("temper", Camp.temper_mods(2))
+	ok(absf(st2.value("damage", 1.0) - 1.16) < 0.001 and absf(st2.value("cooldown", 1.0) - 1.0) < 0.001, "rank 2: +16% damage only")
+	# a run applies the ranks to the weapon's own stats: the hero's starting weapon and any taken later
+	Save.data.temper = {"bolt": 3, "nova": 1}
+	var w := _world({"mode": "campaign", "hero": 1, "seed": 31})
+	var start_w: String = Content.HEROES[1].weapon
+	if Save.data.temper.has(start_w):
+		ok(w.wlocal[start_w].value("damage", 1.0) > 1.0, "the starting weapon carries its temper")
+	w.apply_choice({"kind": "w", "id": "nova"})
+	ok(absf(w.wlocal["nova"].value("damage", 1.0) - 1.08) < 0.001, "a weapon taken in the run carries its temper (%.3f)" % w.wlocal["nova"].value("damage", 1.0))
+	w.apply_choice({"kind": "w", "id": "orbit"})
+	ok(absf(w.wlocal["orbit"].value("damage", 1.0) - 1.0) < 0.001, "an untempered weapon is unchanged")
+	var wd := _world({"mode": "campaign", "hero": 0, "seed": 32, "daily": true, "code": "T", "date": "2026-11-25"})
+	wd.apply_choice({"kind": "w", "id": "nova"})
+	ok(absf(wd.wlocal["nova"].value("damage", 1.0) - 1.0) < 0.001, "the Daily Rift ignores tempering (everyone starts equal)")
+	Save.data.temper = {}
+	# ---- the Salvager's bench
+	var dd: Dictionary = Save.defaults()
+	var n1 := _camp_item(dd, "ring", 0, 10, rng)
+	var m1 := _camp_item(dd, "ring", 1, 10, rng)
+	var m2 := _camp_item(dd, "boots", 1, 12, rng)
+	var r1 := _camp_item(dd, "amulet", 2, 14, rng)
+	var l1 := _camp_item(dd, "relic", 3, 20, rng)
+	var y := Camp.salvage_yield(m1)
+	ok(int(y.scrap) == Camp.SCRAP[1] and int(y.augment) == 2, "a Magic item salvages to 4 scrap and 2 Augments")
+	ok(int(Camp.salvage_yield(l1).scrap) == Camp.SCRAP[3] and int(Camp.salvage_yield(n1).transmute) == 1, "Legendary gives 20 scrap, Normal a Transmute")
+	Camp.toggle_lock(dd, m2)
+	ok(Camp.is_locked(dd, m2) and not Camp.is_locked(dd, m1), "items lock by uid")
+	ok(Camp.bulk_list(dd, 1) == [m1], "bulk salvage skips locked items")
+	ok(Camp.bulk_list(dd, 3).is_empty(), "bulk salvage never takes legendaries")
+	dd.equipped.amulet = r1; dd.stash.erase(r1)
+	ok(Camp.bulk_list(dd, 2).is_empty(), "bulk salvage never takes equipped gear")
+	var cur0 := int(dd.currency.augment)
+	var got := Camp.salvage_all(dd, 1)
+	ok(int(got.scrap) == 4 and int(dd.currency.augment) == cur0 + 2 and Camp.mat(dd, "scrap") == 4, "salvage all Magic: the yield is paid")
+	ok(not dd.stash.has(m1) and dd.stash.has(m2), "the salvaged item is gone, the locked one stays")
+	var one := Camp.salvage(dd, n1)
+	ok(int(one.scrap) == 2 and not dd.stash.has(n1), "salvaging one item pays its yield")
+	ok(Camp.salvage(dd, m2).is_empty() and dd.stash.has(m2), "a locked item is not salvaged")
+	Camp.toggle_lock(dd, m2)
+	ok(not Camp.is_locked(dd, m2), "unlock")
+	# ---- the Fusion Furnace: gear
+	var df: Dictionary = Save.defaults()
+	var a1 := _camp_item(df, "ring", 1, 10, rng)
+	var a2 := _camp_item(df, "ring", 1, 18, rng)
+	var a3 := _camp_item(df, "ring", 1, 12, rng)
+	var b1 := _camp_item(df, "boots", 1, 12, rng)
+	df.gold = 0
+	var gr := Camp.fuse_groups(df)
+	ok(gr.size() == 1 and gr[0].slot == "ring" and int(gr[0].rarity) == 1 and gr[0].items.size() == 3, "three Magic rings make a fusion group")
+	ok(typeof(Camp.fuse_items(df, [a1, a2, a3], rng)) == TYPE_STRING and df.stash.size() == 4, "fusing without the cost is refused, nothing lost")
+	ok(typeof(Camp.fuse_items(df, [a1, a2, b1], rng)) == TYPE_STRING, "fusion needs one slot")
+	ok(typeof(Camp.fuse_items(df, [a1, a2], rng)) == TYPE_STRING, "fusion needs three items")
+	df.gold = 10000; df.materials.scrap = 100
+	Camp.toggle_lock(df, a3)
+	ok(typeof(Camp.fuse_items(df, [a1, a2, a3], rng)) == TYPE_STRING, "a locked item cannot be fused")
+	Camp.toggle_lock(df, a3)
+	var out = Camp.fuse_items(df, [a1, a2, a3], rng)
+	ok(typeof(out) == TYPE_DICTIONARY and int(out.rarity) == 2 and out.slot == "ring" and int(out.ilvl) == 18, "three Magic rings fuse into a Rare ring at the highest item level")
+	ok(df.stash.has(out) and not df.stash.has(a1) and not df.stash.has(a2) and not df.stash.has(a3) and df.stash.size() == 2, "the three go in, the new one comes out")
+	ok(Items.valid(out), "the fused item is valid")
+	var rr: Array = []
+	for k in 3: rr.append(_camp_item(df, "amulet", 2, 20, rng))
+	df.currency.divine = 0
+	ok(typeof(Camp.fuse_items(df, rr, rng)) == TYPE_STRING, "Rare into Legendary needs a Divine Orb")
+	df.currency.divine = 1
+	var lg = Camp.fuse_items(df, rr, rng)
+	ok(typeof(lg) == TYPE_DICTIONARY and int(lg.rarity) == 3 and String(lg.leg) != "" and int(df.currency.divine) == 0, "three Rares and a Divine Orb make a Legendary")
+	var ll: Array = []
+	for k in 3: ll.append(_camp_item(df, "boots", 3, 20, rng))
+	ok(typeof(Camp.fuse_items(df, ll, rng)) == TYPE_STRING, "Legendaries do not fuse")
+	# ---- the Fusion Furnace: weapon pairs
+	var dk: Dictionary = Save.defaults()
+	dk.gold = 0
+	ok(Camp.kindle(dk, "bolt", "nova") != "" and not Camp.kindled(dk, "bolt+nova"), "kindling without the cost is refused")
+	dk.gold = 100000; dk.materials.ore = 100
+	ok(Camp.kindle(dk, "bolt", "bolt") != "", "a weapon cannot be kindled with itself")
+	ok(Camp.kindle(dk, "bolt", "lance") != "", "a locked weapon cannot be kindled")
+	var c1 := Camp.kindle_cost(dk)
+	ok(Camp.kindle(dk, "nova", "bolt") == "" and Camp.kindled(dk, "bolt+nova"), "kindling a pair records its sorted key")
+	ok(int(Camp.kindle_cost(dk).gold) > int(c1.gold), "each kindled pair costs more than the last")
+	ok(Camp.kindle(dk, "bolt", "nova") != "", "a pair is kindled once")
+	Save.data.kindled = ["bolt+nova"]
+	var wk := _world({"mode": "campaign", "hero": 0, "seed": 33})
+	for id in ["bolt", "nova"]:
+		wk.weapons[id] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
+		wk.wlocal[id] = Stats.new()
+	var fz := wk.make_choices().filter(func(c): return c.kind == "fuse")
+	ok(fz.size() == 1 and fz[0].id == "bolt+nova", "a kindled pair offers its fusion at level 5, unevolved")
+	wk.apply_choice(fz[0])
+	ok(absf(wk.wlocal["bolt"].value("damage", 1.0) - Camp.KINDLED_MORE) < 0.001, "a kindled fusion deals 35% more damage")
+	var wu := _world({"mode": "campaign", "hero": 0, "seed": 34})
+	for id in ["bolt", "orbit"]:
+		wu.weapons[id] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
+		wu.wlocal[id] = Stats.new()
+	ok(wu.make_choices().filter(func(c): return c.kind == "fuse").is_empty(), "an unkindled pair still needs both evolved")
+	Save.data.kindled = []
+	# ---- the Trader
+	var dt: Dictionary = Save.defaults()
+	var s1 := Camp.trader_stock(dt, "2026-11-25")
+	ok(s1.size() == Camp.TRADER_SLOTS, "the trader shows %d items" % Camp.TRADER_SLOTS)
+	var s1b := Camp.trader_stock(dt, "2026-11-25")
+	ok(JSON.stringify(s1) == JSON.stringify(s1b), "the same day keeps the same stock")
+	var ok_items := true
+	for e in s1:
+		if not Items.valid(e.it) or int(e.price) <= 0 or int(e.it.rarity) < 1: ok_items = false
+	ok(ok_items, "stock items are valid, priced, and Magic or better")
+	var s2 := Camp.trader_stock(dt, "2026-11-26")
+	ok(JSON.stringify(s1) != JSON.stringify(s2), "a new day brings new stock")
+	dt.gold = 0
+	ok(Camp.trader_buy(dt, 0, "2026-11-26") != "" and dt.stash.is_empty(), "buying without the gold is refused")
+	dt.gold = 100000
+	var price := int(Camp.trader_stock(dt, "2026-11-26")[0].price)
+	ok(Camp.trader_buy(dt, 0, "2026-11-26") == "" and dt.stash.size() == 1 and int(dt.gold) == 100000 - price, "buying moves the item to the stash for its price")
+	ok(Camp.trader_stock(dt, "2026-11-26").size() == Camp.TRADER_SLOTS - 1, "a bought item leaves the stock")
+	var g1 := int(dt.gold)
+	ok(Camp.restock(dt, "2026-11-26") == "" and Camp.trader_stock(dt, "2026-11-26").size() == Camp.TRADER_SLOTS and int(dt.gold) < g1, "a paid restock refills the stock")
+	var rc2 := Camp.restock_cost(dt)
+	ok(rc2 > Camp.RESTOCK_COST, "each restock costs more the same day")
+	var a0 := int(dt.currency.augment)
+	ok(Camp.buy_shard(dt, "augment") == "" and int(dt.currency.augment) == a0 + 1, "the trader sells crafting shards")
+	ok(Camp.buy_shard(dt, "exalt") != "", "but not every shard")
+	# ---- the run's ore
+	var wo := _world({"mode": "campaign", "hero": 0, "seed": 35})
+	wo.kills = 900; wo.champions_slain = 2
+	ok(Camp.ore_for_run(wo, true) == 2 + 3 + 2, "ore: 1 a champion, 3 for the tyrant, 1 per 400 kills (%d)" % Camp.ore_for_run(wo, true))
+	wo.kills = 100000; wo.champions_slain = 40
+	ok(Camp.ore_for_run(wo, true) == Camp.ORE_CAP, "at most %d ore a run" % Camp.ORE_CAP)
+	var wo2 := _world({"mode": "campaign", "hero": 0, "seed": 36, "daily": true, "code": "T", "date": "2026-11-25"})
+	wo2.kills = 900; wo2.champions_slain = 2
+	ok(Camp.ore_for_run(wo2, true) == 0, "no ore from the Daily Rift")
+	var ore0 := Camp.mat(Save.data, "ore")
+	var wo3 := _world({"mode": "campaign", "hero": 0, "seed": 37})
+	wo3.kills = 800; wo3.champions_slain = 1
+	wo3.end_run(false, true)
+	ok(Camp.mat(Save.data, "ore") == ore0 + 3 and wo3.ore_run == 3, "a run banks its ore (%d)" % wo3.ore_run)
+	# ---- the profile keeps the camp
+	var sv := Save.defaults()
+	sv.temper = {"bolt": 2.0}; sv.materials = {"scrap": 3.0, "ore": 1.0}; sv.locked = [5.0]; sv.kindled = ["bolt+nova"]
+	var keep: Dictionary = Save.data
+	Save.data = Save.defaults()
+	Save._merge(Save.data, JSON.parse_string(JSON.stringify(sv)))
+	Save._normalise()
+	ok(int(Save.data.temper.bolt) == 2 and typeof(Save.data.temper.bolt) == TYPE_INT, "temper ranks survive a save as ints")
+	ok(Camp.mat(Save.data, "scrap") == 3 and int(Save.data.locked[0]) == 5 and typeof(Save.data.locked[0]) == TYPE_INT, "materials and locks survive a save")
+	ok(Save.data.kindled == ["bolt+nova"], "kindled pairs survive a save")
+	var bad := Save.defaults()
+	bad.temper = {"bolt": 99, "nope": 2}
+	Save.data = Save.defaults()
+	Save._merge(Save.data, JSON.parse_string(JSON.stringify(bad)))
+	Save._normalise()
+	ok(int(Save.data.temper.bolt) == Camp.TEMPER_MAX and not Save.data.temper.has("nope"), "a bad save's ranks are clamped and unknown weapons dropped")
+	Save.data = keep
 
 # ================================================================= bot-played runs
 func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:

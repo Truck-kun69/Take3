@@ -722,10 +722,10 @@ func _on_act(what: String, arg) -> void:
 			_crowd_setup()
 			if world != null: world.crowd = crowd
 		"equip": equip(arg)
-		"salvage":
-			Save.data.stash.erase(arg)
-			var gain := {0: ["transmute", 1], 1: ["augment", 2], 2: ["chaos", 1], 3: ["divine", 2]}[int(arg.rarity)] as Array
-			Save.add_currency(gain[0], gain[1])
+		"salvage":                                   # one item: shards and scrap (Camp.salvage_yield); a locked item stays
+			if not Camp.salvage(Save.data, arg).is_empty():
+				Save.mark_dirty()
+				Sfx.play("craft")
 		"extract":
 			if not Save.data.codex.has(arg.leg):
 				Save.data.codex.append(arg.leg)

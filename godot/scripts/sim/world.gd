@@ -76,6 +76,7 @@ var view_r := VIEW_R_DEFAULT
 var terrain: Terrain = null      # set by setup(); heights, water and passability
 var torment := 0                 # difficulty tier (Content.TORMENT); 0 in rifts, which scale by level
 var echoes_run := 0              # Echoes earned (set at the end of the run)
+var ore_run := 0                 # Rift Ore earned (set at the end of the run; Camp.ore_for_run)
 var moon := -1.0                 # real-world lunar phase 0..1 (0 new, 0.5 full); < 0 = no sky (tests)
 var sky_date: Array = []         # [month, day] for the calendar omens
 var light := 1.0                 # the lantern: fades over time, kills relight it (see _step_light)
@@ -276,8 +277,7 @@ func setup(cfg: Dictionary) -> void:
 	bosses = Bosses.new(self)
 	var h: Dictionary = Content.HEROES[hero]
 	hero_id = String(h.id)
-	weapons[h.weapon] = {"lv": 1, "evo": false, "t": 0.0, "gems": []}
-	wlocal[h.weapon] = Stats.new()
+	_take_weapon(h.weapon)
 	contagion = Contagion.new(self)
 	flasks = [{"id": "life", "c": 40.0, "max": 60.0, "cost": 20.0}, {"id": Content.UTIL_FLASKS[rng.randi_range(0, 3)], "c": 30.0, "max": 40.0, "cost": 20.0}]
 	_apply_meta()
@@ -1105,6 +1105,18 @@ func elmask(id: String) -> int:
 		if stats.flag("apply_phys", loc): m |= 1 << Content.El.PHYS
 	_elmask_cache[id] = m
 	return m
+
+## A weapon joins the run: its slot, its own stats, and the Camp's temper on them (not in the Daily Rift,
+## where everyone starts equal).
+func _take_weapon(id: String) -> void:
+	weapons[id] = {"lv": 1, "evo": false, "t": 0.0, "gems": []}
+	wlocal[id] = Stats.new()
+	var rank := 0 if daily else Camp.temper_rank(Save.data, id)
+	if rank > 0: wlocal[id].set_source("temper", Camp.temper_mods(rank))
+
+## The pair was kindled at the Camp's Fusion Furnace: it may fuse at level 5 unevolved, and hits harder.
+func _kindled(a: String, b: String) -> bool:
+	return not daily and Camp.kindled(Save.data, Content.fusion_key(a, b))
 
 ## The weapon this one is fused with, or "".
 func fused(id: String) -> String:
@@ -2532,9 +2544,9 @@ func make_choices() -> Array:
 			pool.append({"kind": "w", "id": id})
 		elif not weapons[id].evo and int(perks.get(Content.WEAPONS[id].pair, 0)) >= 1:
 			evos.append({"kind": "e", "id": id})
-	for a in weapons:                                       # fusions: two evolved, unfused weapons
+	for a in weapons:                                       # fusions: two evolved, unfused weapons (a kindled pair: both at level 5)
 		for b in weapons:
-			if a < b and weapons[a].evo and weapons[b].evo and fused(a) == "" and fused(b) == "":
+			if a < b and fused(a) == "" and fused(b) == "" and ((weapons[a].evo and weapons[b].evo) or (_kindled(a, b) and int(weapons[a].lv) >= 5 and int(weapons[b].lv) >= 5)):
 				evos.append({"kind": "fuse", "id": Content.fusion_key(a, b), "a": a, "b": b})
 	for id in Content.WEAPON_IDS:
 		if weapons.has(id) and weapons[id].gems.size() < Content.SOCKETS:
@@ -2566,8 +2578,12 @@ func choice_text(c: Dictionary) -> Dictionary:
 			var W: Dictionary = Content.WEAPONS[c.id]
 			return {"tag": "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1], "name": W.name, "d": W.d[lv] + "  [%s]" % Content.EL_NAME[W.elem], "col": W.col}
 		"e": return {"tag": "Evolution", "name": Content.WEAPONS[c.id].evo, "d": Content.WEAPONS[c.id].evo_d, "col": "f4c04e"}
-		"fuse": return {"tag": "Fusion: %s + %s" % [Content.WEAPONS[c.a].evo, Content.WEAPONS[c.b].evo], "name": Content.fusion_def(c.id).name,
-			"d": Content.fusion_def(c.id).d + " Both deal 25% more damage and carry each other's element.", "col": Content.fusion_def(c.id).col}
+		"fuse":
+			var kin := _kindled(c.a, c.b)
+			var na: String = Content.WEAPONS[c.a].evo if bool(weapons[c.a].evo) else Content.WEAPONS[c.a].name
+			var nb: String = Content.WEAPONS[c.b].evo if bool(weapons[c.b].evo) else Content.WEAPONS[c.b].name
+			return {"tag": ("Kindled fusion: %s + %s" if kin else "Fusion: %s + %s") % [na, nb], "name": Content.fusion_def(c.id).name,
+				"d": Content.fusion_def(c.id).d + (" Both deal %d%% more damage and carry each other's element." % (35 if kin else 25)), "col": Content.fusion_def(c.id).col}
 		"p":
 			var pl := int(perks.get(c.id, 0))
 			return {"tag": "New perk" if pl == 0 else "Perk Lv %d -> %d" % [pl, pl + 1], "name": Content.PERKS[c.id].name, "d": Content.PERKS[c.id].d, "col": "ece8dd"}
@@ -2579,13 +2595,12 @@ func apply_choice(c: Dictionary) -> void:
 	match c.kind:
 		"w":
 			if weapons.has(c.id): weapons[c.id].lv += 1
-			else:
-				weapons[c.id] = {"lv": 1, "evo": false, "t": 0.0, "gems": []}
-				wlocal[c.id] = Stats.new()
+			else: _take_weapon(c.id)
 		"fuse":
 			weapons[c.a].fuse = c.b
 			weapons[c.b].fuse = c.a
-			for id in [c.a, c.b]: wlocal[id].set_source("fusion", [["damage", "more", 1.25]])
+			var more := Camp.KINDLED_MORE if _kindled(c.a, c.b) else 1.25        # a pair kindled at the Camp's furnace hits harder
+			for id in [c.a, c.b]: wlocal[id].set_source("fusion", [["damage", "more", more]])
 			_elmask_ver = -1
 			shake = 1.0
 			fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": 240.0, "col": Content.col(Content.fusion_def(c.id).col), "life": 0.5, "t": 0.0})
@@ -2646,6 +2661,8 @@ func end_run(win: bool, quiet: bool = false) -> void:
 	if not bargains.is_empty():
 		d.stats["bargains"] = int(d.stats.get("bargains", 0)) + bargains.size()
 	d.echoes = int(d.get("echoes", 0)) + echoes_run
+	ore_run = Camp.ore_for_run(self, win)             # Rift Ore for the Camp's smith and furnace
+	Camp.add_mat(d, "ore", ore_run)
 	if win and not daily and mode != "rift" and torment >= int(d.get("torment_max", 0)) and torment < Content.TORMENT.size() - 1:
 		d.torment_max = torment + 1                  # beating a tier opens the next
 	Save.mark_dirty()

@@ -45,6 +45,11 @@ func defaults() -> Dictionary:
 		"prophecy": {"offers": [], "active": {}, "done": 0},   # offers: [[id, [reward ids]]], active: {id, reward}
 		"daily": {"best": {}, "claimed": ""},            # best: code -> score (newest 30); claimed: date of the last first-clear reward
 		"rift_echoes": [],                               # Story.echo_key of every Rift Echo found (the Codex's Story page)
+		# the Camp (0.11.0, scripts/sim/camp.gd): materials, the smith's ranks, the furnace's kindled pairs, stash locks,
+		# the trader's stock of the day, and the first-run coach (scripts/ui/coach.gd)
+		"materials": {"scrap": 0, "ore": 0}, "temper": {}, "kindled": [], "locked": [],
+		"trader": {"day": "", "rolls": 0, "stock": []},
+		"tutorial": {"on": true, "done": []}, "camp_seen": false,
 	}
 
 func load_profile() -> void:
@@ -60,6 +65,8 @@ func load_profile() -> void:
 		push_warning("profile unreadable, starting fresh")
 		return
 	_merge(data, parsed)
+	if not parsed.has("tutorial") and int((parsed.get("stats", {}) as Dictionary).get("runs", 0)) >= 2:
+		data.tutorial.on = false                      # a profile from before the coach that has played: no lessons
 	_normalise()
 
 ## Copy keys from src into dst where dst has the key (forward compatible: unknown keys are dropped,
@@ -68,7 +75,7 @@ func _merge(dst: Dictionary, src: Dictionary) -> void:
 	for k in dst:
 		if not src.has(k):
 			continue
-		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench", "prophecy", "daily"].has(k):
+		if typeof(dst[k]) == TYPE_DICTIONARY and typeof(src[k]) == TYPE_DICTIONARY and not ["atlas", "bestiary", "nemesis", "equipped", "selftest", "bench", "prophecy", "daily", "temper"].has(k):
 			_merge(dst[k], src[k])
 		else:
 			dst[k] = src[k]
@@ -100,6 +107,38 @@ func _normalise() -> void:
 		var it = data.equipped.get(s, {})
 		eq[s] = Items.normalise(it) if (typeof(it) == TYPE_DICTIONARY and not it.is_empty() and Items.valid(Items.normalise(it))) else {}
 	data.equipped = eq
+	# the Camp
+	var mats := {}
+	for k in Camp.MATERIAL_IDS: mats[k] = maxi(0, int((data.materials as Dictionary).get(k, 0)))
+	data.materials = mats
+	var tp := {}
+	for k in data.temper:
+		if Content.WEAPONS.has(String(k)): tp[String(k)] = clampi(int(data.temper[k]), 0, Camp.TEMPER_MAX)
+	data.temper = tp
+	var kin: Array = []
+	for k in data.kindled:
+		var ab := String(k).split("+")
+		if ab.size() == 2 and Content.WEAPONS.has(ab[0]) and Content.WEAPONS.has(ab[1]) and ab[0] != ab[1]:
+			var key := Content.fusion_key(ab[0], ab[1])
+			if not kin.has(key): kin.append(key)
+	data.kindled = kin
+	var lk: Array = []
+	for u in data.locked:
+		if not lk.has(int(u)): lk.append(int(u))
+	data.locked = lk
+	var T: Dictionary = data.trader
+	T.day = String(T.get("day", "")); T.rolls = maxi(0, int(T.get("rolls", 0)))
+	var stock: Array = []
+	for e in T.get("stock", []):
+		if typeof(e) != TYPE_DICTIONARY or typeof(e.get("it")) != TYPE_DICTIONARY: continue
+		var it2 := Items.normalise(e.it)
+		if Items.valid(it2): stock.append({"it": it2, "price": maxi(1, int(e.get("price", 1)))})
+	T.stock = stock
+	data.tutorial.on = bool(data.tutorial.get("on", true))
+	var dn: Array = []
+	for s2 in data.tutorial.get("done", []): dn.append(String(s2))
+	data.tutorial.done = dn
+	data.camp_seen = bool(data.camp_seen)
 
 func mark_dirty() -> void:
 	_dirty = true
