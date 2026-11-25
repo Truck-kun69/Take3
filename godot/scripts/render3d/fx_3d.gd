@@ -777,7 +777,9 @@ func _decals() -> void:
 		var c := Color(z.col.r, z.col.g, z.col.b, minf(1.0, z.col.a + 0.3))
 		match z.shape:
 			0:
-				if z.hostile: _circle(z.pos, z.r, 0, c, prog, 0.0, w.colorblind)
+				# hatched for everyone, not only in the colour-blind mode: a hostile zone and your own ground can share a
+				# hue (a Volatile foe's blast and your Sulphur flask's fire were the very same orange); stripes tell them apart
+				if z.hostile: _circle(z.pos, z.r, 0, c, prog, 0.0, true)
 				else:                                          # your own consecrated / burning ground
 					_circle(z.pos, z.r, 5, Color(c.r, c.g, c.b, 0.22), 1.0)
 					_circle(z.pos, z.r, 1, Color(c.r, c.g, c.b, 0.5), 1.0, 0.97)

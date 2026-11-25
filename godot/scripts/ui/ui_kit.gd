@@ -192,6 +192,8 @@ static func press_fx(b: BaseButton) -> void:
 
 ## A selectable tile (hero, stage, endgame mode): silver frame tinted by `tint`, gold when selected.
 ## title in Cinzel, sub-line in Garamond italic. Returns the Button; content is laid out inside it.
+## A title_col carries meaning (the stash's rarity) and stays when selected: the gold frame shows the selection.
+## (It used to turn the title gold too, so a selected Legendary or Magic item read as a Rare.)
 static func tile(title_txt: String, sub: String, cb: Callable, tint: Color = Color.WHITE, selected: bool = false, min_h: int = 92, left: bool = false, title_col: Color = Color(0, 0, 0, 0)) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
@@ -210,7 +212,7 @@ static func tile(title_txt: String, sub: String, cb: Callable, tint: Color = Col
 	v.offset_left = 18; v.offset_right = -18; v.offset_top = 5; v.offset_bottom = -6
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var t := label(title_txt, 20, GOLD if selected else (title_col if title_col.a > 0.0 else TEXT), false, "display")
+	var t := label(title_txt, 20, title_col if title_col.a > 0.0 else (GOLD if selected else TEXT), false, "display")
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if left else HORIZONTAL_ALIGNMENT_CENTER
 	t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE

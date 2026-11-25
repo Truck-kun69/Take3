@@ -838,7 +838,8 @@ func _story_page() -> VBoxContainer:
 			if found.has(Story.echo_key(i, k)):
 				b.add_child(UIKit.label("Rift Echo: %s. %s" % [e.title, e.text], 15, Color("c9b3ff"), true, "body"))
 			else:
-				b.add_child(UIKit.label("Rift Echo: not yet heard (it waits beside an arch in this act)", 15, Color(0.5, 0.45, 0.6), true, "italic"))
+				# 6.3:1 on the panel (it was 4.28 nominal and rendered 3.09 as thin italic): a hint is worth reading
+				b.add_child(UIKit.label("Rift Echo: not yet heard (it waits beside an arch in this act)", 15, Color("9d8fbf"), true, "italic"))
 		b.add_child(UIKit.divider())
 	return b
 
@@ -906,12 +907,13 @@ func show_options(back: String = "menu") -> void:
 				v.add_child(UIKit.label("Switched off after a crash: " + ", ".join(Save.opt("gfx_off").map(func(f): return Quality.FEATURE_NAMES.get(f, f))), 15, Color("e0645a"), true, "italic"))
 				v.add_child(UIKit.button("Turn them back on", func(): Save.set_opt("gfx_off", []); Quality.load_saved(); act.emit("options_changed", null); show_options(back), 48))
 		2:
+			# first, so it is on screen without scrolling (it was the sixth row; a phone held sideways shows four)
+			_toggle(v, "Colour-blind palette & patterns", "colorblind", back)
 			_slider(v, "Screen shake", "shake", 0.0, 1.5, back)
 			_cycle(v, "Damage numbers", "dmg_numbers", ["Off", "Crits & reactions", "All"], back)
 			_cycle(v, "Auto-aim", "aim", ["Nearest", "Strongest", "Facing"], back)
 			_cycle(v, "Joystick", "joy_mode", ["Floating", "Fixed"], back)
 			_toggle(v, "Left-handed layout", "left_handed", back)
-			_toggle(v, "Colour-blind palette & patterns", "colorblind", back)
 			_toggle(v, "Reduce flashing", "reduce_flash", back)
 			_toggle(v, "Haptics", "haptics", back)
 			_toggle(v, "Auto-equip upgrades", "auto_equip", back)

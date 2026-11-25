@@ -3953,12 +3953,14 @@ func _look_feel_tests() -> void:
 		off += await _off_screen(mn.screens, ["Back"])
 	mn.screens._sel_item = 0
 	mn.screens.show_stash(false)
+	_selected_rarity_tests(mn)
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
 	off += await _off_screen(mn.screens, ["Equip", "Salvage", "Back"])
 	for tab in 4:
 		mn.screens._opt_tab = tab
 		mn.screens.show_options("menu")
 		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+		if tab == 2: _colourblind_option_tests(mn)
 	mn.screens._opt_tab = 0
 	mn.screens.show_whats_new(true)
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
@@ -4035,6 +4037,33 @@ func _collect_sources(dir: String, out: Array) -> void:
 	for f in d.get_files():
 		if f.ends_with(".gd") or f.ends_with(".gdshader") or f.ends_with(".gdshaderinc"): out.append(dir.path_join(f))
 	for sub in d.get_directories(): _collect_sources(dir.path_join(sub), out)
+
+## Selecting an item keeps its rarity colour: the gold frame shows the selection. UIKit.tile used to turn a selected
+## title gold, so a selected Legendary (or Magic, or Normal) item in the stash read as a Rare.
+func _selected_rarity_tests(mn: Node) -> void:
+	var list: Array = mn.screens._gear_list()
+	var it: Dictionary = list[0].it if not list.is_empty() else {}
+	ok(not it.is_empty() and int(it.rarity) == Content.Rarity.LEGENDARY, "the test stash lists its Legendary first, and it is the selected item")
+	if it.is_empty(): return
+	var want := Content.col(Content.RARITY_COL[Content.Rarity.LEGENDARY]).lightened(0.15)
+	var got := Color(0, 0, 0, 0)
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if not _live(b) or not b.has_meta("title_label"): continue
+		var tl: Label = b.get_meta("title_label")
+		if tl.text == Items.name_of(it): got = tl.get_theme_color("font_color")
+	ok(got.is_equal_approx(want), "a selected Legendary's title stays Legendary orange #%s, not the gold of selection (got #%s)" % [want.to_html(false), got.to_html(false)])
+
+## The colour-blind option is the first row of Options > Game (it was the sixth; a phone held sideways shows four rows),
+## and it stays off by default: the default palette now separates the elements for red-green colour blindness.
+func _colourblind_option_tests(mn: Node) -> void:
+	var first := ""
+	for h in mn.screens.find_children("*", "HBoxContainer", true, false):
+		if not _live(h) or h.get_child_count() < 2 or not (h.get_child(0) is Label): continue
+		if not (h.get_child(1) is Button or h.get_child(1) is HSlider): continue
+		first = String((h.get_child(0) as Label).text)
+		break
+	ok(first == "Colour-blind palette & patterns", "the colour-blind option is the first row of Options > Game (first row: %s)" % first)
+	ok(not bool(get_node("/root/Save").defaults().options.colorblind), "and it is off by default")
 
 func _status_colour_tests(mn: Node) -> void:
 	for p in ["res://shaders/3d/foe.gdshader", "res://shaders/swarm.gdshader"]:

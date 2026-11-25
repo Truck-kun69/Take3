@@ -323,7 +323,7 @@ func _draw_tele(c: Node2D, z: World.Tele) -> void:
 			if z.arm > 0.0:
 				c.draw_circle(z.pos, z.r * prog, Color(col.r, col.g, col.b, col.a * 0.45))
 			c.draw_arc(z.pos, z.r, 0, TAU, 48, edge, 2.5 + pulse * (2.0 if z.arm > 0.0 and z.arm < 0.3 else 0.0))
-			if w.colorblind and z.hostile:
+			if z.hostile:                     # spokes on every hostile zone (they were colour-blind mode only)
 				for k in 6:
 					var a := TAU * k / 6.0 + time
 					c.draw_line(z.pos + Vector2(cos(a), sin(a)) * z.r * 0.3, z.pos + Vector2(cos(a), sin(a)) * z.r * 0.9, edge, 2.0)
