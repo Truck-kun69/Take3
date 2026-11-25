@@ -1111,12 +1111,25 @@ func elmask(id: String) -> int:
 func _take_weapon(id: String) -> void:
 	weapons[id] = {"lv": 1, "evo": false, "t": 0.0, "gems": []}
 	wlocal[id] = Stats.new()
-	var rank := 0 if daily else Camp.temper_rank(Save.data, id)
+	var rank := temper_rank(id)
 	if rank > 0: wlocal[id].set_source("temper", Camp.temper_mods(rank))
+
+## The Camp's temper rank this run gives a weapon (0 in the Daily Rift).
+func temper_rank(id: String) -> int:
+	return 0 if daily else Camp.temper_rank(Save.data, id)
 
 ## The pair was kindled at the Camp's Fusion Furnace: it may fuse at level 5 unevolved, and hits harder.
 func _kindled(a: String, b: String) -> bool:
 	return not daily and Camp.kindled(Save.data, Content.fusion_key(a, b))
+
+## A weapon just reached level 5: if a kindled partner already stands there, unfused, say the pair is ready.
+func _kindled_ready(id: String) -> void:
+	if int(weapons[id].lv) < 5 or fused(id) != "": return
+	for b in weapons:
+		if b != id and int(weapons[b].lv) >= 5 and fused(b) == "" and _kindled(id, b):
+			var F: Dictionary = Content.fusion_def(Content.fusion_key(id, b))
+			toast.emit("Kindled pair ready: %s at your next level-up" % F.name, Content.col(F.col))
+			return
 
 ## The weapon this one is fused with, or "".
 func fused(id: String) -> String:
@@ -2294,19 +2307,31 @@ func _take_item(it: Dictionary) -> void:
 		stash_add(it)
 	item_found.emit(it, upgrade and not Save.opt("auto_equip"))
 
+## A full stash (STASH_CAP) makes room by salvaging, at Nim's rates (Camp.salvage_yield: shards and scrap), the
+## weakest unlocked item below Legendary, the new one included: the lowest rarity first, then the lowest score.
+## A locked item or a Legendary is never salvaged unasked; with nothing else to give up, the stash goes over the cap.
+var _stash_full_told := false
 func stash_add(it: Dictionary) -> void:
-	var st: Array = Save.data.stash
-	if st.size() >= STASH_CAP:            # full stash: salvage the weakest normal/magic item
-		var worst := -1
-		var ws := INF
-		for k in st.size():
-			if int(st[k].rarity) <= Content.Rarity.MAGIC and Items.score(st[k]) < ws:
-				ws = Items.score(st[k]); worst = k
-		if worst < 0:
-			Save.add_currency("transmute", 2)
-			return
-		st.remove_at(worst)
-		Save.add_currency("transmute")
+	var d: Dictionary = Save.data
+	var st: Array = d.stash
+	if st.size() >= STASH_CAP:
+		var worst: Dictionary = {}
+		var wk := INF
+		for c in st + [it]:
+			if int(c.rarity) >= Content.Rarity.LEGENDARY or Camp.is_locked(d, c): continue
+			var k := float(c.rarity) * 1.0e6 + Items.score(c)
+			if k < wk:
+				wk = k
+				worst = c
+		if not worst.is_empty():
+			Camp.add_yield(d, Camp.salvage_yield(worst))
+			if not _stash_full_told:
+				_stash_full_told = true
+				toast.emit("Stash full: the weakest finds are salvaged", Color("c9b79a"))
+			if worst == it:
+				Save.mark_dirty()
+				return
+			st.erase(worst)
 	st.append(it)
 	Save.mark_dirty()
 
@@ -2576,7 +2601,10 @@ func choice_text(c: Dictionary) -> Dictionary:
 		"w":
 			var lv := int(weapons[c.id].lv) if weapons.has(c.id) else 0
 			var W: Dictionary = Content.WEAPONS[c.id]
-			return {"tag": "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1], "name": W.name, "d": W.d[lv] + "  [%s]" % Content.EL_NAME[W.elem], "col": W.col}
+			var rank := temper_rank(c.id)
+			var tag := "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1]
+			if rank > 0: tag += "  \u00b7  " + Camp.RANK_NAME[rank]          # tempered at the Camp's smith
+			return {"tag": tag, "name": W.name, "d": W.d[lv] + "  [%s]" % Content.EL_NAME[W.elem], "col": W.col}
 		"e": return {"tag": "Evolution", "name": Content.WEAPONS[c.id].evo, "d": Content.WEAPONS[c.id].evo_d, "col": "f4c04e"}
 		"fuse":
 			var kin := _kindled(c.a, c.b)
@@ -2596,6 +2624,7 @@ func apply_choice(c: Dictionary) -> void:
 		"w":
 			if weapons.has(c.id): weapons[c.id].lv += 1
 			else: _take_weapon(c.id)
+			_kindled_ready(c.id)
 		"fuse":
 			weapons[c.a].fuse = c.b
 			weapons[c.b].fuse = c.a

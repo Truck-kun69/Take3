@@ -3333,6 +3333,7 @@ func _camp_tests() -> void:
 		ok(w.wlocal[start_w].value("damage", 1.0) > 1.0, "the starting weapon carries its temper")
 	w.apply_choice({"kind": "w", "id": "nova"})
 	ok(absf(w.wlocal["nova"].value("damage", 1.0) - 1.08) < 0.001, "a weapon taken in the run carries its temper (%.3f)" % w.wlocal["nova"].value("damage", 1.0))
+	ok(String(w.choice_text({"kind": "w", "id": "nova"}).tag).ends_with(Camp.RANK_NAME[1]), "its level-up card names its temper (%s)" % w.choice_text({"kind": "w", "id": "nova"}).tag)
 	w.apply_choice({"kind": "w", "id": "orbit"})
 	ok(absf(w.wlocal["orbit"].value("damage", 1.0) - 1.0) < 0.001, "an untempered weapon is unchanged")
 	var wd := _world({"mode": "campaign", "hero": 0, "seed": 32, "daily": true, "code": "T", "date": "2026-11-25"})
@@ -3414,6 +3415,15 @@ func _camp_tests() -> void:
 	ok(fz.size() == 1 and fz[0].id == "bolt+nova", "a kindled pair offers its fusion at level 5, unevolved")
 	wk.apply_choice(fz[0])
 	ok(absf(wk.wlocal["bolt"].value("damage", 1.0) - Camp.KINDLED_MORE) < 0.001, "a kindled fusion deals 35% more damage")
+	var wr := _world({"mode": "campaign", "hero": 0, "seed": 39})
+	var toasts: Array = []
+	wr.toast.connect(func(t, _c): toasts.append(t))
+	wr.weapons["nova"] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
+	wr.wlocal["nova"] = Stats.new()
+	wr.weapons["bolt"] = {"lv": 4, "evo": false, "t": 0.0, "gems": []}
+	wr.wlocal["bolt"] = Stats.new()
+	wr.apply_choice({"kind": "w", "id": "bolt"})
+	ok(toasts.any(func(t): return String(t).begins_with("Kindled pair ready")), "the kindled pair's second weapon at level 5 says the fusion is ready (%s)" % str(toasts))
 	var wu := _world({"mode": "campaign", "hero": 0, "seed": 34})
 	for id in ["bolt", "orbit"]:
 		wu.weapons[id] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
@@ -3445,6 +3455,28 @@ func _camp_tests() -> void:
 	var a0 := int(dt.currency.augment)
 	ok(Camp.buy_shard(dt, "augment") == "" and int(dt.currency.augment) == a0 + 1, "the trader sells crafting shards")
 	ok(Camp.buy_shard(dt, "exalt") != "", "but not every shard")
+	# ---- a full stash: the weakest unlocked find below Legendary is salvaged at Nim's rates, never a locked one
+	var keep_d: Dictionary = Save.data
+	Save.data = Save.defaults()
+	var sd: Dictionary = Save.data
+	var wst := _world({"mode": "campaign", "hero": 0, "seed": 38})
+	for k in World.STASH_CAP - 1:
+		var lm := Items.make(Content.SLOTS[k % 4], Content.Rarity.MAGIC, 10, rng)
+		sd.stash.append(lm)
+		Camp.toggle_lock(sd, lm)
+	var junk := Items.make("ring", Content.Rarity.NORMAL, 5, rng)
+	sd.stash.append(junk)
+	var nm := Items.make("boots", Content.Rarity.MAGIC, 12, rng)
+	wst.stash_add(nm)
+	ok(sd.stash.size() == World.STASH_CAP and not sd.stash.has(junk) and sd.stash.has(nm) and Camp.mat(sd, "scrap") == Camp.SCRAP[0], "full: the unlocked Normal ring is salvaged for its scrap, the new find kept")
+	var nm2 := Items.make("relic", Content.Rarity.MAGIC, 3, rng)
+	Camp.toggle_lock(sd, nm)
+	wst.stash_add(nm2)
+	ok(sd.stash.size() == World.STASH_CAP and not sd.stash.has(nm2) and Camp.mat(sd, "scrap") == Camp.SCRAP[0] + Camp.SCRAP[1], "everything locked: the new Magic find is salvaged instead, nothing locked is lost")
+	var lg2 := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
+	wst.stash_add(lg2)
+	ok(sd.stash.has(lg2) and sd.stash.size() == World.STASH_CAP + 1, "a Legendary is never salvaged unasked: the stash goes over the cap for it")
+	Save.data = keep_d
 	# ---- the run's ore
 	var wo := _world({"mode": "campaign", "hero": 0, "seed": 35})
 	wo.kills = 900; wo.champions_slain = 2

@@ -1276,7 +1276,8 @@ func show_levelup(w: World) -> void:
 	var o := ""
 	for id in w.weapons:
 		var wd: Dictionary = w.weapons[id]
-		o += "%s %s%d   %s\n" % [Content.WEAPONS[id].name, ("Fused " if wd.get("fuse", "") != "" else ("Evolved " if wd.evo else "Lv ")), wd.lv, ("Linked: " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else "no links"]
+		var tr := w.temper_rank(id)
+		o += "%s %s%d%s   %s\n" % [Content.WEAPONS[id].name, ("Fused " if wd.get("fuse", "") != "" else ("Evolved " if wd.evo else "Lv ")), wd.lv, ("  \u00b7  " + Camp.RANK_NAME[tr]) if tr > 0 else "", ("Linked: " + ", ".join(wd.gems.map(func(g): return Content.GEMS[g].name))) if not wd.gems.is_empty() else "no links"]
 	var al := UIKit.label(o.strip_edges(), 16, UIKit.DIM, true, "italic")
 	al.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(al)
