@@ -80,12 +80,12 @@ static func show_camp(s: Screens) -> void:
 
 static func _go(s: Screens, id: String) -> void:
 	match id:
-		"chronicler":
+		"chronicler":                         # set first: the page's Back reads it while it is built
+			s.parent_page = "camp"
 			s.act.emit("codex", "camp")
-			s.parent_page = "camp"
 		"cartographer":
-			s.act.emit("endgame", null)
 			s.parent_page = "camp"
+			s.act.emit("endgame", null)
 		_: show(s, id)
 
 ## The line under an NPC's name on the hub: what their station holds for you now.

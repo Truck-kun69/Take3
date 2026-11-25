@@ -3622,6 +3622,19 @@ func _camp_ui_tests() -> void:
 		await get_tree().process_frame
 		if _npc_card(mn.screens, "smith") == null: nav += "  (%s: Back did not return to the Camp)" % id
 	ok(nav == "", "each station opens from its card, keeps Back on screen sideways and Android Back returns to the Camp%s" % nav)
+	# the Chronicler and the Cartographer open the Codex and Modes; their Back returns to the Camp too
+	var back_nav := ""
+	for id in ["chronicler", "cartographer"]:
+		var cc := _npc_card(mn.screens, id)
+		if cc == null:
+			back_nav += "  (%s: no card)" % id
+			continue
+		cc.pressed.emit()
+		await get_tree().process_frame
+		if not _press(mn.screens, "Back"): back_nav += "  (%s: no Back)" % id
+		await get_tree().process_frame
+		if _npc_card(mn.screens, "smith") == null: back_nav += "  (%s: Back did not return to the Camp)" % id
+	ok(back_nav == "", "the Chronicler's Codex and Wend's Modes return to the Camp with Back%s" % back_nav)
 	# the stations' actions, through their buttons
 	CampPages.show_smith(mn.screens)
 	ok(_press(mn.screens, "Temper") and Camp.temper_rank(sv.data, "bolt") == 1, "the smith's first Temper tempers Rime Bolt")

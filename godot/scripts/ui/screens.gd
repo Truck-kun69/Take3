@@ -720,7 +720,9 @@ func show_web() -> void:
 ## Codex & Story: the acts (Story: what each one is, its boss, and the Rift Echoes found in it), the exiles'
 ## bios, then the bestiary, lore pages, extracted powers, records and the arsenal. From the main menu (back:
 ## "menu") and from Upgrades (back: "upgrades").
+var _codex_back := "upgrades"
 func show_codex(back: String = "upgrades") -> void:
+	_codex_back = back
 	var v := _open(1100)
 	_title(v, "Codex & Story", Story.TITLE)
 	var tabs := TabContainer.new()
@@ -758,7 +760,7 @@ func show_codex(back: String = "upgrades") -> void:
 		var known: bool = Save.data.codex.has(id)
 		var on: bool = Save.data.codex_active.has(id)
 		var L: Dictionary = Content.LEGENDARIES[id]
-		var bt := UIKit.button("%s%s: %s" % ["[ACTIVE] " if on else "", L.name, L.d] if known else "??? (find and extract this legendary)", func(): act.emit("codex_toggle", id); show_codex(), 52)
+		var bt := UIKit.button("%s%s: %s" % ["[ACTIVE] " if on else "", L.name, L.d] if known else "??? (find and extract this legendary)", func(): act.emit("codex_toggle", id); show_codex(_codex_back), 52)
 		bt.disabled = not known
 		bt.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		bt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
