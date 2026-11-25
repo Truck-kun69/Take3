@@ -760,8 +760,15 @@ func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: flo
 func _circle(pos: Vector2, r: float, kind: float, col: Color, prog: float, inner: float = 0.0, hatch: bool = false) -> void:
 	_decal(pos, Basis().scaled(Vector3(r, 1, r)), kind, col, prog, inner, hatch)
 
+## The hero's ring: in a pack of sixty foes (tests/combat_shot.tscn, Act I) the hero could not be told from the swarm,
+## and the x-ray silhouette only shows where props hide them. A ring in the hero's colour and a faint pool under it.
+const HERO_RING_R := 34.0
 func _decals() -> void:
 	_decal_used = 0
+	if not w.over and w.hp > 0.0:
+		var hc := Content.col(String(Content.HEROES[w.hero].col))
+		_circle(w.pp, HERO_RING_R * 1.6, 5, Color(hc.r, hc.g, hc.b, 0.16), 1.0)
+		_circle(w.pp, HERO_RING_R, 1, Color(hc.r, hc.g, hc.b, 0.85), 1.0, 0.8)
 	if w.arena_r > 0.0:
 		_circle(Vector2.ZERO, w.arena_r + 20.0, 1, Color(0.75, 0.5, 1.0, 0.8), 1.0, w.arena_r / (w.arena_r + 20.0))
 	for z in w.teles:
