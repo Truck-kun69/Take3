@@ -547,7 +547,7 @@ func _pickups(gn: int) -> int:
 		var rot := Basis(Vector3.UP, time * 2.0 + pos.y * 0.1)
 		match p.k:
 			"coin": shape = "disc"; c = Color("ffd84a"); s = Vector3(8, 8, 8); em = 0.5; rot = Basis(Vector3.RIGHT, PI / 2).rotated(Vector3.UP, time * 4.0 + pos.x)
-			"heart": c = Color("ff3a4e"); s = Vector3(10, 10, 10); em = 0.8
+			"heart": c = Content.LIFE; s = Vector3(10, 10, 10); em = 0.8
 			"item":
 				shape = "box"
 				var it: Dictionary = p.data
@@ -796,10 +796,11 @@ func _decals() -> void:
 	var ring_dim := 1.0 if rings <= 4 else maxf(0.35, sqrt(4.0 / rings))
 	var cg := w.contagion
 	if cg != null:
+		var fc := Content.el_col(Content.El.FIRE, w.colorblind)    # the Fire swatch, the colour-blind option's too
 		for z in cg.zones:                                 # Incineration: burning ground and its edge
 			var fade := clampf((Contagion.ZONE_TIME - float(z.t)) / 0.4, 0.0, 1.0)
-			_circle(z.pos, z.r, 5, Color(1.0, 0.42, 0.1, 0.3 * fade), 1.0)
-			_circle(z.pos, z.r, 1, Color(1.0, 0.58, 0.2, 0.7 * fade), 1.0, 0.95)
+			_circle(z.pos, z.r, 5, Color(fc, 0.3 * fade), 1.0)
+			_circle(z.pos, z.r, 1, Color(fc.lerp(Color.WHITE, 0.15), 0.7 * fade), 1.0, 0.95)
 	for f in w.fx:
 		if f.k == "ring":
 			var k: float = clampf(f.t / f.life, 0, 1)

@@ -364,7 +364,7 @@ func _draw() -> void:
 			targets.append([p.pos, Color("e8dcc0")])
 	for u in w.boss_uids:
 		var i := w.sw.index_of(u)
-		if i >= 0: targets.append([w.sw.pos[i], Color("ff4a5e")])
+		if i >= 0: targets.append([w.sw.pos[i], Content.DANGER])
 	for e in w.rift_echoes:
 		if not e.taken: targets.append([e.pos, Color("c48aff")])
 	var c := vs * 0.5

@@ -531,7 +531,7 @@ func show_atlas() -> void:
 		for m in n.mods: mods += "- %s: %s\n" % [Content.MAP_MODS[m].name, Content.MAP_MODS[m].d]
 		v.add_child(UIKit.label("%s  (Tier %d %s)%s" % [Content.STAGES[int(n.biome)].name, n.tier, String(n.kind).capitalize(), "  COMPLETED" if n.done else ""], 22, UIKit.GOLD))
 		v.add_child(UIKit.label(mods if mods != "" else "No modifiers.", 17, UIKit.TEXT, true))
-		v.add_child(UIKit.label("+%d%% item quantity, +%d%% item rarity" % [int(rw.x * 100), int(rw.y * 100)], 17, Color("7dff6b")))
+		v.add_child(UIKit.label("+%d%% item quantity, +%d%% item rarity" % [int(rw.x * 100), int(rw.y * 100)], 17, Content.BETTER))
 		var run := UIKit.button("Run this map", func(): act.emit("atlas", _sel_node), 64)
 		run.disabled = not bool(n.open)
 		v.add_child(run)
@@ -620,7 +620,7 @@ func show_stash(in_run: bool = false) -> void:
 		var cur: Dictionary = Save.data.equipped[it.slot]
 		if not sel.eq and not cur.is_empty():
 			var diff := Items.score(it) - Items.score(cur)
-			var dl := UIKit.label("%+d score vs equipped" % int(diff), 17, Color("7dff6b") if diff > 0 else Color("ff6a6a"), false, "display")
+			var dl := UIKit.label("%+d score vs equipped" % int(diff), 17, Content.BETTER if diff > 0 else Color("ff6a6a"), false, "display")
 			dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			card.add_child(dl)
 		var cp := PanelContainer.new()

@@ -488,7 +488,7 @@ static func show_trader(s: Screens) -> void:
 		sub.add_child(UIKit.label("%s %s  ·  item level %d  ·  score %d" % [Content.RARITY_NAME[int(it.rarity)], Content.SLOT_NAME[it.slot], int(it.ilvl), int(Items.score(it))], 14, UIKit.DIM, true, "italic"))
 		var cur: Dictionary = d.equipped.get(it.slot, {})
 		var diff := Items.score(it) - Items.score(cur)
-		sub.add_child(UIKit.label(("%+d vs equipped" % int(diff)) if not cur.is_empty() else "nothing equipped there", 14, Color("7dff6b") if diff > 0 else Color("ff8a7a"), true, "italic"))
+		sub.add_child(UIKit.label(("%+d vs equipped" % int(diff)) if not cur.is_empty() else "nothing equipped there", 14, Content.BETTER if diff > 0 else Color("ff8a7a"), true, "italic"))
 		left.add_child(sub)
 		var ls := Items.lines(it)
 		var shown := PackedStringArray()

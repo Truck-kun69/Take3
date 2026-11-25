@@ -10,6 +10,12 @@ const EL_STATUS := ["Bleed", "Burn", "Chill", "Shock", "Poison"]
 const EL_COL := ["ff4a5e", "ff8a3c", "7fe6ff", "e6d24a", "7dff6b"]
 # Colour-blind safe alternates (Okabe-Ito); the renderer also adds per-element mote shapes.
 const EL_COL_CB := ["d55e00", "e69f00", "56b4e9", "f0e442", "009e73"]
+# Every element hue comes from EL_COL through el_col() / status_cols() (World.el, the shaders' status_cols), so a palette
+# change or the colour-blind option reaches every status glow, number and particle. Colours that once shared those
+# hexes but mean something else are named here instead, so a palette change never drags them along:
+const BETTER := Color("7dff6b")      # an upgrade or a bonus: "+12 vs equipped", a map's reward
+const DANGER := Color("ff4a5e")      # a boss or a curse: off-screen boss arrows, boss life bars, the cursed chest
+const LIFE := Color("ff3a4e")        # the heart pickup, in both views
 
 # ---------------------------------------------------------------- heroes / weapons
 const HEROES := [

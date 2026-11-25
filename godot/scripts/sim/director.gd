@@ -292,7 +292,7 @@ func _step_cursed(ev: Dictionary, dt: float) -> void:
 		if w.pp.distance_to(ev.pos) < 40.0:
 			ev.state = 1
 			ev.life = 25.0
-			w.banner.emit("The curse wakes", "Slay %d foes in 25 seconds." % ev.quota, Color("ff4a5e"))
+			w.banner.emit("The curse wakes", "Slay %d foes in 25 seconds." % ev.quota, Content.DANGER)
 		elif ev.life <= 0.0:
 			ev.done = true
 		return
@@ -309,7 +309,7 @@ func _step_cursed(ev: Dictionary, dt: float) -> void:
 		_end(ev, true)
 	elif ev.life <= 0.0:
 		_dismiss(ev)
-		w.toast.emit("The curse lingers (%d / %d)" % [ev.kills, ev.quota], Color("ff4a5e"))
+		w.toast.emit("The curse lingers (%d / %d)" % [ev.kills, ev.quota], Content.DANGER)
 		w.drop_item(ev.pos, Content.Rarity.MAGIC)
 		_end(ev, false)
 

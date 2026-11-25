@@ -775,7 +775,7 @@ func _roll(mvv: Vector2) -> void:
 	_burst(pp, Color(0.8, 0.8, 0.9), 6, 90.0)
 	Sfx.play("roll")
 	if has_leg("ouroboros"):
-		nova_at(pp, 110.0, weapon_damage_base() * 1.5, 1 << Content.El.FIRE, Color("ff8a3c"))
+		nova_at(pp, 110.0, weapon_damage_base() * 1.5, 1 << Content.El.FIRE, el(Content.El.FIRE))
 
 func invulnerable() -> bool:
 	return roll_t > 0.0 or inv_t > 0.0 or stats.flag("invuln")
@@ -827,8 +827,8 @@ func use_flask(f: int) -> bool:
 	if f == 0 and has_bargain("blood_price"):          # the Whisperer's price: the flask is poison now
 		fl.c -= fl.cost
 		Sfx.play("flask")
-		nova_at(pp, 190.0, weapon_damage_base() * 6.0, 1 << Content.El.CHAOS, Color("7dff6b"), 260.0)
-		var pz := add_tele(0, pp, 150.0, 0.0, 4.0, weapon_damage_base() * 0.9, false, true, Content.El.CHAOS, Color(0.45, 1.0, 0.4, 0.45), "ground")
+		nova_at(pp, 190.0, weapon_damage_base() * 6.0, 1 << Content.El.CHAOS, el(Content.El.CHAOS), 260.0)
+		var pz := add_tele(0, pp, 150.0, 0.0, 4.0, weapon_damage_base() * 0.9, false, true, Content.El.CHAOS, Color(el(Content.El.CHAOS), 0.45), "ground")
 		pz.follow = true
 		pz.tick = 0.4
 		return false
@@ -839,7 +839,7 @@ func use_flask(f: int) -> bool:
 	match fl.id:
 		"life": heal_hot += max_hp * 0.45 * stats.value("flask_heal", 1.0)
 		"sulphur":
-			var z := add_tele(0, pp, 120.0, 0.0, 5.0, weapon_damage_base() * 0.8, false, true, Content.El.FIRE, Color(1.0, 0.55, 0.2, 0.5), "ground")
+			var z := add_tele(0, pp, 120.0, 0.0, 5.0, weapon_damage_base() * 0.8, false, true, Content.El.FIRE, Color(el(Content.El.FIRE), 0.5), "ground")
 			z.follow = true
 			z.tick = 0.4
 		_: buffs.add(fl.id)
@@ -877,10 +877,10 @@ func use_ult() -> bool:
 			fx.append({"k": "ring", "pos": pp, "r": 0.0, "max": view_r, "col": Color("aef4ff"), "life": 0.6, "t": 0.0})
 			terrain.freeze(pp, view_r, 9.0)             # every lake on screen becomes a road
 		"ember":
-			nova_at(pp, view_r * 0.9, weapon_damage_base() * 10.0, 1 << Content.El.FIRE, Color("ff8a3c"))
+			nova_at(pp, view_r * 0.9, weapon_damage_base() * 10.0, 1 << Content.El.FIRE, el(Content.El.FIRE))
 			for k in 6:
 				var a := TAU * k / 6.0
-				var z := add_tele(0, pp + Vector2(cos(a), sin(a)) * 160.0, 70.0, 0.0, 6.0, weapon_damage_base() * 0.7, false, true, Content.El.FIRE, Color(1, 0.45, 0.15, 0.45), "ground")
+				var z := add_tele(0, pp + Vector2(cos(a), sin(a)) * 160.0, 70.0, 0.0, 6.0, weapon_damage_base() * 0.7, false, true, Content.El.FIRE, Color(el(Content.El.FIRE), 0.45), "ground")
 				z.tick = 0.4
 		"storm": buffs.add("thunderdome")
 	return true
@@ -1380,7 +1380,7 @@ func _meteor(s: Dictionary, mul: float) -> bool:
 		if i >= sw.n: continue
 		var at := sw.pos[i]
 		meteors.append([t + 0.85, at, r, float(s.dmg) * _dmg_scale("meteor") * mul, elmask("meteor")])
-		fx.append({"k": "ring", "pos": at, "r": r, "max": r * 0.2, "col": Color("ff8a3c"), "life": 0.85, "t": 0.0})
+		fx.append({"k": "ring", "pos": at, "r": r, "max": r * 0.2, "col": el(Content.El.FIRE), "life": 0.85, "t": 0.0})
 	return true
 
 func _step_meteors() -> void:
@@ -1956,7 +1956,7 @@ func _step_dots(dt: float) -> void:
 		sw.take(i, d)
 		# tiny ticks (< 3 damage and < 2% of the foe's life) are pure noise on screen
 		if d >= 3.0 or d >= sw.mhp[i] * 0.02:
-			var col := Color("ff8a3c") if sw.burn[i] >= sw.pois[i] and sw.burn[i] >= sw.bleed[i] else (Color("7dff6b") if sw.pois[i] >= sw.bleed[i] else Color("ff4a5e"))
+			var col := el(Content.El.FIRE) if sw.burn[i] >= sw.pois[i] and sw.burn[i] >= sw.bleed[i] else (el(Content.El.CHAOS) if sw.pois[i] >= sw.bleed[i] else el(Content.El.PHYS))
 			_text(sw.pos[i], d, col, 4, sw.uid[i])
 		metrics.dmg_dealt += d
 
@@ -2569,7 +2569,12 @@ func _text(at: Vector2, v: float, col: Color, tier: int, u: int, label: String =
 
 ## A damage-over-time number (Contagion's Burn ticks share _step_dots' colour and tier).
 func text_dot(at: Vector2, v: float, u: int) -> void:
-	_text(at, v, Color("ff8a3c"), 4, u)
+	_text(at, v, el(Content.El.FIRE), 4, u)
+
+## An element's colour in the palette the player chose (Content.el_col; the colour-blind option swaps it), for
+## damage-over-time numbers, novas and the ground a hero's own fire or poison leaves: one source for every element hue.
+func el(e: int) -> Color:
+	return Content.el_col(e, colorblind)
 
 func _step_feed(dt: float) -> void:
 	var k := texts.size() - 1

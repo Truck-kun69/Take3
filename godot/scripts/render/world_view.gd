@@ -356,7 +356,7 @@ func _draw_event(c: Node2D, ev: Dictionary) -> void:
 				c.draw_arc(p, r * (0.25 + 0.15 * k), a, a + 1.6, 24, Color(0.8, 0.6, 1.0, 0.35), 3.0)
 			_label(c, p + Vector2(0, -r - 16), "%.0fs" % ev.life, Color("e0c8ff"), 18)
 		"cursed":
-			_chest(c, p, Color("a02030"), Color("ff4a5e"))
+			_chest(c, p, Color("a02030"), Content.DANGER)
 			if ev.state == 1:
 				c.draw_arc(p, 260.0, 0, TAU, 96, Color(1, 0.3, 0.35, 0.6), 3.0)
 				c.draw_arc(p, 46.0, -PI / 2, -PI / 2 + TAU * clampf(float(ev.kills) / float(ev.quota), 0, 1), 32, Color("ffd84a"), 5.0)
@@ -372,7 +372,7 @@ func _draw_event(c: Node2D, ev: Dictionary) -> void:
 			c.draw_circle(p + Vector2(0, 14), 16.0, Color(0, 0, 0, 0.3))
 			c.draw_colored_polygon(PackedVector2Array([p + Vector2(-14, 14), p + Vector2(14, 14), p + Vector2(6, -16), p + Vector2(-6, -16)]), Color("2f7a4a"))
 			c.draw_circle(p + Vector2(0, -20), 9.0, Color("e0c090"))
-			_label(c, p + Vector2(0, -40), "Merchant", Color("7dff6b"), 16)
+			_label(c, p + Vector2(0, -40), "Merchant", Content.col(Content.EVENTS.merchant.col), 16)
 		"ritual":
 			var pts := PackedVector2Array()
 			for k in 6:
@@ -409,7 +409,7 @@ func _draw_pick(c: Node2D, p: Dictionary) -> void:
 	var bob := sin(time * 5.0 + pos.x * 0.1) * 2.0
 	match p.k:
 		"coin": c.draw_circle(pos + Vector2(0, bob), 5.0, Color("ffd84a")); c.draw_circle(pos + Vector2(-1, bob - 1), 2.0, Color("fff2b0"))
-		"heart": c.draw_circle(pos + Vector2(-3, bob), 5.0, Color("ff4a5e")); c.draw_circle(pos + Vector2(3, bob), 5.0, Color("ff4a5e")); c.draw_colored_polygon(PackedVector2Array([pos + Vector2(-8, bob + 1), pos + Vector2(8, bob + 1), pos + Vector2(0, bob + 10)]), Color("ff4a5e"))
+		"heart": c.draw_circle(pos + Vector2(-3, bob), 5.0, Content.LIFE); c.draw_circle(pos + Vector2(3, bob), 5.0, Content.LIFE); c.draw_colored_polygon(PackedVector2Array([pos + Vector2(-8, bob + 1), pos + Vector2(8, bob + 1), pos + Vector2(0, bob + 10)]), Content.LIFE)
 		"item":
 			var it: Dictionary = p.data
 			var rc := Content.col(Content.RARITY_COL[it.rarity])
@@ -464,7 +464,7 @@ func _draw_actors() -> void:
 		var rr := w.sw.rad[i]
 		var fr := clampf(w.sw.hp[i] / w.sw.mhp[i], 0, 1)
 		c.draw_rect(Rect2(p + Vector2(-rr, -rr - 16), Vector2(rr * 2, 5)), Color(0, 0, 0, 0.6))
-		c.draw_rect(Rect2(p + Vector2(-rr, -rr - 16), Vector2(rr * 2 * fr, 5)), Color("ff4a5e"))
+		c.draw_rect(Rect2(p + Vector2(-rr, -rr - 16), Vector2(rr * 2 * fr, 5)), Content.DANGER)
 		if u == w.bosses.exile_uid:
 			_label(c, p + Vector2(0, -rr - 22), w.bosses.exile_name, Color("ff8a2b"), 14)
 	# elite affix tags

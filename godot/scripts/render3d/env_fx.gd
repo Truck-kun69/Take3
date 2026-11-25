@@ -223,6 +223,11 @@ func _status_fx() -> void:
 	var sw := w.sw
 	var r2 := (w.view_r + 40.0) * (w.view_r + 40.0)
 	var fxv := view.fx
+	# the element swatches (Content.el_col: the colour-blind option swaps them), lighter or darker per effect
+	var c_burn := Content.el_col(Content.El.FIRE, w.colorblind)
+	var c_chill := Color(Content.el_col(Content.El.COLD, w.colorblind).lerp(Color.WHITE, 0.35), 0.35)
+	var c_pois := Color(Content.el_col(Content.El.CHAOS, w.colorblind).darkened(0.2), 0.4)
+	var c_shock := Content.el_col(Content.El.LIGHT, w.colorblind).lerp(Color.WHITE, 0.4)
 	for i in range(_frame % 2, sw.n, 2):
 		var p := sw.pos[i]
 		if p.distance_squared_to(w.pp) > r2: continue
@@ -232,14 +237,14 @@ func _status_fx() -> void:
 			fxv._spark(Vector3(p.x, h, p.y), Vector3(randf_range(-1, 1), randf_range(0.5, 1.4), randf_range(-1, 1)) * 140.0, Color(0.55, 0.05, 0.06), 0.35, 5.0)
 			if randf() < 0.12: fxv._mark(p + Vector2(randf_range(-8, 8), randf_range(-8, 8)), sw.rad[i] * 0.7, 0)
 		if sw.burn[i] > 0.0 and randf() < 0.35:
-			fxv._spark(Vector3(p.x + randf_range(-6, 6), h, p.y + randf_range(-6, 6)), Vector3(randf_range(-10, 10), randf_range(40, 90), randf_range(-10, 10)), Color(1.0, 0.45, 0.1), 0.45, 9.0)
+			fxv._spark(Vector3(p.x + randf_range(-6, 6), h, p.y + randf_range(-6, 6)), Vector3(randf_range(-10, 10), randf_range(40, 90), randf_range(-10, 10)), c_burn, 0.45, 9.0)
 			if randf() < 0.25: puff(Vector3(p.x, h + 10.0, p.y), Vector3(0, 35, 0), Color(0.12, 0.1, 0.1, 0.45), 1.2, 16.0)
 		if sw.chill_t[i] > 0.0 and randf() < 0.12:
-			puff(Vector3(p.x, h - sw.rad[i] * 0.64, p.y), Vector3(randf_range(-12, 12), 6, randf_range(-12, 12)), Color(0.7, 0.9, 1.0, 0.35), 0.9, 14.0, 0.3)
+			puff(Vector3(p.x, h - sw.rad[i] * 0.64, p.y), Vector3(randf_range(-12, 12), 6, randf_range(-12, 12)), c_chill, 0.9, 14.0, 0.3)
 		if sw.pois[i] > 0.0 and randf() < 0.1:
-			puff(Vector3(p.x, h - sw.rad[i] * 0.8, p.y), Vector3(randf_range(-8, 8), 14, randf_range(-8, 8)), Color(0.35, 0.8, 0.2, 0.4), 1.1, 15.0, 0.4)
+			puff(Vector3(p.x, h - sw.rad[i] * 0.8, p.y), Vector3(randf_range(-8, 8), 14, randf_range(-8, 8)), c_pois, 1.1, 15.0, 0.4)
 		if sw.shock_t[i] > 0.0 and randf() < 0.15:
-			fxv._spark(Vector3(p.x + randf_range(-10, 10), h + randf_range(-5, 8), p.y + randf_range(-10, 10)), Vector3(randf_range(-60, 60), randf_range(0, 60), randf_range(-60, 60)), Color(1.0, 0.95, 0.5), 0.12, 6.0)
+			fxv._spark(Vector3(p.x + randf_range(-10, 10), h + randf_range(-5, 8), p.y + randf_range(-10, 10)), Vector3(randf_range(-60, 60), randf_range(0, 60), randf_range(-60, 60)), c_shock, 0.12, 6.0)
 
 func _cast_flash() -> void:
 	if w.cast_t != _last_cast:

@@ -3925,6 +3925,7 @@ func _look_feel_tests() -> void:
 	var probe := UIKit.label("x", 12)
 	ok(probe.get_theme_font_size("font_size") == UIKit.MIN_TEXT, "a label asked for 12 units gets the %d floor" % UIKit.MIN_TEXT)
 	probe.free()
+	_colour_literal_tests()
 	var sv: Node = get_node("/root/Save")
 	var keep: Dictionary = sv.data
 	sv.data = sv.defaults()
@@ -4008,6 +4009,32 @@ func _same_cols(a, b: PackedColorArray) -> bool:
 	for i in b.size():
 		if not (a as PackedColorArray)[i].is_equal_approx(b[i]): return false
 	return true
+
+## Every element hue comes from Content (EL_COL via el_col / status_cols / World.el): no script or shader outside
+## content.gd may type an element's hex in again (the old palette's too), so a palette change or the colour-blind option
+## reaches every status glow, damage number, particle and nova. The review found 16 such sites; colours that shared those
+## hexes with another meaning are Content.BETTER / DANGER / LIFE.
+func _colour_literal_tests() -> void:
+	var hexes: Array = []
+	for h in Content.EL_COL + ["ff8a3c", "7dff6b", "ff4a5e", "e6d24a", "7fe6ff"]:
+		if not hexes.has(String(h).to_lower()): hexes.append(String(h).to_lower())
+	var files: Array = []
+	_collect_sources("res://scripts", files)
+	_collect_sources("res://shaders", files)
+	var hits: Array = []
+	for p in files:
+		if p == "res://scripts/data/content.gd": continue
+		var txt := FileAccess.get_file_as_string(p).to_lower()
+		for h in hexes:
+			if txt.contains(h): hits.append("%s: %s" % [String(p).get_file(), h])
+	ok(files.size() > 40 and hits.is_empty(), "no script or shader outside content.gd types an element colour in (%d files read)%s" % [files.size(), ("" if hits.is_empty() else ": " + str(hits.slice(0, 6)))])
+
+func _collect_sources(dir: String, out: Array) -> void:
+	var d := DirAccess.open(dir)
+	if d == null: return
+	for f in d.get_files():
+		if f.ends_with(".gd") or f.ends_with(".gdshader") or f.ends_with(".gdshaderinc"): out.append(dir.path_join(f))
+	for sub in d.get_directories(): _collect_sources(dir.path_join(sub), out)
 
 func _status_colour_tests(mn: Node) -> void:
 	for p in ["res://shaders/3d/foe.gdshader", "res://shaders/swarm.gdshader"]:
