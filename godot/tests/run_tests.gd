@@ -3475,6 +3475,14 @@ func _camp_tests() -> void:
 	Save._merge(Save.data, JSON.parse_string(JSON.stringify(bad)))
 	Save._normalise()
 	ok(int(Save.data.temper.bolt) == Camp.TEMPER_MAX and not Save.data.temper.has("nope"), "a bad save's ranks are clamped and unknown weapons dropped")
+	var old_save := Save.defaults()
+	old_save.erase("tutorial")
+	old_save.stats.runs = 5
+	Save.data = Save.defaults()
+	ok(Save.import_text(Save.encode_save(old_save)) == "" and not bool(Save.data.tutorial.on), "a pasted save from before the coach, with runs played, starts with the tips off")
+	var fresh_save := Save.defaults()
+	fresh_save.erase("tutorial")
+	ok(Save.import_text(Save.encode_save(fresh_save)) == "" and bool(Save.data.tutorial.on), "one with no runs keeps them on")
 	Save.data = keep
 
 ## The first-run coach (Coach): which runs it rides, the drill's order, contextual steps taking the stage, a
@@ -3744,6 +3752,10 @@ func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
 			if not lvl_t.has(w.lvl): lvl_t[w.lvl] = int(w.t)
 	var dps: float = w.metrics.dmg_dealt / maxf(1.0, w.t)
 	var lv := w.lvl
+	var ore := Camp.ore_for_run(w, w.won)               # the Camp's economy (0.11.0): what a run brings back
+	var champs := w.champions_slain
+	var scrap := 0
+	for it in w.loot_run: scrap += int(Camp.salvage_yield(it).scrap)
 	w.dispose()
 	return {"mode": cfg.mode, "hero": Content.HEROES[int(cfg.hero)].name, "won": w.won, "over": w.over, "t": snappedf(w.t, 0.1), "lvl": lv,
 		"kills": w.kills, "killer": w.killer, "hp_low": snappedf(hp_low, 0.01), "dps": int(dps), "reactions": w.metrics.reactions,
@@ -3751,7 +3763,7 @@ func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
 		"texts_per_s": snappedf(float(w.metrics.texts) / maxf(1.0, w.t), 0.1), "peak_foes": w.metrics.peak_foes,
 		"perfect": w.metrics.perfect, "events": w.metrics.events, "items": w.metrics.items, "dmg_taken": int(w.metrics.dmg_taken),
 		"ms_avg": snappedf(us / 1000.0 / maxf(1, frames), 0.01), "ms_worst": snappedf(worst / 1000.0, 0.01),
-		"lvl10_t": lvl_t.get(10, -1), "progress": snappedf(w.progress, 0.1), "gold": int(w.gold),
+		"lvl10_t": lvl_t.get(10, -1), "progress": snappedf(w.progress, 0.1), "gold": int(w.gold), "ore": ore, "champions": champs, "scrap": scrap,
 		"light_avg": snappedf(float(w.metrics.get("light_sum", 0.0)) / maxf(1.0, w.t), 0.01), "dark_s": int(w.metrics.get("dark_s", 0.0)), "bargains": w.bargains}
 
 func _sims() -> void:
@@ -3769,7 +3781,7 @@ func _sims() -> void:
 	if OS.get_environment("SIM_QUICK") != "":
 		rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 3, "seed": 78}, 660.0, 5))
 		for r in rows:
-			print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%5d dps=%5d foes=%3d hp_low=%s killer=%s" % [r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.peak_foes, r.hp_low, r.killer])
+			print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%5d dps=%5d foes=%3d hp_low=%s killer=%s gold=%d ore=%d champs=%d items=%s scrap=%d" % [r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.peak_foes, r.hp_low, r.killer, r.gold, r.ore, r.champions, str(r.items), r.scrap])
 		return
 	rows.append(run_bot({"mode": "campaign", "hero": 1, "stage": 2, "seed": 77}, 620.0, 5))
 	rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 4, "seed": 55}, 660.0, 7))      # Act V: rising tide, Tide Bishop

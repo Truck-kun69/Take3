@@ -65,9 +65,13 @@ func load_profile() -> void:
 		push_warning("profile unreadable, starting fresh")
 		return
 	_merge(data, parsed)
-	if not parsed.has("tutorial") and int((parsed.get("stats", {}) as Dictionary).get("runs", 0)) >= 2:
-		data.tutorial.on = false                      # a profile from before the coach that has played: no lessons
+	_veteran(parsed)
 	_normalise()
+
+## A profile from before the coach (0.11.0) that has played two runs or more starts with the tutorial tips off.
+func _veteran(src: Dictionary) -> void:
+	if not src.has("tutorial") and int((src.get("stats", {}) as Dictionary).get("runs", 0)) >= 2:
+		data.tutorial.on = false
 
 ## Copy keys from src into dst where dst has the key (forward compatible: unknown keys are dropped,
 ## missing keys keep their defaults).
@@ -247,6 +251,7 @@ func import_text(text: String) -> String:
 	var base := defaults()
 	data = defaults()
 	_merge(data, got)
+	_veteran(got)
 	_normalise()
 	for k in NOT_TRANSFERRED:
 		if keep.has(k): data[k] = keep[k]
