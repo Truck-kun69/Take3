@@ -30,6 +30,7 @@ var _last_cast := -9.0
 var _frenzy_armed := true
 var _oath_said := false
 var _rng := RandomNumberGenerator.new()
+var quiet_open := false         # main sets it while the coach's first prompt is due: the act's opening line waits a run
 
 func _ready() -> void:
 	_rng.randomize()
@@ -48,7 +49,7 @@ func bind(world: World) -> void:
 	_last_cast = w.cast_t
 	_frenzy_armed = true
 	_oath_said = false
-	if w.mode == "campaign" and bank != null: bank.say("narrator", "act_%d" % clampi(w.stage, 0, 4))
+	if w.mode == "campaign" and bank != null and not quiet_open: bank.say("narrator", "act_%d" % clampi(w.stage, 0, 4))
 
 func unbind() -> void:
 	if w != null and is_instance_valid(w):

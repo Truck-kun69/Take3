@@ -176,11 +176,13 @@ func show_banner(t: String, s: String, c: Color, dur: float = 2.8) -> void:
 
 const ACT_BANNER_S := 3.5
 ## A campaign run opens on its act (Story): the title and, under it, the act's place in the story and the
-## first line of its lore, for ACT_BANNER_S.
-func act_banner(world: World) -> void:
+## first line of its lore, for ACT_BANNER_S. `title_only` while the coach's first prompt is due (main.start): the
+## review found the act's lore (23 words), the narrator's line (23) and Brask's "Drag... to move" (11) on screen at
+## once two seconds in, the instruction smallest and last.
+func act_banner(world: World, title_only: bool = false) -> void:
 	if world.mode != "campaign": return
 	var a := Story.act(world.stage)
-	show_banner(String(a.title), "%s\n%s" % [a.subtitle, a.intro_lines[0]], Content.col(Content.STAGES[world.stage].acc), ACT_BANNER_S)
+	show_banner(String(a.title), "" if title_only else "%s\n%s" % [a.subtitle, a.intro_lines[0]], Content.col(Content.STAGES[world.stage].acc), ACT_BANNER_S)
 
 func show_toast(t: String, c: Color) -> void:
 	if toasts.get_child_count() > 4:

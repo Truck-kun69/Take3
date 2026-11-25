@@ -532,6 +532,7 @@ static func show_trader(s: Screens) -> void:
 
 # ================================================================= Captain Brask, Drillmaster
 const HOW_TO := [
+	["The goal", "Survive until the clock at the top reads 0:00. Then the act's boss comes: beat it to clear the act and open the next."],
 	["Move", "Drag anywhere on the left half of the screen; the stick follows your thumb. (WASD or arrows on a keyboard.)"],
 	["Fight", "Your weapons fire on their own at the nearest foe. Options › Game sets what they aim at."],
 	["Grow", "Foes drop blue shards. Gather them to level up, then pick one of the cards: a new weapon (up to four), a weapon level, a perk or a support gem."],
@@ -539,6 +540,7 @@ const HOW_TO := [
 	["Survive", "ROLL dashes through attacks (Space); rolling just before a hit is a perfect dodge. JUMP clears rocks, walls and gaps (F). Flasks 1 and 2 heal and buff, and refill as you kill."],
 	["Ultimate", "ULT charges as you fight. When its ring glows, tap it (R)."],
 	["The dark", "The light fades as a run goes on and kills relight it. In the dark you are Engulfed: foes hit harder and drop richer loot."],
+	["Rift Gates", "Kills fill your hoard. Step into a Rift Gate to bank it: gold, Echoes and rare items. Walk past one and the hoard grows, but if you fall first it is lost."],
 	["Loot and the Camp", "Champions and bosses drop gear. Equip and craft it in Gear & Stash. At the Camp: temper weapons, fuse and salvage gear, and trade."],
 ]
 

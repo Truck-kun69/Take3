@@ -3629,6 +3629,12 @@ func _coach_tests() -> void:
 	ok(c.active == "ult", "a charged ultimate takes the stage")
 	w.ult = 0.0; c.tick(0.1)
 	ok((d.tutorial.done as Array).has("ult"), "using it finishes it")
+	# the goal follows the first fight: survive the clock, then the boss (the run never said it); it informs, then is done
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "goal" and String(Coach.STEPS.goal.touch).contains("0:00") and String(Coach.STEPS.goal.touch).contains("boss"),
+		"after the first fight Brask states the goal: survive until 0:00, then beat the boss (%s)" % c.active)
+	c.tick(Coach.INFO_T + 0.1)
+	ok((d.tutorial.done as Array).has("goal") and c.active == "", "it informs for %d s, then is done" % int(Coach.INFO_T))
 	# an ignored prompt steps aside, then comes back
 	w.gem_n = maxi(w.gem_n, 1)
 	c.tick(Coach.GAP + 0.1)
@@ -3649,6 +3655,20 @@ func _coach_tests() -> void:
 	c.tick(Coach.SNOOZE)
 	c.tick(0.1)
 	ok(c.active == "shards", "then comes back")
+	# a Rift Gate opens: banking the hoard takes the stage (a hoard not banked is lost on death); a bank finishes it
+	c.active = ""; c.gap = 0.0
+	var gate_before := c.gate_open()
+	c.tick(0.1)
+	var no_gate := c.active != "gate"
+	w.director.objects.append({"pos": w.pp + Vector2(200, 0), "kind": "gate", "id": "gate", "life": 22.0})
+	c.active = ""; c.gap = 0.0
+	c.tick(0.1)
+	var gate_on := c.active == "gate" and String(Coach.STEPS.gate.touch).contains("Rift Gate") and String(Coach.STEPS.gate.touch).contains("lost")
+	w.metrics.banked = int(w.metrics.get("banked", 0)) + 1
+	c.tick(0.1)
+	ok(not gate_before and no_gate and gate_on and (d.tutorial.done as Array).has("gate"),
+		"a Rift Gate opening teaches banking the hoard (it waits for a gate), and banking finishes it (%s %s %s)" % [not gate_before, no_gate, gate_on])
+	w.director.objects = w.director.objects.filter(func(o): return String(o.kind) != "gate")
 	# the found item
 	c.active = ""; c.gap = 0.0
 	for k in Coach.ORDER: if k != "loot": Coach.mark(d, k)
@@ -3777,6 +3797,8 @@ func _camp_ui_tests() -> void:
 	var s0: int = sv.data.stash.size()
 	ok(_press(mn.screens, "Buy") and sv.data.stash.size() == s0 + 1, "the trader's Buy puts the item in the stash")
 	CampPages.show_drill(mn.screens)
+	var how := _texts(mn.screens, "Label")
+	ok(how.has("The goal") and how.has("Rift Gates"), "Brask's How to play names the goal and the Rift Gates")
 	var tips0 := bool(sv.data.tutorial.on)
 	_press(mn.screens, "Tutorial tips: On")
 	var tips1 := bool(sv.data.tutorial.on)
@@ -3825,9 +3847,13 @@ func _camp_ui_tests() -> void:
 	mn._on_act("leave", null)
 	# the coach rides a fresh profile's campaign run, teaches the level-up page there, and stays out of the Daily Rift
 	sv.data.tutorial = {"on": true, "done": []}
+	VoiceBank.stop_all()
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame
 	var rides: bool = mn.coach.w == mn.world
+	var t_only: bool = mn.hud.banner_t.text != "" and mn.hud.banner_s.text == ""
+	var no_line: bool = VoiceBank.current == null or VoiceBank.current.active_id() != "narrator_act_0_0"
+	ok(t_only and no_line, "a new exile's first run opens on the act's title alone, the narrator's act line held back, so Brask's first prompt is the only text (%s %s)" % [t_only, no_line])
 	mn.world.pending = 1
 	mn._on_level()
 	for k in 6: await get_tree().process_frame
@@ -3837,6 +3863,12 @@ func _camp_ui_tests() -> void:
 	var ch: Array = mn.world.make_choices()
 	mn._on_act("pick", ch[0])
 	ok(rides and tip and (sv.data.tutorial.done as Array).has(Coach.LEVELUP), "the coach rides the campaign run and teaches the level-up page (%s %s)" % [rides, tip])
+	mn._on_act("leave", null)
+	sv.data.tutorial.done.append("move")
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	var full: bool = mn.hud.banner_s.text.contains(Story.act(0).intro_lines[0]) and (VoiceBank.current == null or VoiceBank.current.active_id() == "narrator_act_0_0")
+	ok(full, "once moving is learnt, a run opens with the act's lore and the narrator's line again")
 	mn._on_act("leave", null)
 	mn._on_act("daily_go", Daily.today())
 	await get_tree().process_frame

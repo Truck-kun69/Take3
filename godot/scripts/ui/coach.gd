@@ -4,26 +4,30 @@ extends Control
 ## while Options > Game > Tutorial tips is on and steps remain, Captain Brask shows one prompt at a time over the
 ## HUD, with a pulsing ring on the touch button it names. A step finishes when the player does the thing
 ## (Save.data.tutorial.done keeps it, so it is taught once); a contextual step waits for its moment (hurt: the
-## flask; charged: the ultimate; a find: the loot); a prompt left undone for SHOW_MAX seconds steps aside and comes
-## back SNOOZE seconds later. The level-up step is taught on the level-up page itself (Screens.show_levelup).
+## flask; a Rift Gate open: banking the hoard; charged: the ultimate; a find: the loot); a prompt left undone for
+## SHOW_MAX seconds steps aside and comes back SNOOZE seconds later. The level-up step is taught on the level-up page
+## itself (Screens.show_levelup). The goal (survive the clock, then the boss) follows the first fight: the review
+## found the run never said it, nor that a hoard not banked at a gate is lost on death.
 
 const STEPS := {
 	"move": {"touch": "Drag anywhere on the left half of the screen to move.", "keys": "Move with WASD or the arrow keys.", "ring": "stick"},
 	"fight": {"touch": "Your weapons fire on their own. Keep moving and let them work.", "keys": "Your weapons fire on their own. Keep moving and let them work.", "ring": ""},
+	"goal": {"touch": "Survive until the clock reads 0:00, then beat the boss to clear the act.", "keys": "Survive until the clock reads 0:00, then beat the boss to clear the act.", "ring": ""},
 	"shards": {"touch": "Foes drop blue shards. Walk over them to gain experience.", "keys": "Foes drop blue shards. Walk over them to gain experience.", "ring": ""},
 	"roll": {"touch": "Tap ROLL to dash through danger. Rolling just before a hit is a perfect dodge.", "keys": "Press Space to roll through danger. Rolling just before a hit is a perfect dodge.", "ring": "roll"},
 	"flask": {"touch": "Hurt? Tap flask 1 to heal. Kills refill it.", "keys": "Hurt? Press 1 to drink your life flask. Kills refill it.", "ring": "f0"},
 	"jump": {"touch": "Tap JUMP to leap over rocks, walls and gaps.", "keys": "Press F to leap over rocks, walls and gaps.", "ring": "jump"},
 	"ult": {"touch": "Your ultimate is charged: tap ULT.", "keys": "Your ultimate is charged: press R.", "ring": "ult"},
 	"loot": {"touch": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "keys": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "ring": ""},
+	"gate": {"touch": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "keys": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "ring": ""},
 }
-const ORDER := ["move", "fight", "shards", "roll", "flask", "jump", "ult", "loot"]
-const CONTEXT := ["flask", "ult", "loot"]          # these wait for their moment, and take the stage when it comes
+const ORDER := ["move", "fight", "goal", "shards", "roll", "flask", "jump", "ult", "loot", "gate"]
+const CONTEXT := ["flask", "gate", "ult", "loot"]  # these wait for their moment, and take the stage when it comes
 const LEVELUP := "levelup"                         # taught on the level-up page (Screens.show_levelup; main's "pick")
 const SHOW_MAX := 12.0
 const SNOOZE := 25.0
 const GAP := 1.6
-const INFO_T := 7.0                                # fight and loot only inform: done after this long on screen
+const INFO_T := 7.0                                # fight, the goal, the gate and loot inform: done after this long on screen
 
 ## Every step the coach teaches, the level-up page's included.
 static func all_steps() -> Array:
@@ -66,6 +70,7 @@ var _drank := false
 var _ult_prev := 0.0
 var _ulted := false
 var _item := false
+var _bank0 := 0
 var _panel: PanelContainer
 var _body: Label
 var _anim := 0.0
@@ -174,18 +179,22 @@ func _ready_for(id: String, d: Dictionary) -> bool:
 	match id:
 		"move": return true
 		"fight": return T.has("move") or w.t > 8.0
+		"goal": return T.has("fight") or w.t > 15.0
 		"shards": return w.gem_n > 0 and (T.has("fight") or w.t > 12.0)
 		"roll": return (T.has("shards") or w.t > 30.0) and (w.t > 20.0 and foes_near(220.0) >= 3)
 		"flask": return w.hp < w.max_hp * 0.7 and float(w.flasks[0].c) >= float(w.flasks[0].cost)
 		"jump": return T.has("roll") and w.t > 50.0
 		"ult": return w.ult >= 100.0
 		"loot": return _item
+		"gate": return gate_open()
 	return false
 
 func _done(id: String) -> bool:
 	match id:
 		"move": return _moved >= 160.0
 		"fight": return w.kills - _k0 >= 8 or shown_t > INFO_T
+		"goal": return shown_t > INFO_T
+		"gate": return shown_t > INFO_T or int(w.metrics.get("banked", 0)) > _bank0
 		"shards": return w.lvl > _lv0 or w.xp > _xp0 + 0.001
 		"roll": return _rolled
 		"flask": return _drank
@@ -203,6 +212,7 @@ func _start(id: String) -> void:
 	_rolled = false
 	_drank = false
 	_ulted = false
+	_bank0 = int(w.metrics.get("banked", 0))
 	if id == "move": _moved = 0.0
 	var S: Dictionary = STEPS[id]
 	_show_panel(String(S.touch) if _touch_ui() else String(S.keys))
@@ -249,6 +259,12 @@ func _draw() -> void:
 	var col := Color(String(CampPages.NPCS.brask.col))       # Captain Brask's colour
 	draw_arc(c, q.z + 6.0 * pulse, 0.0, TAU, 56, Color(col, 0.35 + 0.5 * pulse), 4.0, true)
 	draw_arc(c, q.z + 16.0 * pulse, 0.0, TAU, 56, Color(col, 0.25 * (1.0 - pulse)), 2.0, true)
+
+## A Rift Gate is open in the run (Director: a "gate" object, 22 s, banks the hoard when the hero steps in).
+func gate_open() -> bool:
+	for o in w.director.objects:
+		if String(o.kind) == "gate": return true
+	return false
 
 ## How many foes stand within `r` of the hero.
 func foes_near(r: float) -> int:

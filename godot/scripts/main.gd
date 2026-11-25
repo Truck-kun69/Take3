@@ -303,7 +303,9 @@ func start(cfg: Dictionary) -> void:
 	_bind_view()
 	Diag.mark("view bound")
 	hud.bind(world)
-	hud.act_banner(world)
+	# the coach's first prompt is due: the act opens on its title alone, its narrated line waits for a later run
+	var first_steps := Coach.active_for(cfg, Save.data) and Coach.wants(Save.data, "move")
+	hud.act_banner(world, first_steps)
 	world.moment.connect(_on_moment)
 	touch.world = world
 	if Coach.active_for(cfg, Save.data): coach.bind(world, touch)
@@ -314,6 +316,7 @@ func start(cfg: Dictionary) -> void:
 	state = "play"
 	Sfx.start_ambience(world.stage)
 	subtitles.in_run = true
+	voice_dir.quiet_open = first_steps
 	voice_dir.bind(world)
 
 func use_3d() -> bool:
