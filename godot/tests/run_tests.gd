@@ -4002,6 +4002,118 @@ func _look_feel_tests() -> void:
 	mn.queue_free()
 	await get_tree().process_frame
 	sv.data = keep
+	await _frame_fit_tests()
+
+## The frames whose text does not fit: every Button holding an anchored content box (UIKit.tile, the Camp's NPC cards,
+## the level-up cards) whose box needs more room than the frame leaves it inside its insets. The 18-unit text floor
+## (0.11.4) made a tile's title and subline need 55 units where a 62-high tile left 51: the sublines were cut by the
+## frame and, at an S22's scale, wrapped out of the tile ("Veil" under Replay Intro).
+func _frame_overflows(root: Node, tag: String) -> Array:
+	var out: Array = []
+	for b in root.find_children("*", "Button", true, false):
+		if not _live(b) or not (b as Control).is_visible_in_tree(): continue
+		for c in b.get_children():
+			if not (c is Container) or (c as Control).anchor_right < 1.0 or (c as Control).anchor_bottom < 1.0: continue
+			var box := c as Control
+			var room: Vector2 = (b as Control).size - Vector2(box.offset_left - box.offset_right, box.offset_top - box.offset_bottom)
+			var need := box.get_combined_minimum_size()
+			if need.y > room.y + 0.5 or need.x > room.x + 0.5:
+				var nm := ""
+				for l in box.find_children("*", "Label", true, false):
+					if String(l.text) != "":
+						nm = String(l.text).left(28)
+						break
+				out.append("%s '%s' needs %.0fx%.0f, has %.0fx%.0f" % [tag, nm, need.x, need.y, room.x, room.y])
+	return out
+
+## At an S22's own scale (main.phone_ui_scale, x1.13), held sideways and upright, the text of every tile on the title
+## (a new profile's and one that has played), every NPC card in the Camp and every level-up card fits inside its frame:
+## the page's own cards, and one card of every kind and level the run can deal, at the width the page gives a card.
+func _frame_fit_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.seen_version = Diag.version()
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	var s22: float = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	sv.data.options.ui_scale = s22                   # on a phone main applies this itself; here Options' scale stands in
+	var bad: Array = []
+	var cards := 0
+	var cw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 77})
+	var kinds: Array = []                            # one card of every kind and level a level-up can deal
+	for id in Content.WEAPON_IDS:
+		kinds.append({"kind": "w", "id": id, "lv": 0})
+		for lv in range(1, 5): kinds.append({"kind": "w", "id": id, "lv": lv})
+		kinds.append({"kind": "e", "id": id})
+	for id in Content.PERK_IDS:
+		kinds.append({"kind": "p", "id": id})
+	for g in Content.GEM_IDS: kinds.append({"kind": "g", "id": g, "w": "cleave"})          # the longest weapon name
+	for key in Content.FUSIONS: kinds.append({"kind": "fuse", "id": key, "a": String(key).split("+")[0], "b": String(key).split("+")[1]})
+	for k in Content.KEYSTONE_IDS: kinds.append({"kind": "key", "id": k})
+	kinds.append({"kind": "heal", "id": "heal"})
+	for upright in [false, true]:
+		win.size = Vector2i(1080, 2340) if upright else Vector2i(2340, 1080)
+		mn._ui_scale()
+		var tag := "upright" if upright else "sideways"
+		for runs in [0, 1]:
+			sv.data.stats.runs = runs
+			sv.data.cleared = [runs > 0, false, false, false, false]
+			mn._menu()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			bad.append_array(_frame_overflows(mn.screens, "%s title (%d runs)" % [tag, runs]))
+		CampPages.show_camp(mn.screens)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		bad.append_array(_frame_overflows(mn.screens, tag + " Camp"))
+		mn._on_act("campaign", 0)
+		await get_tree().process_frame
+		mn.world.pending = 1
+		mn._on_level()
+		for k in 8: await get_tree().process_frame
+		bad.append_array(_frame_overflows(mn.screens, tag + " level-up"))
+		var real: Button = null
+		for b in mn.screens.find_children("*", "Button", true, false):
+			if _live(b) and (b as Control).get_child_count() > 0 and (b as Control).get_child(0) is VBoxContainer and (b as Control).size.y >= 140.0: real = b
+		ok(real != null, "%s: the level-up page deals its cards" % tag)
+		if real != null:
+			var host := Control.new()
+			mn.screens.add_child(host)
+			# upright: the page's own card width; sideways: the widths of a three-card row and of a four-card row (level 10+)
+			var widths: Array = [real.size.x] if upright else [mn.screens._side_card_w(3), mn.screens._side_card_w(4)]
+			for wd in widths:
+				for c in kinds:
+					if c.kind == "w":
+						cw.weapons.erase(c.id)
+						if int(c.lv) > 0: cw.weapons[c.id] = {"lv": int(c.lv), "evo": false, "t": 0.0, "gems": []}
+					if c.kind == "fuse":
+						for id in [c.a, c.b]: cw.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+					var card: Button = mn.screens._choice_card(cw, c, 0, upright, wd)
+					host.add_child(card)
+					card.size = Vector2(wd, Screens.CARD_UP_H if upright else Screens.CARD_SIDE_H)
+					cards += 1
+			await get_tree().process_frame
+			await get_tree().process_frame
+			bad.append_array(_frame_overflows(host, tag + " card"))
+			host.queue_free()
+		mn._on_act("leave", null)
+		await get_tree().process_frame
+	if _verbose: for b in bad: print("    over: ", b)
+	ok(bad.is_empty(), "at an S22's scale (x%.3f) sideways and upright, every title tile, Camp card and level-up card (%d dealt) fits its text inside its frame%s" % [s22, cards, ("" if bad.is_empty() else ": %d over, %s" % [bad.size(), str(bad.slice(0, 6))])])
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	mn._menu()
+	win.size = size0
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
 
 ## Colour roles (0.11.4 art-director pass): a status on a foe glows in its element's own swatch, in both palettes. The
 ## shaders used to type sRGB numbers in as constants, which Godot reads as linear: vec3(1, .15, .2) rendered #ff6c7b, so

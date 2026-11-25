@@ -1285,7 +1285,7 @@ func show_levelup(w: World) -> void:
 		if i > 0:
 			await get_tree().process_frame
 			if my != _lv_token or not is_instance_valid(row) or not row.is_inside_tree(): return
-		var card := _choice_card(w, choices[i], i, portrait)
+		var card := _choice_card(w, choices[i], i, portrait, _side_card_w(choices.size()))
 		row.add_child(card)
 		card.modulate.a = 0.0
 		var tw := card.create_tween()
@@ -1305,12 +1305,27 @@ func show_levelup(w: World) -> void:
 	v.add_child(al)
 
 ## An ornate card: silver frame tinted by the reward type, a gem, small-caps tag, carved name, lore-face description.
-func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool) -> Button:
+## The cards' frames hold their text at the 18-unit floor (tests: _frame_fit_tests). Upright a tag, a name, the rule and a
+## line of description need 116 units inside the card's 26 / 24 insets: 150 left 100, so the text sat on the frame; the
+## card is CARD_UP_H. Held sideways three cards share the sheet's width (up to CARD_SIDE_W each, four: about 262; they
+## were 260 and a fusion's or a keystone's text overran by up to 80). A card whose text still needs more grows to it.
+const CARD_UP_H := 170
+const CARD_SIDE_H := 296
+const CARD_SIDE_W := 320
+const CARD_INSETS := Vector4(22, 26, 22, 24)          # left, top, right, bottom: clear of the card's ornaments
+
+## Held sideways: the width of each of `n` level-up cards in a row inside the sheet (UIKit.sheet: at most 1180 wide, a
+## 34-unit margin each side, room for the scroll bar), at least 260 and at most CARD_SIDE_W.
+func _side_card_w(n: int) -> float:
+	var room := minf(1180.0, get_viewport_rect().size.x - 28.0) - 68.0 - 16.0
+	return clampf((room - 16.0 * float(maxi(1, n) - 1)) / float(maxi(1, n)), 260.0, float(CARD_SIDE_W))
+
+func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool, side_w: float = CARD_SIDE_W) -> Button:
 	var tx := w.choice_text(c)
 	var col := Content.col(tx.col)
 	if col.s < 0.15: col = Color("d8b878")              # plain perks: aged gold instead of white
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(0, 150) if portrait else Vector2(260, 296)
+	b.custom_minimum_size = Vector2(0, CARD_UP_H) if portrait else Vector2(side_w, CARD_SIDE_H)
 	if portrait: b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var frame := Color(0.78, 0.76, 0.74).lerp(col, 0.45)
 	var pad := Vector4(20, 22, 20, 22)
@@ -1322,10 +1337,13 @@ func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool) -> Button:
 	UIKit.press_fx(b)
 	var v := UIKit.vbox(6)
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	v.offset_left = 22; v.offset_right = -22; v.offset_top = 26; v.offset_bottom = -24
+	v.offset_left = CARD_INSETS.x; v.offset_right = -CARD_INSETS.z; v.offset_top = CARD_INSETS.y; v.offset_bottom = -CARD_INSETS.w
 	v.alignment = BoxContainer.ALIGNMENT_BEGIN if not portrait else BoxContainer.ALIGNMENT_CENTER
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(v)
+	var base_h := float(CARD_UP_H if portrait else CARD_SIDE_H)
+	v.minimum_size_changed.connect(func():              # the text wraps to the card's width: the frame grows to hold it
+		if is_instance_valid(b): b.custom_minimum_size.y = maxf(base_h, v.get_combined_minimum_size().y + CARD_INSETS.y + CARD_INSETS.w))
 	if not portrait:
 		var gem := Gem.new()
 		gem.col = col

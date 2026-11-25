@@ -25,7 +25,7 @@ const NPCS := {
 		"lines": ["The Atlas grows with every map you clear.", "Today's rift is the same for everyone. Beat them all.", "Prophecies, fragments, deeper rifts: pick your road."]},
 }
 const NPC_ORDER := ["smith", "kiln", "nim", "sella", "brask", "chronicler", "cartographer"]
-const CARD_H := 88
+const CARD_H := 96                      # a name, a role and a status line at the 18-unit floor need 76 inside its 8 / 8 insets
 
 static var _visit := 0                  # rotates the NPCs' lines, one step per visit to the hub
 static var _msg := ""                   # the result of the last action on a station, shown once

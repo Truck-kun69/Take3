@@ -194,9 +194,13 @@ static func press_fx(b: BaseButton) -> void:
 ## title in Cinzel, sub-line in Garamond italic. Returns the Button; content is laid out inside it.
 ## A title_col carries meaning (the stash's rarity) and stays when selected: the gold frame shows the selection.
 ## (It used to turn the title gold too, so a selected Legendary or Magic item read as a Rare.)
+## A subline is one line, cut with an ellipsis, and a tile with one is at least TILE_SUB_H tall: at the 18-unit text
+## floor a title and a subline need 55 units inside the tile's 5 / 6 insets. A 62-high tile left 51, so the subline sat
+## on the frame, and at an S22's scale a long one wrapped out of the tile ("Veil" under Replay Intro).
+const TILE_SUB_H := 70
 static func tile(title_txt: String, sub: String, cb: Callable, tint: Color = Color.WHITE, selected: bool = false, min_h: int = 92, left: bool = false, title_col: Color = Color(0, 0, 0, 0)) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
+	b.custom_minimum_size = Vector2(0, maxi(min_h, TILE_SUB_H if sub != "" else MIN_TOUCH))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var base_t := Color(0.75, 0.72, 0.68).lerp(tint, 0.35)
 	var sel_t := Color("f2c76a")
@@ -218,7 +222,8 @@ static func tile(title_txt: String, sub: String, cb: Callable, tint: Color = Col
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(t)
 	if sub != "":
-		var s := label(sub, 15, DIM, true, "italic")
+		var s := label(sub, 15, DIM, false, "italic")
+		s.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		s.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if left else HORIZONTAL_ALIGNMENT_CENTER
 		s.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(s)
