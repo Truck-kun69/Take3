@@ -25,8 +25,9 @@
    tier; grass to NEAR_END x the view scale; render scale on all three tiers); the unit tests
    (tests/tests.tscn -- unit) with 0 failed, the 0.9.9 remediation, 0.10.0 voice and 0.10.0 alpha groups
    printed, and the 0.10.1 group (the version from one setting, Copy report, Copy save / Paste save, and the S22
-   fit: at 2340x1080 and 1080x2340 every page's Back and main buttons on screen); neither gate_chunk nor the
-   unit run leaves an object alive at exit
+   fit: at 2340x1080 and 1080x2340 every page's Back and main buttons on screen), and the 0.11.0 groups (the
+   Camp's rules, the first-run coach, the Camp's pages); neither gate_chunk nor the unit run leaves an object
+   alive at exit
 6. voice (godot/data/voice_manifest.json, tools/gen_voices.py; nothing calls ElevenLabs or fal): the dry run exits 0
    with the network shut off and leaves the fal spend at $18.904; 61 lines, a valid schema, every speaker's
    casting distinct (stability, similarity boost, style, default voice); the validator refuses nine broken
@@ -240,7 +241,8 @@ def main(build_apk=True):
     r = subprocess.run([GODOT, "--headless", "--path", GD, "res://tests/tests.tscn", "--", "unit"], capture_output=True, text=True, timeout=1800, env=env)
     out = r.stdout + r.stderr
     lines = out.splitlines()
-    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack", "== 0.10.4 performance", "== 0.10.4 streaming", "== 0.10.4 voice pacing"):
+    for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack", "== 0.10.4 performance", "== 0.10.4 streaming", "== 0.10.4 voice pacing",
+                "== the Camp", "== the coach", "== the Camp pages"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:
@@ -252,6 +254,8 @@ def main(build_apk=True):
     print("      " + tot)
     check(r.returncode == 0 and ", 0 failed ==" in tot and not fails, f"unit tests: {tot.strip('= ')}")
     check("== 0.10.0 alpha" in lines, "unit tests: the 0.10.0 alpha group ran")
+    check(all(g in lines for g in ("== the Camp", "== the coach", "== the Camp pages")),
+          "unit tests: the 0.11.0 groups ran (the Camp's rules, the coach, the Camp's pages)")
     leak = next((l.strip() for l in lines if "leaked at exit" in l), "")
     check(not leak, "unit tests: no objects left alive at exit" + (f" ({leak})" if leak else ""))
     # 6 ----------------------------------------------------------------
