@@ -242,7 +242,7 @@ def main(build_apk=True):
     out = r.stdout + r.stderr
     lines = out.splitlines()
     for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack", "== 0.10.4 performance", "== 0.10.4 streaming", "== 0.10.4 voice pacing",
-                "== the Camp", "== the coach", "== the Camp pages"):
+                "== the Camp", "== the coach", "== the Camp pages", "== 0.11.4 look and feel"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:
@@ -256,6 +256,7 @@ def main(build_apk=True):
     check("== 0.10.0 alpha" in lines, "unit tests: the 0.10.0 alpha group ran")
     check(all(g in lines for g in ("== the Camp", "== the coach", "== the Camp pages")),
           "unit tests: the 0.11.0 groups ran (the Camp's rules, the coach, the Camp's pages)")
+    check("== 0.11.4 look and feel" in lines, "unit tests: the 0.11.4 look-and-feel group ran (text floor, phone UI scale, pages fit scaled up)")
     leak = next((l.strip() for l in lines if "leaked at exit" in l), "")
     check(not leak, "unit tests: no objects left alive at exit" + (f" ({leak})" if leak else ""))
     # 6 ----------------------------------------------------------------
