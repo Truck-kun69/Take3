@@ -819,7 +819,7 @@ func show_codex(back: String = "upgrades") -> void:
 		var nm := UIKit.label(wd.name, 19, Content.col(wd.col) if have else Color(0.5, 0.47, 0.44), false, "display")
 		nm.custom_minimum_size = Vector2(190, 0)
 		row.add_child(nm)
-		var txt := "%s  Evolves into %s." % [wd.d[0], wd.evo]
+		var txt := "%s  Evolves into %s at Lv 5 with %s." % [wd.d[0], wd.evo, Content.PERKS[wd.pair].name]
 		if not have:
 			var pr: Array = Save.unlock_progress(req[id])
 			txt = "Locked: %s (%d / %d)" % [req[id].d, pr[0], pr[1]]
@@ -1288,7 +1288,7 @@ func show_levelup(w: World) -> void:
 	var portrait := get_viewport_rect().size.x < 820.0
 	_title(v, "Level %d" % w.lvl, "The rift offers a gift. Choose one.")
 	if main != null and main.coach != null and main.coach.w == w and Coach.wants(Save.data, Coach.LEVELUP):
-		var tip := UIKit.label("Captain Brask: \u201cPick one. A new weapon (up to four), a level for one you carry, a perk or a gem: they all stack. A weapon at level 5 with its paired perk can evolve.\u201d", 16, Color("cfe8c0"), true, "italic")
+		var tip := UIKit.label("Captain Brask: \u201cPick one. A new weapon (up to four), a level for one you carry, a perk or a gem: they all stack. A weapon at level 5 evolves with the perk its card names.\u201d", 16, Color("cfe8c0"), true, "italic")
 		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(tip)
 	var choices := w.make_choices()
@@ -1350,7 +1350,7 @@ func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool, side_w: flo
 	b.add_theme_stylebox_override("focus", UIKit.nine("card", 46, pad, frame.lightened(0.2)))
 	b.pressed.connect(func(): act.emit("pick", c))
 	UIKit.press_fx(b)
-	var v := UIKit.vbox(6)
+	var v := UIKit.vbox(4 if portrait else 6)              # upright: no rule under the name, so two lines of text fit 170
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = CARD_INSETS.x; v.offset_right = -CARD_INSETS.z; v.offset_top = CARD_INSETS.y; v.offset_bottom = -CARD_INSETS.w
 	v.alignment = BoxContainer.ALIGNMENT_BEGIN if not portrait else BoxContainer.ALIGNMENT_CENTER
@@ -1371,9 +1371,10 @@ func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool, side_w: flo
 	var nm := UIKit.label(String(tx.name), 23, UIKit.TEXT, true, "display")
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(nm)
-	var dv := UIKit.divider()
-	dv.custom_minimum_size = Vector2(0, 16)
-	v.add_child(dv)
+	if not portrait:
+		var dv := UIKit.divider()
+		dv.custom_minimum_size = Vector2(0, 16)
+		v.add_child(dv)
 	var ds := UIKit.label(String(tx.d), 17, Color("cfc5b0"), true, "body")
 	ds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(ds)

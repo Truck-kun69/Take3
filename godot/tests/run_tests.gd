@@ -4139,6 +4139,7 @@ func _look_feel_tests() -> void:
 	await get_tree().process_frame
 	sv.data = keep
 	await _frame_fit_tests()
+	_evolve_pair_tests()
 
 ## The frames whose text does not fit: every Button holding an anchored content box (UIKit.tile, the Camp's NPC cards,
 ## the level-up cards) whose box needs more room than the frame leaves it inside its insets. The 18-unit text floor
@@ -4237,6 +4238,15 @@ func _frame_fit_tests() -> void:
 			await get_tree().process_frame
 			await get_tree().process_frame
 			bad.append_array(_frame_overflows(host, tag + " card"))
+			if _verbose:                                 # the cards whose text grew them past the base height
+				for cd in host.get_children():
+					if (cd as Control).size.y > (Screens.CARD_UP_H if upright else Screens.CARD_SIDE_H) + 0.5:
+						var nm := ""
+						for l in cd.find_children("*", "Label", true, false):
+							if String(l.text) != "":
+								nm = String(l.text).left(30)
+								break
+						print("    grew: %s %.0fx%.0f %s" % [tag, (cd as Control).size.x, (cd as Control).size.y, nm])
 			host.queue_free()
 		mn._on_act("leave", null)
 		await get_tree().process_frame
@@ -4250,6 +4260,41 @@ func _frame_fit_tests() -> void:
 	mn.queue_free()
 	await get_tree().process_frame
 	sv.data = keep
+
+## The evolution recipe on the cards: a weapon's card names the perk it evolves with at level 5, a perk's card names the
+## carried weapons it would evolve, and the Codex's Arsenal lists every pair. The pair (Content.WEAPONS[id].pair) was read
+## only by the simulation; Brask's tip spoke of "its paired perk" and no screen said which.
+func _evolve_pair_tests() -> void:
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 81})
+	var bad: Array = []
+	for id in Content.WEAPON_IDS:
+		var pair := String(Content.PERKS[String(Content.WEAPONS[id].pair)].name)
+		if not String(w.choice_text({"kind": "w", "id": id}).d).contains("Evolves at Lv 5 with %s." % pair): bad.append(id)
+	ok(bad.is_empty(), "every weapon's card names the perk it evolves with at level 5%s" % ("" if bad.is_empty() else ": " + str(bad)))
+	var held: String = w.weapons.keys()[0]
+	var pk := String(Content.WEAPONS[held].pair)
+	var tag := String(w.choice_text({"kind": "p", "id": pk}).tag)
+	var other := ""
+	for p2 in Content.PERK_IDS:
+		if w.evolved_by(p2).is_empty():
+			other = p2
+			break
+	var tag2 := String(w.choice_text({"kind": "p", "id": other}).tag)
+	w.weapons[held].evo = true
+	var tag3 := String(w.choice_text({"kind": "p", "id": pk}).tag)
+	w.weapons[held].evo = false
+	ok(tag.contains("evolves " + String(Content.WEAPONS[held].name)) and not tag2.contains("evolves") and not tag3.contains("evolves"),
+		"a perk's card says which carried weapon it evolves, and only while that weapon is unevolved (%s | %s | %s)" % [tag, tag2, tag3])
+	var sc := Screens.new()
+	add_child(sc)
+	sc.show_codex("menu")
+	var txts := _texts(sc, "Label")
+	var miss: Array = []
+	for id in Save.weapon_pool():
+		var want := "with %s." % String(Content.PERKS[String(Content.WEAPONS[id].pair)].name)
+		if not txts.any(func(t): return String(t).contains("Evolves into %s at Lv 5 %s" % [Content.WEAPONS[id].evo, want])): miss.append(id)
+	ok(miss.is_empty(), "the Codex's Arsenal lists each weapon's evolution and its perk%s" % ("" if miss.is_empty() else ": missing " + str(miss)))
+	sc.queue_free()
 
 ## Colour roles (0.11.4 art-director pass): a status on a foe glows in its element's own swatch, in both palettes. The
 ## shaders used to type sRGB numbers in as constants, which Godot reads as linear: vec3(1, .15, .2) rendered #ff6c7b, so

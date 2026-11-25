@@ -2637,6 +2637,18 @@ func make_choices() -> Array:
 	if out.is_empty(): out.append({"kind": "heal", "id": "heal"})
 	return out
 
+## "Evolves at Lv 5 with <its paired perk>." for a weapon's card.
+static func evolve_hint(wid: String) -> String:
+	var pair := String(Content.WEAPONS[wid].get("pair", ""))
+	return ("Evolves at Lv 5 with %s." % Content.PERKS[pair].name) if Content.PERKS.has(pair) else ""
+
+## The names of the carried, not yet evolved weapons a perk evolves (its card's tag says so).
+func evolved_by(perk: String) -> Array:
+	var out: Array = []
+	for id in weapons:
+		if String(Content.WEAPONS[id].get("pair", "")) == perk and not bool(weapons[id].evo): out.append(String(Content.WEAPONS[id].name))
+	return out
+
 func choice_text(c: Dictionary) -> Dictionary:
 	match c.kind:
 		"w":
@@ -2645,7 +2657,8 @@ func choice_text(c: Dictionary) -> Dictionary:
 			var rank := temper_rank(c.id)
 			var tag := "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1]
 			if rank > 0: tag += "  \u00b7  " + Camp.RANK_NAME[rank]          # tempered at the Camp's smith
-			return {"tag": tag, "name": W.name, "d": W.d[lv] + "  [%s]" % Content.EL_NAME[W.elem], "col": W.col}
+			# the evolution recipe on the card (Brask: "a weapon at level 5 with its paired perk"): the pair was nowhere in the UI
+			return {"tag": tag, "name": W.name, "d": W.d[lv] + "  [%s]  %s" % [Content.EL_NAME[W.elem], evolve_hint(String(c.id))], "col": W.col}
 		"e": return {"tag": "Evolution", "name": Content.WEAPONS[c.id].evo, "d": Content.WEAPONS[c.id].evo_d, "col": "f4c04e"}
 		"fuse":
 			var kin := _kindled(c.a, c.b)
@@ -2655,7 +2668,10 @@ func choice_text(c: Dictionary) -> Dictionary:
 				"d": Content.fusion_def(c.id).d + (" Both deal %d%% more damage and carry each other's element." % (35 if kin else 25)), "col": Content.fusion_def(c.id).col}
 		"p":
 			var pl := int(perks.get(c.id, 0))
-			return {"tag": "New perk" if pl == 0 else "Perk Lv %d -> %d" % [pl, pl + 1], "name": Content.PERKS[c.id].name, "d": Content.PERKS[c.id].d, "col": "ece8dd"}
+			var tag := "New perk" if pl == 0 else "Perk Lv %d -> %d" % [pl, pl + 1]
+			var evolves := evolved_by(String(c.id))
+			if not evolves.is_empty(): tag += "  \u00b7  evolves " + ", ".join(evolves)
+			return {"tag": tag, "name": Content.PERKS[c.id].name, "d": Content.PERKS[c.id].d, "col": "ece8dd"}
 		"g": return {"tag": "Support gem -> " + Content.WEAPONS[c.w].name, "name": Content.GEMS[c.id].name, "d": Content.GEMS[c.id].d, "col": "8ad6a0"}
 		"key": return {"tag": "Keystone", "name": Content.KEYSTONES[c.id].name, "d": Content.KEYSTONES[c.id].d, "col": "ff6bd6"}
 	return {"tag": "Fully upgraded", "name": "Second Wind", "d": "Heal 30% of your life.", "col": "5dff6b"}
