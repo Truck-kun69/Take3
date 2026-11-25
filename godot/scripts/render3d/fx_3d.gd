@@ -812,7 +812,7 @@ func _decals() -> void:
 			"delirium":
 				_circle(ev.pos, ev.r, 1, Color(0.9, 0.9, 1.0, 0.5), 1.0, 0.99)
 				_circle(ev.pos, ev.r, 5, Color(0.7, 0.7, 0.8, 0.12 if ev.inside else 0.06), 1.0)
-			"strongbox", "merchant": _circle(ev.pos, 34.0, 6, col, 1.0)
+			"strongbox", "merchant", "forge": _circle(ev.pos, 34.0, 6, col, 1.0)
 	for o in w.director.objects:
 		var oc := Content.col(Content.BUFFS[o.id].col)
 		_circle(o.pos, 46.0, 6, oc, 1.0)
@@ -872,6 +872,15 @@ func _make_obj(kind: String, col: Color) -> Node3D:
 			k.add("sphere", Vector3(2, 42, 0), Vector3(12, 12, 12), Color(0.85, 0.72, 0.55))
 			k.add("sphere", Vector3(-8, 24, 0), Vector3(18, 20, 18), Color(0.5, 0.36, 0.2))
 			k.add("sphere", Vector3(10, 30, 10), Vector3(5, 5, 5), Color(1, 0.8, 0.4), MeshKit.PART_GLOW)
+		"forge":              # Doran's apprentice at a wayside anvil: a brazier of coals, the anvil, a hooded smith
+			k.add("box", Vector3(0, 3, 0), Vector3(44, 6, 30), Color(0.22, 0.2, 0.2))
+			k.add("box", Vector3(-6, 12, 0), Vector3(16, 12, 10), Color(0.16, 0.16, 0.18))
+			k.add("box", Vector3(-6, 20, 0), Vector3(24, 5, 10), Color(0.3, 0.3, 0.33))
+			k.add("cone", Vector3(9, 23, 0), Vector3(6, 6, 8), Color(0.3, 0.3, 0.33), 0, 0, Vector3(0, 0, -PI / 2.0), 8)
+			k.add("cyl", Vector3(16, 9, 10), Vector3(14, 10, 14), Color(0.2, 0.17, 0.15), 0, 0, Vector3.ZERO, 10)
+			k.add("sphere", Vector3(16, 15, 10), Vector3(11, 5, 11), col, MeshKit.PART_GLOW)
+			k.add("cone", Vector3(-20, 20, -8), Vector3(18, 36, 18), Color(0.42, 0.26, 0.16), 0, 0, Vector3.ZERO, 10)
+			k.add("sphere", Vector3(-20, 39, -8), Vector3(10, 10, 10), Color(0.8, 0.62, 0.48))
 		"gate":               # a standing ring of dressed stones around a glowing veil (faces the camera)
 			k.add("cyl", Vector3(0, 2, 0), Vector3(96, 4, 40), Color(0.24, 0.24, 0.28), 0, 0, Vector3.ZERO, 16)
 			for i in 16:
@@ -911,7 +920,7 @@ func _event_props(dt: float) -> void:
 	for ev in w.director.active:
 		var kind := ""
 		match ev.id:
-			"cursed", "strongbox", "merchant", "ritual": kind = ev.id
+			"cursed", "strongbox", "merchant", "ritual", "forge": kind = ev.id
 		if kind == "": continue
 		var key := "ev%d" % ev.uid
 		want[key] = true

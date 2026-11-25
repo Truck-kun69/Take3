@@ -138,7 +138,7 @@ func pick() -> String:
 			if ev.id == id: busy = true
 		if busy: continue
 		if id == "exile" and (exile_spawned or nemesis_pending): continue
-		if id == "merchant" and w.mode == "rift": continue
+		if (id == "merchant" or id == "forge") and w.mode == "rift": continue
 		var wt := float(def.weight)
 		if id == "goblin" and w.has_leg("greed"): wt *= 2.0
 		if id == "breach" and w.has_mod("breached"): wt *= 10.0
@@ -375,6 +375,27 @@ func _step_merchant(ev: Dictionary, dt: float) -> void:
 	ev.inside = inside
 	if ev.life <= 0.0:
 		ev.done = true
+
+# ---------------------------------------------------------------- the wayside forge (a friendly NPC: Doran's apprentice)
+## Step to the forge and its page opens (World.forge_open): each weapon carried can be honed once here, a temper rank
+## for this run, for run gold (World.hone).
+func _start_forge(ev: Dictionary) -> void:
+	ev.life = 45.0
+	ev.honed = []
+func _step_forge(ev: Dictionary, dt: float) -> void:
+	ev.life -= dt
+	var inside := w.pp.distance_to(ev.pos) < 50.0
+	if inside and not ev.inside:
+		w.forge_open.emit()
+	ev.inside = inside
+	if ev.life <= 0.0:
+		ev.done = true
+
+## The wayside forge standing now, or {}.
+func forge() -> Dictionary:
+	for ev in active:
+		if ev.id == "forge" and not ev.done: return ev
+	return {}
 
 const GAMBLE_COST := 60
 func gamble(slot: String) -> Dictionary:

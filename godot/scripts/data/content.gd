@@ -536,8 +536,9 @@ const EVENTS := {
 	"delirium": {"name": "Delirium Mirror", "d": "Step into the fog. The deeper you go, the more it pays.", "weight": 5, "cd": 110.0, "min_t": 70.0, "col": "d8d8e8"},
 	"ritual": {"name": "Blood Ritual", "d": "Slay everything the altar summons.", "weight": 6, "cd": 90.0, "min_t": 35.0, "col": "ff2b4a"},
 	"exile": {"name": "Rogue Exile", "d": "Another survivor wants your loot.", "weight": 5, "cd": 999.0, "min_t": 55.0, "col": "ff8a2b"},
+	"forge": {"name": "Wayside Forge", "d": "Doran's apprentice works by the road. Spend gold to hone a weapon for this run.", "weight": 4, "cd": 160.0, "min_t": 90.0, "col": "ff9a5a"},
 }
-const EVENT_IDS := ["breach", "goblin", "cursed", "strongbox", "eclipse", "meteor", "merchant", "delirium", "ritual", "exile"]
+const EVENT_IDS := ["breach", "goblin", "cursed", "strongbox", "eclipse", "meteor", "merchant", "delirium", "ritual", "exile", "forge"]
 const EXILE_NAMES := ["Varkas", "Ilsa", "Torven", "Mireth", "Dunmor", "Kesh", "Oriane", "Bram", "Sefa", "Corvin"]
 const EXILE_TITLES := ["the Unbroken", "of the Ninth Fall", "Shardeater", "the Hollow", "Gravebinder", "the Last Light", "Who Walks Twice"]
 

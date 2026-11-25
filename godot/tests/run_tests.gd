@@ -3477,6 +3477,39 @@ func _camp_tests() -> void:
 	wst.stash_add(lg2)
 	ok(sd.stash.has(lg2) and sd.stash.size() == World.STASH_CAP + 1, "a Legendary is never salvaged unasked: the stash goes over the cap for it")
 	Save.data = keep_d
+	# ---- the Wayside Forge: Doran's apprentice hones each weapon carried once a forge, a rank for this run
+	Save.data.temper = {"bolt": 2}
+	var wf := _world({"mode": "campaign", "hero": 1, "seed": 40})
+	var opened := [0]
+	wf.forge_open.connect(func(): opened[0] += 1)
+	wf.weapons["bolt"] = {"lv": 2, "evo": false, "t": 0.0, "gems": []}
+	wf.wlocal["bolt"] = Stats.new()
+	wf.wlocal["bolt"].set_source("temper", Camp.temper_mods(wf.temper_rank("bolt")))
+	ok(wf.hone_weapon("bolt") != "", "no forge, no honing")
+	var fev: Dictionary = wf.director.start("forge")
+	fev.pos = wf.pp + Vector2(30, 0)
+	wf.director._step_forge(fev, 0.1)
+	ok(opened[0] == 1, "stepping to the forge opens it")
+	wf.director._step_forge(fev, 0.1)
+	ok(opened[0] == 1, "once, until the hero steps away")
+	wf.gold = 0
+	var c0 := wf.hone_cost("bolt")
+	ok(c0 == World.HONE_BASE * 3 and wf.hone_weapon("bolt") != "" and wf.temper_rank("bolt") == 2, "honing a rank-2 weapon costs %d run gold, refused without it" % c0)
+	wf.gold = 1000
+	ok(wf.hone_weapon("bolt") == "" and wf.temper_rank("bolt") == 3 and int(wf.gold) == 1000 - c0, "honed: rank 3 for this run, the gold paid")
+	ok(absf(wf.wlocal["bolt"].value("cooldown", 1.0) - Camp.TEMPER_CD) < 0.001, "rank 3's faster cooldown applies at once")
+	ok(wf.hone_weapon("bolt") != "" and wf.temper_rank("bolt") == 3, "once a weapon a forge")
+	ok(Camp.temper_rank(Save.data, "bolt") == 2, "the Camp's rank is untouched: honing lasts the run")
+	ok(String(wf.choice_text({"kind": "w", "id": "bolt"}).tag).ends_with(Camp.RANK_NAME[3]), "the level-up card shows the honed rank")
+	var wfd := _world({"mode": "campaign", "hero": 0, "seed": 41, "daily": true, "code": "T", "date": "2026-11-25"})
+	ok(wfd.temper_rank("bolt") == 0, "the Daily Rift starts every weapon untempered")
+	Save.data.temper = {}
+	var wrift := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 42})
+	wrift.t = 500.0
+	var rift_forge := false
+	for k in 200:
+		if wrift.director.pick() == "forge": rift_forge = true
+	ok(not rift_forge, "no forge in a Greater Rift")
 	# ---- the run's ore
 	var wo := _world({"mode": "campaign", "hero": 0, "seed": 35})
 	wo.kills = 900; wo.champions_slain = 2
@@ -3726,6 +3759,24 @@ func _camp_ui_tests() -> void:
 	ok(small.is_empty(), "every Camp button is at least %d tall%s" % [UIKit.MIN_TOUCH, ("" if small.is_empty() else ": " + str(small.slice(0, 4)))])
 	win.size = Vector2i(2340, 1080)
 	await get_tree().process_frame
+	# the Wayside Forge's page: Hone through its button, Leave resumes the run
+	sv.data.tutorial = {"on": false, "done": []}
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	var fw: World = mn.world
+	var sw0: String = fw.weapons.keys()[0]
+	var fe: Dictionary = fw.director.start("forge")
+	fe.pos = fw.pp
+	fw.gold = 5000
+	fw.director._step_forge(fe, 0.1)
+	await get_tree().process_frame
+	var on_page: bool = mn.state == "forge" and _btn(mn.screens, "Leave") != null
+	var r0 := fw.temper_rank(sw0)
+	var honed := _press(mn.screens, "Hone  \u00b7  %d gold" % fw.hone_cost(sw0)) and fw.temper_rank(sw0) == r0 + 1
+	small = _small_buttons(mn.screens, "forge")
+	var left: bool = _press(mn.screens, "Leave") and mn.state == "play"
+	ok(on_page and honed and left and small.is_empty(), "the forge opens its page, Hone hones, Leave resumes (%s %s %s %s)" % [on_page, honed, left, str(small)])
+	mn._on_act("leave", null)
 	# the coach rides a fresh profile's campaign run, teaches the level-up page there, and stays out of the Daily Rift
 	sv.data.tutorial = {"on": true, "done": []}
 	mn._on_act("campaign", 0)

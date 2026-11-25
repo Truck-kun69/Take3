@@ -363,6 +363,11 @@ func _draw_event(c: Node2D, ev: Dictionary) -> void:
 				_label(c, p + Vector2(0, -60), "%d / %d   %.0fs" % [ev.kills, ev.quota, ev.life], Color("ffb0b0"), 18)
 		"strongbox":
 			_chest(c, p, Color("6a4a2a"), Color("c8a070"))
+		"forge":
+			c.draw_circle(p + Vector2(0, 14), 18.0, Color(0, 0, 0, 0.3))
+			c.draw_rect(Rect2(p + Vector2(-16, -2), Vector2(26, 9)), Color("4a4a52"))
+			c.draw_circle(p + Vector2(14, 6), 7.0, Color("ff9a5a"))
+			_label(c, p + Vector2(0, -34), "Forge", Color("ffb98a"), 16)
 		"merchant":
 			c.draw_circle(p + Vector2(0, 14), 16.0, Color(0, 0, 0, 0.3))
 			c.draw_colored_polygon(PackedVector2Array([p + Vector2(-14, 14), p + Vector2(14, 14), p + Vector2(6, -16), p + Vector2(-6, -16)]), Color("2f7a4a"))

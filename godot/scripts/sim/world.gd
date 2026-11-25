@@ -11,6 +11,7 @@ signal toast(text: String, col: Color)
 signal banner(title: String, sub: String, col: Color)
 signal ended(win: bool)
 signal merchant_open
+signal forge_open            # the hero stepped to a Wayside Forge (Director): main opens Screens.show_forge
 signal whisper_open          # the hero touched the Whisperer: whisper_offer holds two bargain ids
 signal item_found(item: Dictionary, upgrade: bool)
 signal moment(kind: String, info: Dictionary)   # boss_spawn, boss_die, ult, ricochet, conduct (VoiceDirector); echo (main)
@@ -77,6 +78,7 @@ var terrain: Terrain = null      # set by setup(); heights, water and passabilit
 var torment := 0                 # difficulty tier (Content.TORMENT); 0 in rifts, which scale by level
 var echoes_run := 0              # Echoes earned (set at the end of the run)
 var ore_run := 0                 # Rift Ore earned (set at the end of the run; Camp.ore_for_run)
+var hone := {}                   # weapon id -> temper ranks honed at Wayside Forges this run
 var moon := -1.0                 # real-world lunar phase 0..1 (0 new, 0.5 full); < 0 = no sky (tests)
 var sky_date: Array = []         # [month, day] for the calendar omens
 var light := 1.0                 # the lantern: fades over time, kills relight it (see _step_light)
@@ -1114,9 +1116,29 @@ func _take_weapon(id: String) -> void:
 	var rank := temper_rank(id)
 	if rank > 0: wlocal[id].set_source("temper", Camp.temper_mods(rank))
 
-## The Camp's temper rank this run gives a weapon (0 in the Daily Rift).
+## The temper rank a weapon fights at this run: the Camp's (none in the Daily Rift) plus what Wayside Forges honed.
 func temper_rank(id: String) -> int:
-	return 0 if daily else Camp.temper_rank(Save.data, id)
+	return mini(Camp.TEMPER_MAX, (0 if daily else Camp.temper_rank(Save.data, id)) + int(hone.get(id, 0)))
+
+## Honing at a Wayside Forge: run gold for one more temper rank this run, once a weapon a forge.
+const HONE_BASE := 80
+func hone_cost(id: String) -> int:
+	return HONE_BASE * (temper_rank(id) + 1)
+
+## "" when honed, else why not (nothing changes then).
+func hone_weapon(id: String) -> String:
+	var ev := director.forge()
+	if ev.is_empty(): return "The forge has gone."
+	if not weapons.has(id): return "You do not carry that."
+	if (ev.honed as Array).has(id): return "Already honed here."
+	if temper_rank(id) >= Camp.TEMPER_MAX: return "A masterwork already."
+	var c := hone_cost(id)
+	if gold < c: return "%d gold needed." % c
+	gold -= c
+	hone[id] = int(hone.get(id, 0)) + 1
+	ev.honed.append(id)
+	wlocal[id].set_source("temper", Camp.temper_mods(temper_rank(id)))
+	return ""
 
 ## The pair was kindled at the Camp's Fusion Furnace: it may fuse at level 5 unevolved, and hits harder.
 func _kindled(a: String, b: String) -> bool:

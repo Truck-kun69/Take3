@@ -304,7 +304,7 @@ func _process(dt: float) -> void:
 				"breach": line += "  %ds  (%d)" % [ceili(ev.life), ev.kills]
 				"cursed": line += ("  %d/%d  %ds" % [ev.kills, ev.quota, ceili(ev.life)]) if ev.state == 1 else "  (touch the chest)"
 				"delirium": line += "  reward %d" % ev.reward
-				"eclipse", "meteor": line += "  %ds" % ceili(ev.life)
+				"eclipse", "meteor", "merchant", "forge": line += "  %ds" % ceili(ev.life)
 			et += line + "\n"
 		ev_dirty = _put("ev", events_lbl, et.strip_edges()) or ev_dirty
 	var combo_i := w.combo if w.combo >= 10 else 0

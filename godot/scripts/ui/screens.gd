@@ -1556,6 +1556,52 @@ func show_end(w: World) -> void:
 		row.add_child(bt)
 	UIKit.foot(v).add_child(row)
 
+## The Wayside Forge (a friendly NPC met in a run): Doran's apprentice hones each weapon you carry once, a temper rank
+## for this run, for run gold (World.hone_weapon). Leave resumes the run.
+func show_forge(w: World) -> void:
+	var v := _open(820)
+	var h := UIKit.hbox(14)
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	var md := CampPages.Medallion.new(Color("ff9a5a"), "A", 62.0)
+	md.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(md)
+	var t := UIKit.vbox(0)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.add_child(UIKit.label("Wayside Forge", 30, Color("ffb98a"), false, "display"))
+	t.add_child(UIKit.label("\u201cMaster Doran taught me. Hand it over, I will be quick.\u201d  Ash, his apprentice", 16, UIKit.DIM, true, "italic"))
+	h.add_child(t)
+	v.add_child(h)
+	var ev := w.director.forge()
+	var sub := UIKit.label("Hone a weapon for this run: one temper rank each, once here. You have %d gold." % int(w.gold), 16, UIKit.TEXT, true, "italic")
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(sub)
+	if _craft_msg != "":
+		var ml := UIKit.label(_craft_msg, 16, Color("ffcf9a"), true, "italic")
+		ml.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(ml)
+		_craft_msg = ""
+	for id in w.weapons:
+		var W: Dictionary = Content.WEAPONS[id]
+		var r := w.temper_rank(id)
+		var row := UIKit.hbox(12)
+		var l := UIKit.vbox(0)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.add_child(UIKit.label(String(W.name), 20, Content.col(W.col).lightened(0.15), false, "display"))
+		l.add_child(UIKit.label("%s  \u00b7  %s" % [Camp.RANK_NAME[r], Camp.temper_text(r)], 14, UIKit.DIM, true, "italic"))
+		row.add_child(l)
+		var done: bool = not ev.is_empty() and (ev.honed as Array).has(id)
+		var c := w.hone_cost(id)
+		var b := UIKit.button("Honed" if done else ("Masterwork" if r >= Camp.TEMPER_MAX else "Hone  \u00b7  %d gold" % c), func():
+			var e := w.hone_weapon(id)
+			_craft_msg = ("%s is %s for this run." % [W.name, Camp.RANK_NAME[w.temper_rank(id)]]) if e == "" else e
+			if e == "": Sfx.play("craft")
+			show_forge(w), 50)
+		b.custom_minimum_size.x = 220
+		b.disabled = done or r >= Camp.TEMPER_MAX or int(w.gold) < c or ev.is_empty()
+		row.add_child(b)
+		v.add_child(row)
+	UIKit.foot(v).add_child(UIKit.button("Leave", func(): act.emit("resume", null)))
+
 func show_merchant(w: World) -> void:
 	var v := _open(700)
 	_title(v, "Wandering Merchant", "Gamble %d gold for an unidentified item. You have %d." % [Director.GAMBLE_COST, int(w.gold)])

@@ -67,8 +67,19 @@ func _process(dt: float) -> void:
 		11: await _snap("c10_coach_roll"); main.coach._start("ult"); main.world.ult = 100.0
 		12:
 			await _snap("c11_coach_ult")
+			main.coach.unbind()
+			var fe: Dictionary = main.world.director.start("forge")
+			fe.pos = main.world.pp + Vector2(110, 50)
+			main.world.gold = 900
+		13:
+			await _snap("c12_forge_prop")
+			main.state = "forge"
+			main.screens.show_forge(main.world)
+		14:
+			await _snap("c13_forge_page")
+			main._resume()
 			main.world.champions_slain = 2; main.world.kills = 640
 			main.world.end_run(true)
-		13: pass
-		14: await _snap("c8_end"); get_tree().quit()
+		15: pass
+		16: await _snap("c8_end"); get_tree().quit()
 	step += 1

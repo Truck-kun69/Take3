@@ -282,6 +282,7 @@ func start(cfg: Dictionary) -> void:
 	world.level_up.connect(_on_level)
 	world.ended.connect(_on_end)
 	world.merchant_open.connect(func(): if state == "play": state = "merchant"; screens.show_merchant(world))
+	world.forge_open.connect(func(): if state == "play": state = "forge"; screens.show_forge(world))
 	world.whisper_open.connect(func(): if state == "play": state = "whisper"; Sfx.play("event"); screens.show_whisper(world))
 	_bind_view()
 	Diag.mark("view bound")
@@ -420,7 +421,7 @@ func back() -> void:
 			if screens.page != "menu":
 				if screens.parent_page == "camp": CampPages.show_camp(screens)    # a Camp station: back to the Camp
 				else: _menu()
-		"levelup", "merchant", "whisper": pass
+		"levelup", "merchant", "whisper", "forge": pass
 		_: _menu()
 
 ## World-side first-occurrence breadcrumbs (see Diag.first).
