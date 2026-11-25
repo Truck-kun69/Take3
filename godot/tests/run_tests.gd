@@ -3922,7 +3922,9 @@ func _look_feel_tests() -> void:
 	ok(main_script().phone_ui_scale(Vector2(1920, 1200), 224.0) == 1.0, "a 10-inch tablet is left at x1")
 	ok(main_script().phone_ui_scale(Vector2(2340, 1080), 0.0) == 1.0 and main_script().phone_ui_scale(Vector2(0, 0), 400.0) == 1.0, "a bad dpi or window reading changes nothing")
 	ok(main_script().phone_ui_scale(Vector2(2400, 1080), 640.0) == 1.2, "a very dense small phone stops at x1.2")
-	ok(UIKit.label("x", 12).get_theme_font_size("font_size") == UIKit.MIN_TEXT, "a label asked for 12 units gets the %d floor" % UIKit.MIN_TEXT)
+	var probe := UIKit.label("x", 12)
+	ok(probe.get_theme_font_size("font_size") == UIKit.MIN_TEXT, "a label asked for 12 units gets the %d floor" % UIKit.MIN_TEXT)
+	probe.free()
 	var sv: Node = get_node("/root/Save")
 	var keep: Dictionary = sv.data
 	sv.data = sv.defaults()
@@ -3990,6 +3992,7 @@ func _look_feel_tests() -> void:
 	ok(split.is_empty(), "every one-word button label fits on one line, the HUD's pause button too%s" % ("" if split.is_empty() else ": " + str(split.slice(0, 5))))
 	sv.data.options.ui_scale = 1.0
 	mn._ui_scale()
+	mn._menu()                                     # frees the run's world (World.dispose) before main goes
 	win.size = size0
 	await get_tree().process_frame
 	mn.queue_free()
