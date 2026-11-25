@@ -11,6 +11,8 @@ var _sel_item := -1           # index into the combined gear list in the stash s
 var _sel_node := -1
 var _craft_msg := ""
 var parent_page := ""          # "camp" while a Camp station (or a page opened from the Camp) is up: Back returns there
+var _in_stash := false         # the Gear page is up (a redraw of it is not a new visit)
+var _stash_new: Array = []     # the finds marked NEW on this visit to the Gear page
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -22,12 +24,15 @@ func close() -> void:
 	_choices = []
 	page = ""
 	parent_page = ""
+	_in_stash = false
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _open(max_w: int = 980) -> VBoxContainer:
 	_choices = []
 	page = "sub"
+	_was_stash = _in_stash
+	_in_stash = false
 	var fresh := get_child_count() == 0          # opening over the game, not refreshing an open sheet
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -97,6 +102,7 @@ func show_menu() -> void:
 	UIKit.clear(self)
 	page = "menu"
 	parent_page = ""
+	_in_stash = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var d: Dictionary = Save.data
 	var vs := get_viewport_rect().size
@@ -549,8 +555,14 @@ func _gear_list() -> Array:
 		out.append({"it": it, "eq": false})
 	return out
 
+var _was_stash := false
 func show_stash(in_run: bool = false) -> void:
 	var v := _open(1200)
+	_in_stash = true
+	if not _was_stash:                       # a new visit: this visit's NEW marks are the finds not seen yet
+		_stash_new = (Save.data.get("new_items", []) as Array).duplicate()
+		Save.data.new_items = []
+		Save.mark_dirty()
 	_title(v, "Gear, Crafting & Cube", "Select an item, then apply a shard. Legendary items dissolve in the Cube and keep their power in the Codex forever.")
 	v.add_child(_resources(Save.data))                     # the crafting shards you hold
 	var list := _gear_list()
@@ -576,9 +588,16 @@ func show_stash(in_run: bool = false) -> void:
 		var it: Dictionary = e.it
 		if not e.eq and not stash_head:
 			stash_head = true
-			left.add_child(_section("Stash  \u00b7  %d" % Save.data.stash.size()))
+			left.add_child(_section("Stash  \u00b7  %d / %d" % [Save.data.stash.size(), World.STASH_CAP]))
+			if Save.data.stash.size() >= World.STASH_CAP - 10:
+				var fl := UIKit.label("Nearly full: a full stash salvages its weakest finds. Nim's bench at the Camp clears a whole rarity at once.", 15, Color("ffcf9a"), true, "italic")
+				fl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				left.add_child(fl)
 		var rc := Content.col(Content.RARITY_COL[it.rarity])
-		var t := UIKit.tile(Items.name_of(it), "%s  \u00b7  %s  \u00b7  item level %d%s" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl, "  \u00b7  locked" if (not e.eq and Camp.is_locked(Save.data, it)) else ""],
+		var marks := ""
+		if not e.eq and _stash_new.has(int(it.uid)): marks += "  \u00b7  NEW"
+		if not e.eq and Camp.is_locked(Save.data, it): marks += "  \u00b7  locked"
+		var t := UIKit.tile(Items.name_of(it), "%s  \u00b7  %s  \u00b7  item level %d%s" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl, marks],
 			func(): _sel_item = k; show_stash(in_run), rc, k == _sel_item, 62, true, rc.lightened(0.15))
 		left.add_child(t)
 	if _sel_item >= 0 and _sel_item < list.size():

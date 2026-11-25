@@ -3802,6 +3802,37 @@ func _camp_ui_tests() -> void:
 	await get_tree().process_frame
 	ok(mn.coach.w == null, "the Daily Rift runs without the coach")
 	mn._on_act("leave", null)
+	# the Gear page: finds from runs are marked NEW on the next visit only; the stash shows how full it is
+	sv.data.stash = []
+	sv.data.new_items = []
+	sv.data.locked = []
+	var gw := _world({"mode": "campaign", "hero": 0, "seed": 43})
+	for k in 3: gw.stash_add(Items.make(Content.SLOTS[k], Content.Rarity.MAGIC, 10, rng))
+	ok((sv.data.new_items as Array).size() == 3, "finds added in a run are marked new (%d)" % (sv.data.new_items as Array).size())
+	CampPages.show_camp(mn.screens)
+	var hub_new := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).contains("3 new"): hub_new = true
+	mn.screens.parent_page = "camp"
+	mn.screens.show_stash(false)
+	var news := 0
+	var count_line := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if not _live(l): continue
+		if String(l.text).contains("NEW"): news += 1
+		if String(l.text).contains("3 / %d" % World.STASH_CAP): count_line = true
+	var cleared := (sv.data.new_items as Array).is_empty()
+	mn.screens.show_stash(false)                   # a redraw on the same visit keeps the marks
+	var news2 := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).contains("NEW"): news2 += 1
+	CampPages.show_camp(mn.screens)
+	mn.screens.show_stash(false)                   # the next visit: seen, no marks
+	var news3 := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).contains("NEW"): news3 += 1
+	ok(hub_new and news == 3 and count_line and cleared and news2 == 3 and news3 == 0,
+		"the hub counts new finds, the Gear page marks them NEW with the stash count, keeps the marks while it is open and drops them after (%s %d %s %s %d %d)" % [hub_new, news, count_line, cleared, news2, news3])
 	# the end of a run offers the Camp, which frees the run
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame

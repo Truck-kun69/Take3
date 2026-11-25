@@ -70,7 +70,8 @@ static func show_camp(s: Screens) -> void:
 	var vw := s.get_viewport_rect().size.x
 	var g := s._grid(1 if vw < 820.0 else (3 if vw >= 1250.0 else 2), 10)
 	var n_stash := (d.stash as Array).size()
-	var gear := UIKit.tile("Gear & Stash", "%d in the stash  ·  equip, craft, lock" % n_stash,
+	var n_new := (d.get("new_items", []) as Array).size()
+	var gear := UIKit.tile("Gear & Stash", ("%d / %d in the stash" % [n_stash, World.STASH_CAP]) + (("  ·  %d new" % n_new) if n_new > 0 else "  ·  equip, craft, lock"),
 		func(): s.parent_page = "camp"; s.show_stash(false), Color("e8b54e"), false, CARD_H)
 	g.add_child(gear)
 	for id in NPC_ORDER:

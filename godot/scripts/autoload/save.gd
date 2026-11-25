@@ -50,6 +50,7 @@ func defaults() -> Dictionary:
 		"materials": {"scrap": 0, "ore": 0}, "temper": {}, "kindled": [], "locked": [],
 		"trader": {"day": "", "rolls": 0, "stock": []},
 		"tutorial": {"on": true, "done": []}, "camp_seen": false,
+		"new_items": [],                                 # uids of stash finds not yet seen on the Gear page (World.stash_add)
 	}
 
 func load_profile() -> void:
@@ -143,6 +144,12 @@ func _normalise() -> void:
 	for s2 in data.tutorial.get("done", []): dn.append(String(s2))
 	data.tutorial.done = dn
 	data.camp_seen = bool(data.camp_seen)
+	var have := {}
+	for it in data.stash: have[int(it.uid)] = true
+	var nw: Array = []
+	for u in data.new_items:
+		if have.has(int(u)) and not nw.has(int(u)): nw.append(int(u))
+	data.new_items = nw
 
 func mark_dirty() -> void:
 	_dirty = true

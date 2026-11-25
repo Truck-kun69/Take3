@@ -2355,6 +2355,8 @@ func stash_add(it: Dictionary) -> void:
 				return
 			st.erase(worst)
 	st.append(it)
+	if not d.has("new_items"): d["new_items"] = []
+	d.new_items.append(int(it.uid))                  # marked NEW on the Gear page until seen there
 	Save.mark_dirty()
 
 func equip(it: Dictionary) -> void:
