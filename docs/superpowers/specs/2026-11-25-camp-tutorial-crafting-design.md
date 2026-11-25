@@ -84,3 +84,14 @@ Camp; the stash's Salvage shows its yield.
 ## Left to the builder
 
 Exact copy, colours, NPC medallion drawing, and cost numbers beyond the tables above (tuned in tests).
+
+## After the first build (0.11.0 to 0.11.1)
+
+- Prices were set from bot runs of Act I (`tests.tscn -- sim` with `SIM_QUICK=1` reports gold, ore, items and the
+  scrap they would salvage to): a run banks 500-10,000 gold, 1-12 Rift Ore and 10-50 items, so the first gold
+  prices were about four times too low. Ore paces the smith: a masterwork takes 10,100 gold, 22 ore and 118 scrap.
+- A friendly NPC met in a run (my call, from "other friendly NPCs"): the **Wayside Forge**, a director event
+  (not in Greater Rifts). Ash, Doran's apprentice, hones each weapon carried once a forge: one temper rank for
+  the run, 80 run gold a rank (`World.hone_weapon`), stacking on the Camp's rank, never past a masterwork.
+- A full stash (80) salvages the weakest unlocked find below Legendary at the bench's rates, never a locked item
+  or a Legendary (a Legendary takes the stash over the cap).
