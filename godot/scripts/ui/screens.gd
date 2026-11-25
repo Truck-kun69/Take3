@@ -532,12 +532,20 @@ func show_atlas() -> void:
 	_back(v, "endgame")
 
 # ================================================================= stash / crafting / cube
+## Equipped gear first (slot order), then the stash: the rarest first, the strongest first within a rarity.
 func _gear_list() -> Array:
 	var out: Array = []
 	for s in Content.SLOTS:
 		var it: Dictionary = Save.data.equipped[s]
 		if not it.is_empty(): out.append({"it": it, "eq": true})
-	for it in Save.data.stash:
+	var st: Array = (Save.data.stash as Array).duplicate()
+	st.sort_custom(func(a, b):
+		if int(a.rarity) != int(b.rarity): return int(a.rarity) > int(b.rarity)
+		var sa := Items.score(a)
+		var sb := Items.score(b)
+		if sa != sb: return sa > sb
+		return int(a.uid) < int(b.uid))
+	for it in st:
 		out.append({"it": it, "eq": false})
 	return out
 
@@ -570,7 +578,7 @@ func show_stash(in_run: bool = false) -> void:
 			stash_head = true
 			left.add_child(_section("Stash  \u00b7  %d" % Save.data.stash.size()))
 		var rc := Content.col(Content.RARITY_COL[it.rarity])
-		var t := UIKit.tile(Items.name_of(it), "%s  \u00b7  %s  \u00b7  item level %d" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl],
+		var t := UIKit.tile(Items.name_of(it), "%s  \u00b7  %s  \u00b7  item level %d%s" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl, "  \u00b7  locked" if (not e.eq and Camp.is_locked(Save.data, it)) else ""],
 			func(): _sel_item = k; show_stash(in_run), rc, k == _sel_item, 62, true, rc.lightened(0.15))
 		left.add_child(t)
 	if _sel_item >= 0 and _sel_item < list.size():
@@ -601,8 +609,15 @@ func show_stash(in_run: bool = false) -> void:
 		cp.add_child(card)
 		right.add_child(cp)
 		if not sel.eq:
+			var locked := Camp.is_locked(Save.data, it)
+			var yl := UIKit.label(("Locked: salvage, the bench and the furnace leave it alone." if locked else "Salvage gives " + Camp.yield_text(Camp.salvage_yield(it)) + "."), 15, UIKit.DIM, true, "italic")
+			yl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			card.add_child(yl)
 			foot_acts.append(UIKit.button("Equip", func(): act.emit("equip", it); show_stash(in_run), 50))
-			foot_acts.append(UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 50))
+			var sb := UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 50)
+			sb.disabled = locked
+			foot_acts.append(sb)
+			foot_acts.append(UIKit.button("Unlock" if locked else "Lock", func(): Camp.toggle_lock(Save.data, it); Save.mark_dirty(); show_stash(in_run), 50))
 			if String(it.leg) != "":
 				foot_acts.append(UIKit.button("Cube: extract", func(): act.emit("extract", it); _sel_item = -1; show_stash(in_run), 50))
 		right.add_child(_section("Craft"))
@@ -628,7 +643,7 @@ func show_stash(in_run: bool = false) -> void:
 		_back(v, back_to)
 	else:                       # one row held sideways; upright, four buttons go two by two
 		foot_acts.append(UIKit.button("Back", func(): act.emit(back_to, null), 50))
-		var fr := _grid(foot_acts.size() if (foot_acts.size() <= 3 or not portrait) else 2, 10)
+		var fr := _grid(foot_acts.size() if (foot_acts.size() <= 3 or not portrait) else (3 if foot_acts.size() > 4 else 2), 10)
 		for b in foot_acts:
 			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			fr.add_child(b)
@@ -880,6 +895,16 @@ func show_options(back: String = "menu") -> void:
 			_toggle(v, "Auto-equip upgrades", "auto_equip", back)
 			_cycle(v, "Loot filter", "loot_filter", ["Show all", "Hide normal", "Rare and better"], back)
 			_toggle(v, "Always show touch buttons", "force_touch_ui", back)
+			var T: Dictionary = Save.data.tutorial
+			_opt_row(v, "Tutorial tips (Captain Brask)", "On" if bool(T.on) else "Off", func():
+				T.on = not bool(T.on)
+				Save.mark_dirty()
+				show_options(back), bool(T.on))
+			_opt_row(v, "Replay the tutorial", "From the start", func():
+				T.on = true
+				T.done = []
+				Save.mark_dirty()
+				show_options(back), true)
 			if back == "menu":
 				var sr := _grid(2, 10)
 				var cs := _copy_button("Copy save", func(): return Save.export_text(), "Save copied: keep it somewhere safe", 48)
@@ -1223,6 +1248,10 @@ func show_levelup(w: World) -> void:
 	var t0 := Time.get_ticks_msec()
 	var portrait := get_viewport_rect().size.x < 820.0
 	_title(v, "Level %d" % w.lvl, "The rift offers a gift. Choose one.")
+	if main != null and main.coach != null and main.coach.w == w and Coach.wants(Save.data, Coach.LEVELUP):
+		var tip := UIKit.label("Captain Brask: \u201cPick one. A new weapon (up to four), a level for one you carry, a perk or a gem: they all stack. A weapon at level 5 with its paired perk can evolve.\u201d", 16, Color("cfe8c0"), true, "italic")
+		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(tip)
 	var choices := w.make_choices()
 	_choices = choices
 	var row: BoxContainer = UIKit.vbox(10) if portrait else UIKit.hbox(16)

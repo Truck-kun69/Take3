@@ -53,9 +53,11 @@ func _ready() -> void:
 		await _stream_tests()
 		_pacing_tests()
 		_camp_tests()
+		_coach_tests()
 		await _camp_ui_tests()
 	elif "camp" in args:
 		_camp_tests()
+		_coach_tests()
 		await _camp_ui_tests()
 	elif "voice" in args:
 		_voice_tests()
@@ -1762,8 +1764,9 @@ func _fit_tests() -> void:
 	srng.seed = 5
 	for k in 8: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, srng))
 	var leg := -1
-	for k in sv.data.stash.size():
-		if String(sv.data.stash[k].get("leg", "")) != "": leg = k
+	var gl: Array = mn.screens._gear_list()               # the page's own order (rarest first)
+	for k in gl.size():
+		if String(gl[k].it.get("leg", "")) != "": leg = k
 	var stash_want := ["Equip", "Salvage", "Back"] + (["Cube: extract"] if leg >= 0 else [])
 	mn.screens._sel_item = leg if leg >= 0 else 2
 	mn.screens.show_stash(false)
@@ -3474,6 +3477,82 @@ func _camp_tests() -> void:
 	ok(int(Save.data.temper.bolt) == Camp.TEMPER_MAX and not Save.data.temper.has("nope"), "a bad save's ranks are clamped and unknown weapons dropped")
 	Save.data = keep
 
+## The first-run coach (Coach): which runs it rides, the drill's order, contextual steps taking the stage, a
+## step finished by doing it, an ignored prompt stepping aside, and the profile keeping what was taught.
+func _coach_tests() -> void:
+	print("== the coach")
+	var keep: Dictionary = Save.data
+	Save.data = Save.defaults()
+	var d: Dictionary = Save.data
+	ok(Coach.active_for({"mode": "campaign", "stage": 0}, d), "a fresh profile's campaign run gets the coach")
+	ok(not Coach.active_for({"mode": "campaign", "daily": true}, d) and not Coach.active_for({"mode": "rift"}, d), "the Daily Rift and Greater Rifts do not")
+	d.tutorial.on = false
+	ok(not Coach.active_for({"mode": "campaign"}, d), "nor any run with the tips off")
+	d.tutorial.on = true
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 51})
+	var c := Coach.new()
+	c.bind(w, null)
+	c.tick(0.5)
+	ok(c.active == "", "the first prompt waits a moment")
+	c.tick(2.0)
+	ok(c.active == "move", "then teaches moving first")
+	w.pp += Vector2(80, 0); c.tick(0.1)
+	ok(c.active == "move", "a short step is not enough")
+	w.pp += Vector2(120, 0); c.tick(0.1)
+	ok(c.active == "" and (d.tutorial.done as Array).has("move"), "moving 160 units finishes it, and the profile keeps it")
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "fight", "then: the weapons fire on their own")
+	w.kills += 8; c.tick(0.1)
+	ok((d.tutorial.done as Array).has("fight"), "eight kills finish that")
+	w.hp = w.max_hp * 0.5
+	w.flasks[0].c = 40.0
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "flask", "hurt with a full flask: the flask takes the stage")
+	w.flasks[0].c = 50.0; c.tick(0.1)
+	ok(c.active == "flask", "kills refilling the flask are not a drink")
+	w.flasks[0].c = 30.0; c.tick(0.1)
+	ok((d.tutorial.done as Array).has("flask") and c.active == "", "drinking finishes it")
+	w.hp = w.max_hp
+	w.ult = 100.0
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "ult", "a charged ultimate takes the stage")
+	w.ult = 0.0; c.tick(0.1)
+	ok((d.tutorial.done as Array).has("ult"), "using it finishes it")
+	# an ignored prompt steps aside, then comes back
+	w.gem_n = maxi(w.gem_n, 1)
+	c.tick(Coach.GAP + 0.1)
+	var ign := c.active
+	ok(ign == "shards", "with shards on the ground: gather them (%s)" % ign)
+	c.tick(Coach.SHOW_MAX + 0.1)
+	ok(c.active == "" and c.snooze.has(ign) and not (d.tutorial.done as Array).has(ign), "ignored for %d s it steps aside, not done" % int(Coach.SHOW_MAX))
+	Coach.mark(d, "roll")
+	w.t = 60.0
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "jump", "and the next ready step takes its place (%s)" % c.active)
+	w.jump_t = 0.4
+	c.tick(0.1)
+	w.jump_t = 0.0
+	ok((d.tutorial.done as Array).has("jump"), "a jump finishes it")
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "", "the snoozed step waits out its %d s" % int(Coach.SNOOZE))
+	c.tick(Coach.SNOOZE)
+	c.tick(0.1)
+	ok(c.active == "shards", "then comes back")
+	# the found item
+	c.active = ""; c.gap = 0.0
+	for k in Coach.ORDER: if k != "loot": Coach.mark(d, k)
+	c._on_item({}, false)
+	c.tick(0.1)
+	ok(c.active == "loot", "a find teaches the loot")
+	var banners: Array = []
+	w.banner.connect(func(t, _s, _c): banners.append(t))
+	c.tick(Coach.INFO_T + 0.1)
+	ok((d.tutorial.done as Array).has("loot") and banners.has("Drills done"), "and with the drills done, Brask says so")
+	ok(Coach.remaining(d) == [Coach.LEVELUP], "only the level-up page's lesson is left")
+	c.unbind()
+	c.free()
+	Save.data = keep
+
 ## The Camp's pages (CampPages): the title's bar opens the hub; each NPC's card opens their station, which keeps
 ## Back on screen sideways and upright, with every button touch-sized, and returns to the hub (Back, and Android
 ## Back via main.back); each station's main action works through its button; the end of a run offers the Camp.
@@ -3594,6 +3673,25 @@ func _camp_ui_tests() -> void:
 	ok(small.is_empty(), "every Camp button is at least %d tall%s" % [UIKit.MIN_TOUCH, ("" if small.is_empty() else ": " + str(small.slice(0, 4)))])
 	win.size = Vector2i(2340, 1080)
 	await get_tree().process_frame
+	# the coach rides a fresh profile's campaign run, teaches the level-up page there, and stays out of the Daily Rift
+	sv.data.tutorial = {"on": true, "done": []}
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	var rides: bool = mn.coach.w == mn.world
+	mn.world.pending = 1
+	mn._on_level()
+	for k in 6: await get_tree().process_frame
+	var tip := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if String(l.text).begins_with("Captain Brask: \u201cPick one") and _live(l): tip = true
+	var ch: Array = mn.world.make_choices()
+	mn._on_act("pick", ch[0])
+	ok(rides and tip and (sv.data.tutorial.done as Array).has(Coach.LEVELUP), "the coach rides the campaign run and teaches the level-up page (%s %s)" % [rides, tip])
+	mn._on_act("leave", null)
+	mn._on_act("daily_go", Daily.today())
+	await get_tree().process_frame
+	ok(mn.coach.w == null, "the Daily Rift runs without the coach")
+	mn._on_act("leave", null)
 	# the end of a run offers the Camp, which frees the run
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame

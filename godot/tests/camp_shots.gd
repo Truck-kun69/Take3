@@ -56,9 +56,19 @@ func _process(dt: float) -> void:
 		6: await _snap("c6_trader"); CampPages.show_drill(main.screens)
 		7:
 			await _snap("c7_drill")
+			UIKit.touch_mode = 1
+			Save.data.options.force_touch_ui = true
+			Save.data.tutorial = {"on": true, "done": []}
 			main.start({"mode": "campaign", "stage": 0})
+			main.world.stats.set_source("shot", [["max_hp", "add", 400.0]])
+		8: pass
+		9: pass
+		10: await _snap("c9_coach_move"); main.coach._start("roll")
+		11: await _snap("c10_coach_roll"); main.coach._start("ult"); main.world.ult = 100.0
+		12:
+			await _snap("c11_coach_ult")
 			main.world.champions_slain = 2; main.world.kills = 640
 			main.world.end_run(true)
-		8: pass
-		9: await _snap("c8_end"); get_tree().quit()
+		13: pass
+		14: await _snap("c8_end"); get_tree().quit()
 	step += 1

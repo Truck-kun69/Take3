@@ -65,6 +65,17 @@ static func layout_for(s: Vector2, m: Vector4, left_handed: bool) -> Array[Dicti
 		out.append({"id": b[0], "pos": base + Vector2(cos(a) * side, -sin(a)) * ARC_D * sc, "r": float(b[2]) * sc, "label": b[1]})
 	return out
 
+## True when the on-screen stick and buttons are drawn (a touch was seen, or Options forces them): the coach rings
+## a button only then, and words its prompts for keys otherwise.
+func shows_buttons() -> bool:
+	return UIKit.touch_mode != 0 and (_seen_touch or bool(Save.opt("force_touch_ui")))
+
+## One button's layout entry ({id, pos, r, label}), or {}.
+func button_at(id: String) -> Dictionary:
+	for b in _buttons():
+		if b.id == id: return b
+	return {}
+
 func _buttons() -> Array[Dictionary]:
 	if _layout.is_empty(): _relayout()
 	return _layout

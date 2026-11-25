@@ -21,6 +21,7 @@ var subtitles: Subtitles          # voice lines' subtitle banner, on its own lay
 var voice_dir: VoiceDirector       # which voice line a run says when (VoiceBank decides what is heard)
 var intro: IntroScreen             # the narrated cold open, while it is up
 var cold_open: ColdOpen            # ... and its 3D half (Act I under the narration), on the 3D renderer
+var coach: Coach                   # the first-run tutorial prompts (Captain Brask), over the HUD
 var bot_drive := false          # tests/screenshots: input comes from a Bot instead of devices
 
 func _ready() -> void:
@@ -41,6 +42,9 @@ func _ready() -> void:
 	ui.add_child(touch)
 	hud = Hud.new()
 	ui.add_child(hud)
+	coach = Coach.new()
+	coach.main = self
+	ui.add_child(coach)
 	screens = Screens.new()
 	screens.main = self
 	ui.add_child(screens)
@@ -259,6 +263,7 @@ func _free_world() -> void:
 	if view3d != null: view3d.w = null
 	hud.w = null
 	touch.world = null
+	if coach != null: coach.unbind()
 
 func start(cfg: Dictionary) -> void:
 	_free_world()
@@ -284,6 +289,8 @@ func start(cfg: Dictionary) -> void:
 	hud.act_banner(world)
 	world.moment.connect(_on_moment)
 	touch.world = world
+	if Coach.active_for(cfg, Save.data): coach.bind(world, touch)
+	else: coach.unbind()
 	hud.visible = true
 	touch.visible = true
 	screens.close()
@@ -745,6 +752,7 @@ func _on_act(what: String, arg) -> void:
 			elif act.size() < Content.CODEX_SLOTS: act.append(arg)
 			Save.mark_dirty()
 		"pick":
+			if coach != null and coach.w != null: Coach.mark(Save.data, Coach.LEVELUP)     # taught on the level-up page
 			world.apply_choice(arg)
 			Sfx.play("click")
 			if world.pending > 0: screens.show_levelup(world)
