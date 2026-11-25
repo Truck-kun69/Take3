@@ -1541,9 +1541,14 @@ func show_whisper(w: World) -> void:
 	v.add_child(note)
 	v.add_child(UIKit.button("Refuse and walk on", func(): act.emit("bargain", ""), 54))
 
+## The end of a run. What the run brought home comes first (Gold, Echoes, Rift Ore, Items; a Daily Rift's score), then
+## Time, Slain and Level, and one line for the rest. The review found twelve equal tiles in the run's order: held
+## sideways on an S22 the rewards and Brask's only tip sat below the fold, and a win offered Play again (the same act)
+## with no way on: a campaign win with the next act open now leads with "Next: Act <N>".
 func show_end(w: World) -> void:
 	var v := _open(820)
 	var won: bool = w.won
+	var portrait := get_viewport_rect().size.x < 820.0
 	var tl := UIKit.title("Victory" if won else "You have fallen", 44)
 	(tl.get_child(0) as Label).add_theme_color_override("font_color", UIKit.GOLD if won else Color("d23a34"))
 	v.add_child(tl)
@@ -1554,17 +1559,26 @@ func show_end(w: World) -> void:
 	var sl := UIKit.label(sub, 19, UIKit.DIM, true, "italic")
 	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(sl)
-	var rows := [["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)], ["Best combo", str(w.best_combo)], ["Champions", str(w.champions_slain)], ["Gold", str(int(w.gold))],
-		["Items", str(w.loot_run.size())], ["Reactions", str(w.metrics.reactions)], ["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
-	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
-	if w.daily: rows.push_front(["Rift score" + ("  NEW BEST" if w.daily_best else ""), str(w.daily_score)])
-	rows.append(["Echoes", "+%d" % w.echoes_run])
+	if not bool(Save.data.get("camp_seen", false)) and not w.daily:      # a new exile: point them to the Camp
+		var tip := UIKit.label("Captain Brask: \u201cBring that gold and ore to the Camp. Doran has work for it.\u201d", 17, Color("cfe8c0"), true, "italic")
+		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(tip)
+	var rows: Array = []
+	if w.daily: rows.append(["Rift score" + ("  NEW BEST" if w.daily_best else ""), str(w.daily_score)])
+	rows.append_array([["Gold", str(int(w.gold))], ["Echoes", "+%d" % w.echoes_run]])
 	if not w.daily: rows.append(["Rift Ore", "+%d" % w.ore_run])
-	if w.salvaged_run > 0: rows.append(["Salvaged on the way", "%d (+%d scrap)" % [w.salvaged_run, w.salvaged_scrap]])
-	if w.hoard_banked > 0.0: rows.append(["Hoard banked", str(int(w.hoard_banked))])
-	if w.hoard_lost > 0.0: rows.append(["Hoard lost", str(int(w.hoard_lost))])
-	if w.torment > 0: rows.append(["Difficulty", String(Content.TORMENT[w.torment].name)])
-	var g := _grid(3 if get_viewport_rect().size.x >= 820.0 else 2, 10)
+	rows.append(["Items", str(w.loot_run.size())])
+	rows.append_array([["Time", Hud._fmt(w.t)], ["Slain", str(w.kills)], ["Level", str(w.lvl)]])
+	var rest: Array = [["Best combo", str(w.best_combo)], ["Champions", str(w.champions_slain)], ["Reactions", str(w.metrics.reactions)],
+		["Perfect dodges", str(w.metrics.perfect)], ["Lore pages", str(w.lore_run.size())]]
+	if w.mode == "rift": rows.append(["Rift progress", "%d%%" % int(w.progress)])
+	elif w.hoard_lost > 0.0: rows.append(["Hoard lost", str(int(w.hoard_lost))])         # it teaches the Rift Gate
+	elif w.hoard_banked > 0.0: rows.append(["Hoard banked", str(int(w.hoard_banked))])
+	if w.hoard_banked > 0.0 and (w.mode == "rift" or w.hoard_lost > 0.0): rest.append(["Hoard banked", str(int(w.hoard_banked))])
+	if w.hoard_lost > 0.0 and w.mode == "rift": rest.append(["Hoard lost", str(int(w.hoard_lost))])
+	if w.salvaged_run > 0: rest.append(["Salvaged on the way", "%d (+%d scrap)" % [w.salvaged_run, w.salvaged_scrap]])
+	if w.torment > 0: rest.append(["Difficulty", String(Content.TORMENT[w.torment].name)])
+	var g := _grid(2 if portrait else 4, 10)
 	for r in rows:
 		var pv := UIKit.vbox(0)
 		pv.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1580,6 +1594,9 @@ func show_end(w: World) -> void:
 		pc.add_child(pv)
 		g.add_child(pc)
 	v.add_child(g)
+	var rl := UIKit.label("   \u00b7   ".join(rest.map(func(r): return "%s %s" % [r[0], r[1]])), 17, UIKit.DIM, true, "italic")
+	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(rl)
 	if not w.bargains.is_empty():
 		v.add_child(_section("Marked by the Whisperer"))
 		var wl := UIKit.label(", ".join(w.bargains.map(func(x): return Content.WHISPERS[x].name)), 18, Color("c9a2ff"), true, "display")
@@ -1605,16 +1622,22 @@ func show_end(w: World) -> void:
 		var bl := UIKit.label(best.trim_suffix(", "), 17, UIKit.GOLD, true, "display")
 		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(bl)
-	if not bool(Save.data.get("camp_seen", false)) and not w.daily:      # a new exile: point them to the Camp
-		var tip := UIKit.label("Captain Brask: \u201cBring that gold and ore to the Camp. Doran has work for it.\u201d", 17, Color("cfe8c0"), true, "italic")
-		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(tip)
-	var row := _grid(3, 10)
-	for pair in [["Play again", "retry"], ["Camp", "camp"], ["Main menu", "menu"]]:
-		var bt := UIKit.button(pair[0], func(): act.emit(pair[1], null), 58)
+	var acts: Array = [["Play again", "retry"], ["Camp", "camp"], ["Main menu", "menu"]]
+	var nxt := next_act(w)
+	if nxt >= 0: acts.push_front(["Next: Act %s" % ROMAN[nxt], "campaign"])
+	var row := _grid(acts.size() if not portrait else 2, 10)
+	for pair in acts:
+		var arg: Variant = nxt if pair[1] == "campaign" else null
+		var bt := UIKit.button(pair[0], func(): act.emit(pair[1], arg), 58)
 		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(bt)
 	UIKit.foot(v).add_child(row)
+
+## The act a campaign win opens next (-1: not a campaign win, the last act, or the next one still sealed).
+static func next_act(w: World) -> int:
+	if not w.won or w.mode != "campaign" or w.daily or w.stage + 1 >= Content.STAGES.size(): return -1
+	var cl: Array = Save.data.cleared
+	return w.stage + 1 if w.stage < cl.size() and bool(cl[w.stage]) else -1
 
 ## "What's new" (WhatsNew): once after an update, from the title; Captain Brask's page rereads it (all=true).
 func show_whats_new(all: bool = false) -> void:

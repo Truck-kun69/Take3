@@ -1863,6 +1863,25 @@ func _off_screen(root: Control, labels: Array) -> String:
 		if not found: bad.append(want + " missing")
 	return "" if bad.is_empty() else "  (" + "; ".join(bad) + ")"
 
+## The labels (by their text, or its start) that are missing or not wholly in view: off the screen or scrolled out of
+## a scroll area around them.
+func _labels_out_of_view(root: Control, starts: Array) -> Array:
+	var vr := root.get_viewport_rect().grow(0.5)
+	var bad: Array = []
+	for want in starts:
+		var seen := false
+		for l in root.find_children("*", "Label", true, false):
+			if not _live(l) or not (l as Control).is_visible_in_tree() or not String(l.text).begins_with(want): continue
+			var r := (l as Control).get_global_rect()
+			var inside := vr.encloses(r)
+			var n := l.get_parent()
+			while n != null and inside:
+				if n is ScrollContainer and not (n as Control).get_global_rect().grow(0.5).encloses(r): inside = false
+				n = n.get_parent()
+			if inside: seen = true
+		if not seen: bad.append(want)
+	return bad
+
 func _texts(root: Node, cls: String) -> Array:
 	var out: Array = []
 	for c in root.find_children("*", cls, true, false):
@@ -3977,6 +3996,34 @@ func _camp_ui_tests() -> void:
 		if _live(l) and String(l.text).begins_with("ALPHA 0.11."): wn_sections += 1
 	ok(wn_ok and wn_sections >= 1, "the page lists what changed since the version seen, and marks this one seen (%s %d)" % [wn_ok, wn_sections])
 	_press(mn.screens, "Continue")
+	# a campaign win with the next act open leads with "Next: Act II", which starts Act II; a loss, or the last act, has none
+	sv.data.cleared = [false, false, false, false, false]
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(true, true)
+	mn.screens.show_end(mn.world)
+	var foot_first := ""
+	var nb := _btn(mn.screens, "Next: Act II")
+	if nb != null and nb.get_parent() != null: foot_first = String((nb.get_parent().get_child(0) as Button).text)
+	var next_ok: bool = _press(mn.screens, "Next: Act II") and mn.world != null and int(mn.world.stage) == 1 and mn.state == "play"
+	mn._on_act("leave", null)
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	var none_on_loss := _btn(mn.screens, "Next: Act II") == null and _btn(mn.screens, "Play again") != null
+	mn._on_act("leave", null)
+	sv.data.cleared = [true, true, true, true, false]
+	mn._on_act("campaign", 4)
+	await get_tree().process_frame
+	mn.world.end_run(true, true)
+	mn.screens.show_end(mn.world)
+	var none_last := true
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and String(b.text).begins_with("Next:"): none_last = false
+	mn._on_act("leave", null)
+	sv.data.cleared = [false, false, false, false, false]
+	ok(foot_first == "Next: Act II" and next_ok and none_on_loss and none_last, "a campaign win leads with Next: Act II, which starts Act II; a loss and the last act offer none (%s %s %s %s)" % [foot_first, next_ok, none_on_loss, none_last])
 	# the end of a run offers the Camp, which frees the run
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame
@@ -4064,9 +4111,12 @@ func _look_feel_tests() -> void:
 	off += await _off_screen(mn.screens, ["Resume", "Main Menu"])
 	mn._resume()
 	mn.world.end_run(false, true)
+	sv.data.camp_seen = false                      # a new exile's first run: Brask's Camp tip shows
 	mn.screens.show_end(mn.world)
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
 	off += await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
+	var hid := _labels_out_of_view(mn.screens, ["GOLD", "ECHOES", "RIFT ORE", "ITEMS", "Captain Brask: \u201cBring that gold"])
+	ok(hid.is_empty(), "held sideways at an S22's scale, the end of a run shows what it brought home and Brask's tip without scrolling%s" % ("" if hid.is_empty() else ": hidden " + str(hid)))
 	ok(small.is_empty(), "every label on the title, the Camp, Gear, Options, What's new, level-up, pause and the end of a run is %d units or more%s" % [UIKit.MIN_TEXT, ("" if small.is_empty() else ": " + str(small.slice(0, 6)))])
 	ok(off == "", "with the UI scaled x1.15 on an S22 held sideways, every page keeps its main buttons and Back on screen%s" % off)
 	# a one-word button label never breaks inside the word (the pause button's "II" once split in two)
