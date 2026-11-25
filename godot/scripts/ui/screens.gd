@@ -1549,6 +1549,10 @@ func show_end(w: World) -> void:
 		var bl := UIKit.label(best.trim_suffix(", "), 17, UIKit.GOLD, true, "display")
 		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(bl)
+	if not bool(Save.data.get("camp_seen", false)) and not w.daily:      # a new exile: point them to the Camp
+		var tip := UIKit.label("Captain Brask: \u201cBring that gold and ore to the Camp. Doran has work for it.\u201d", 17, Color("cfe8c0"), true, "italic")
+		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(tip)
 	var row := _grid(3, 10)
 	for pair in [["Play again", "retry"], ["Camp", "camp"], ["Main menu", "menu"]]:
 		var bt := UIKit.button(pair[0], func(): act.emit(pair[1], null), 58)

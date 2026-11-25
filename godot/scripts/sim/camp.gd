@@ -192,6 +192,22 @@ static func fuse_groups(d: Dictionary) -> Array:
 	out.sort_custom(func(a, b): return a.rarity > b.rarity or (a.rarity == b.rarity and Content.SLOTS.find(a.slot) < Content.SLOTS.find(b.slot)))
 	return out
 
+## The sets still being gathered: [slot, rarity, how many] for each slot and rarity with 1 or 2 unlocked items.
+static func fuse_partial(d: Dictionary) -> Array:
+	var by := {}
+	for it in d.stash:
+		var r := int(it.rarity)
+		if r >= Content.Rarity.LEGENDARY or is_locked(d, it): continue
+		var k := "%d:%s" % [r, it.slot]
+		by[k] = int(by.get(k, 0)) + 1
+	var out: Array = []
+	for k in by:
+		if int(by[k]) < FUSE_N:
+			var parts := String(k).split(":")
+			out.append([parts[1], int(parts[0]), int(by[k])])
+	out.sort_custom(func(a, b): return a[1] > b[1] or (a[1] == b[1] and a[2] > b[2]))
+	return out
+
 static func fuse_cost(rarity: int) -> Dictionary:
 	return (FUSE_COST[clampi(rarity, 0, FUSE_COST.size() - 1)] as Dictionary).duplicate()
 

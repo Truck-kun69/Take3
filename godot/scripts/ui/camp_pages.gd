@@ -366,6 +366,11 @@ static func _furnace_gear(s: Screens, v: VBoxContainer, d: Dictionary) -> void:
 		cp.add_child(card)
 		v.add_child(cp)
 	var groups := Camp.fuse_groups(d)
+	var partial := Camp.fuse_partial(d)
+	if not partial.is_empty():
+		var bits := PackedStringArray()
+		for p in partial.slice(0, 6): bits.append("%s %s %d/%d" % [Content.RARITY_NAME[int(p[1])], plural(String(p[0])), int(p[2]), Camp.FUSE_N])
+		_note(v, "Gathering: " + ",  ".join(bits), UIKit.DIM)
 	if groups.is_empty():
 		_note(v, "Bring three unlocked items of one slot and one rarity (Normal, Magic or Rare). The weakest three of a kind go in first.", UIKit.DIM)
 		return

@@ -3392,6 +3392,12 @@ func _camp_tests() -> void:
 	df.currency.divine = 1
 	var lg = Camp.fuse_items(df, rr, rng)
 	ok(typeof(lg) == TYPE_DICTIONARY and int(lg.rarity) == 3 and String(lg.leg) != "" and int(df.currency.divine) == 0, "three Rares and a Divine Orb make a Legendary")
+	var dp: Dictionary = Save.defaults()
+	_camp_item(dp, "ring", 1, 10, rng); _camp_item(dp, "ring", 1, 11, rng); _camp_item(dp, "boots", 2, 12, rng)
+	var lk := _camp_item(dp, "amulet", 1, 12, rng)
+	Camp.toggle_lock(dp, lk)
+	var pa := Camp.fuse_partial(dp)
+	ok(pa.size() == 2 and pa[0] == ["boots", 2, 1] and pa[1] == ["ring", 1, 2], "partial sets list what is being gathered, the rarest first, locked items left out (%s)" % str(pa))
 	var ll: Array = []
 	for k in 3: ll.append(_camp_item(df, "boots", 3, 20, rng))
 	ok(typeof(Camp.fuse_items(df, ll, rng)) == TYPE_STRING, "Legendaries do not fuse")
