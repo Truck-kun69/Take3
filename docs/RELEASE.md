@@ -40,6 +40,9 @@ not to a copied text).
 
 ## APK size
 
+0.11.0: 140.93 MB (140,928,781 bytes). The Camp, its NPCs' pages and the first-run coach are script only
+(about 34 KB of compiled scripts); no new art or sound.
+
 0.10.6: 140.89 MB (140,887,358 bytes): script only since 0.10.4.
 
 0.10.5: 140.89 MB (140,887,358 bytes): script only since 0.10.4.
