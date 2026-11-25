@@ -23,7 +23,7 @@ func _ready() -> void:
 	sv.data.intro_seen = true
 	sv.data.cleared = [true, true, false, false, false]
 	sv.data.unlocked = ["lance", "mine", "glaive"]
-	sv.data.gold = 2460; sv.data.materials = {"scrap": 38, "ore": 7}
+	sv.data.gold = 7460; sv.data.materials = {"scrap": 38, "ore": 7}
 	sv.data.currency.divine = 1; sv.data.currency.chaos = 2
 	sv.data.temper = {"bolt": 3, "orbit": 1, "nova": 5}
 	sv.data.kindled = ["bolt+nova"]

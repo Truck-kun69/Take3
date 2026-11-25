@@ -69,8 +69,10 @@ static func pool(d: Dictionary) -> Array:
 # ================================================================= Doran Ashhand, Weaponsmith
 ## Temper ranks are permanent and per weapon; a run applies them when the weapon is taken (World._take_weapon).
 const TEMPER_MAX := 5
-const TEMPER_COST := [{"gold": 120, "ore": 1, "scrap": 6}, {"gold": 260, "ore": 2, "scrap": 12}, {"gold": 450, "ore": 4, "scrap": 20},
-	{"gold": 700, "ore": 6, "scrap": 32}, {"gold": 1000, "ore": 9, "scrap": 48}]
+## Tuned on bot runs of Act I (tests.tscn -- sim, SIM_QUICK=1): a run banks 500-10,000 gold (a won one the most),
+## 1-12 Rift Ore and 10-50 items (50-300 scrap salvaged), so ore paces the smith and gold is a real but lighter cost.
+const TEMPER_COST := [{"gold": 500, "ore": 1, "scrap": 6}, {"gold": 1000, "ore": 2, "scrap": 12}, {"gold": 1800, "ore": 4, "scrap": 20},
+	{"gold": 2800, "ore": 6, "scrap": 32}, {"gold": 4000, "ore": 9, "scrap": 48}]
 const TEMPER_DMG := 0.08          # per rank, increased damage
 const TEMPER_CD := 0.92           # from rank 3: cooldowns x0.92
 const TEMPER_MASTER := 1.10       # rank 5: a further 10% more damage
@@ -171,7 +173,7 @@ static func salvage_all(d: Dictionary, rarity: int) -> Dictionary:
 ## Gear: FUSE_N unlocked stash items of one slot and rarity become one new item of that slot a rarity higher,
 ## at the highest item level of the three. Rare into Legendary also takes a Divine Orb.
 const FUSE_N := 3
-const FUSE_COST := [{"gold": 60, "scrap": 4}, {"gold": 180, "scrap": 10}, {"gold": 500, "scrap": 24, "divine": 1}]
+const FUSE_COST := [{"gold": 150, "scrap": 4}, {"gold": 500, "scrap": 10}, {"gold": 1600, "scrap": 24, "divine": 1}]
 
 ## Every slot and rarity with at least FUSE_N unlocked items, highest rarity first: {slot, rarity, items}.
 static func fuse_groups(d: Dictionary) -> Array:
@@ -219,8 +221,8 @@ static func fuse_items(d: Dictionary, items: Array, rng: RandomNumberGenerator =
 ## Weapons: kindling a pair (any two weapons the profile can take) lets them fuse in a run as soon as both
 ## reach their last level, evolved or not (World.make_choices), and the kindled fusion hits harder.
 const KINDLED_MORE := 1.35        # an ordinary fusion: 1.25
-const KINDLE_BASE := {"gold": 300, "ore": 3}
-const KINDLE_STEP := {"gold": 200, "ore": 2}
+const KINDLE_BASE := {"gold": 1200, "ore": 3}
+const KINDLE_STEP := {"gold": 800, "ore": 2}
 
 static func kindled(d: Dictionary, key: String) -> bool:
 	return (d.get("kindled", []) as Array).has(key)
@@ -248,8 +250,8 @@ static func kindle(d: Dictionary, a: String, b: String) -> String:
 ## TRADER_SLOTS items a day, seeded by the date, the restocks bought that day and the acts cleared (item level).
 ## The stock is kept in the profile, so a bought item stays gone and a visit later the same day shows the rest.
 const TRADER_SLOTS := 4
-const RESTOCK_COST := 100          # doubles with each restock the same day
-const SHARD_PRICES := {"transmute": 25, "augment": 50, "regal": 160, "chaos": 220, "divine": 380}
+const RESTOCK_COST := 300          # doubles with each restock the same day
+const SHARD_PRICES := {"transmute": 60, "augment": 120, "regal": 400, "chaos": 550, "divine": 950}
 const SHARD_IDS := ["transmute", "augment", "regal", "chaos", "divine"]
 
 static func today() -> String:
@@ -263,10 +265,10 @@ static func trader_ilvl(d: Dictionary) -> int:
 
 static func price_of(it: Dictionary) -> int:
 	match int(it.rarity):
-		Content.Rarity.MAGIC: return 90 + 2 * int(it.ilvl)
-		Content.Rarity.RARE: return 300 + 6 * int(it.ilvl)
-		Content.Rarity.LEGENDARY: return 1800 + 10 * int(it.ilvl)
-	return 30
+		Content.Rarity.MAGIC: return 300 + 6 * int(it.ilvl)
+		Content.Rarity.RARE: return 900 + 18 * int(it.ilvl)
+		Content.Rarity.LEGENDARY: return 6000 + 30 * int(it.ilvl)
+	return 100
 
 static func _roll_stock(d: Dictionary, day: String, rolls: int) -> Array:
 	var rng := RandomNumberGenerator.new()
@@ -339,4 +341,4 @@ static func has_news(d: Dictionary) -> bool:
 		if not c.is_empty() and can_pay(d, c): return true
 	for g in fuse_groups(d):
 		if can_pay(d, fuse_cost(int(g.rarity))): return true
-	return String((d.get("trader", {}) as Dictionary).get("day", "")) != today() and int(d.get("gold", 0)) >= 200
+	return String((d.get("trader", {}) as Dictionary).get("day", "")) != today() and int(d.get("gold", 0)) >= 600
