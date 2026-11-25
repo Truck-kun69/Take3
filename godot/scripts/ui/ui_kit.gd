@@ -173,7 +173,8 @@ const MIN_TOUCH := 48
 static func button(txt: String, cb: Callable, min_h: int = 56) -> Button:
 	var b := Button.new()
 	b.text = txt
-	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART       # a long label wraps to two lines instead of widening its row off a phone held upright
+	if txt.contains(" "):                                   # a long label wraps between words instead of widening its row off a
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD          # phone held upright; one word never wraps (the pause button's "II" split)
 	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
 	b.pressed.connect(func(): Sfx.play("click"); cb.call())
 	press_fx(b)

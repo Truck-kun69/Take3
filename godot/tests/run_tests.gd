@@ -3977,6 +3977,17 @@ func _look_feel_tests() -> void:
 	off += await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
 	ok(small.is_empty(), "every label on the title, the Camp, Gear, Options, What's new, level-up, pause and the end of a run is %d units or more%s" % [UIKit.MIN_TEXT, ("" if small.is_empty() else ": " + str(small.slice(0, 6)))])
 	ok(off == "", "with the UI scaled x1.15 on an S22 held sideways, every page keeps its main buttons and Back on screen%s" % off)
+	# a one-word button label never breaks inside the word (the pause button's "II" once split in two)
+	var split: Array = []
+	for b in mn.find_children("*", "Button", true, false):
+		if not _live(b) or String(b.text) == "" or String(b.text).contains(" "): continue
+		var f: Font = (b as Button).get_theme_font("font")
+		var fs: int = (b as Button).get_theme_font_size("font_size")
+		var tw := f.get_string_size(String(b.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var sb: StyleBox = (b as Button).get_theme_stylebox("normal")
+		var room: float = (b as Control).size.x - (sb.get_content_margin(SIDE_LEFT) + sb.get_content_margin(SIDE_RIGHT) if sb != null else 0.0)
+		if tw > room + 1.0: split.append("%s (%.0f > %.0f)" % [b.text, tw, room])
+	ok(split.is_empty(), "every one-word button label fits on one line, the HUD's pause button too%s" % ("" if split.is_empty() else ": " + str(split.slice(0, 5))))
 	sv.data.options.ui_scale = 1.0
 	mn._ui_scale()
 	win.size = size0
