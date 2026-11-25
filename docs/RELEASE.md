@@ -40,6 +40,8 @@ not to a copied text).
 
 ## APK size
 
+0.11.3: 140.94 MB (140,937,136 bytes): script only.
+
 0.11.2: 140.93 MB (140,932,877 bytes): script only.
 
 0.11.1: 140.93 MB (140,932,877 bytes): script only (the Wayside Forge's prop is built from primitives in code).
