@@ -298,6 +298,8 @@ static func show_bench(s: Screens) -> void:
 	_header(s, v, "nim", "Break gear you will not wear into Shard Scrap and crafting shards, a whole rarity at a time. Locked and equipped items are never touched.")
 	v.add_child(purse(s, d))
 	_flash(v)
+	var grid := s._grid(1 if s.get_viewport_rect().size.x < 1250.0 else 2, 8)      # two columns on a wide screen
+	v.add_child(grid)
 	for r in [Content.Rarity.NORMAL, Content.Rarity.MAGIC, Content.Rarity.RARE]:
 		var items := Camp.bulk_list(d, r)
 		var y := Camp.bulk_yield(items)
@@ -317,7 +319,7 @@ static func show_bench(s: Screens) -> void:
 			_say("Salvaged %d %s items for %s." % [items.size(), Content.RARITY_NAME[r], Camp.yield_text(got)], true)
 			show_bench(s))
 		(right.get_child(0) as Button).disabled = items.is_empty()
-		v.add_child(_row(left, right, rc))
+		grid.add_child(_row(left, right, rc))
 	var mode := int(Save.opt("auto_salvage"))
 	var al := UIKit.vbox(2)
 	al.add_child(UIKit.label("Salvage on the way", 20, Color("e8dcc0"), false, "display"))
@@ -327,9 +329,9 @@ static func show_bench(s: Screens) -> void:
 		Save.set_opt("auto_salvage", (mode + 1) % 3)
 		_say("Salvage on the way: %s." % names[(mode + 1) % 3].to_lower(), true)
 		show_bench(s), 50)
-	ab.custom_minimum_size.x = 220
+	ab.custom_minimum_size.x = 200
 	ab.add_theme_color_override("font_color", UIKit.GOLD if mode > 0 else UIKit.DIM)
-	v.add_child(_row(al, ab, Color("c9b79a")))
+	grid.add_child(_row(al, ab, Color("c9b79a")))
 	var locked := 0
 	for it in d.stash:
 		if Camp.is_locked(d, it): locked += 1
