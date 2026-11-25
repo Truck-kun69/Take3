@@ -11,7 +11,10 @@ render_mode diffuse_burley, specular_schlick_ggx, cull_back;
 uniform float time = 0.0;
 uniform vec3 eye_col : source_color = vec3(1.0, 0.8, 0.35);
 uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
-uniform bool colorblind = false;
+// Status glow by status code (0 none 1 burn 2 chill 3 shock 4 poison 5 bleed 6 frozen): Content.status_cols(colour-blind),
+// the element swatches the UI shows, set by WorldView3D.bind. source_color, so they arrive linearised: the old typed-in
+// constants were read as linear (vec3(1, .15, .2) rendered #ff6c7b), which washed Bleed pink and paled every status.
+uniform vec3 status_cols[7] : source_color;
 // the act's Fresnel rim (WorldView3D STAGE_LOOK.rim): moon-cyan, molten-amber, frost-cyan, rift-violet, teal
 uniform vec3 rim_col : source_color = vec3(0.0);
 uniform float rim_k = 0.0;
@@ -43,21 +46,7 @@ const float BUMP = 2.5;
 global uniform sampler2D g_noise : filter_linear_mipmap, repeat_enable;
 
 vec3 status_col(float s) {
-	if (s < 0.5) return vec3(0.0);
-	if (colorblind) {
-		if (s < 1.5) return vec3(0.9, 0.62, 0.0);
-		if (s < 2.5) return vec3(0.34, 0.71, 0.91);
-		if (s < 3.5) return vec3(0.94, 0.89, 0.26);
-		if (s < 4.5) return vec3(0.0, 0.62, 0.45);
-		if (s < 5.5) return vec3(0.84, 0.37, 0.0);
-		return vec3(0.8, 0.95, 1.0);
-	}
-	if (s < 1.5) return vec3(1.0, 0.45, 0.12);
-	if (s < 2.5) return vec3(0.45, 0.85, 1.0);
-	if (s < 3.5) return vec3(1.0, 0.92, 0.3);
-	if (s < 4.5) return vec3(0.4, 1.0, 0.3);
-	if (s < 5.5) return vec3(1.0, 0.15, 0.2);
-	return vec3(0.75, 0.95, 1.0);
+	return status_cols[clamp(int(s + 0.5), 0, 6)];
 }
 
 // vat_nrm holds octahedral normals (tools/vat_pack.py): two 8-bit channels per unit vector
@@ -214,10 +203,12 @@ void fragment() {
 	vec3 sc = status_col(v_custom.z);
 	if (v_custom.z > 0.5 && !corpse) {
 		if (v_custom.z > 5.5) { base = mix(base, vec3(0.62, 0.8, 0.95), 0.6); rough = 0.45; }   // frosted, not mirror: rough 0.1 threw a sun glint off every facet (speckle)
-		em += sc * (0.16 + fres * 0.6) * (0.85 + 0.15 * sin(time * 9.0)) * (1.0 - 0.6 * burn_n);   // the crust shows Burn
+		// fresnel 0.4, not 0.6: at 0.6 ACES pushed a red rim toward white (the swatch's colour, not a paler one)
+		em += sc * (0.16 + fres * 0.4) * (0.85 + 0.15 * sin(time * 9.0)) * (1.0 - 0.6 * burn_n);   // the crust shows Burn
 	}
 	em += crust;
-	if (!corpse) em += rim_col * fres * rim_k;
+	// a status takes the act's rim: the two were added, and Act I's moon-cyan over Bleed's red read pastel pink
+	if (!corpse && v_custom.z < 0.5) em += rim_col * fres * rim_k;
 	if (elite) em += vec3(1.0, 0.75, 0.25) * fres * 1.4;
 	if (exile) em += vec3(1.0, 0.45, 0.15) * fres * 3.0;
 	if (ally) { base *= 0.4; em += vec3(0.6, 0.45, 1.0) * (0.6 + fres * 2.0); }

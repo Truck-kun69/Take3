@@ -568,3 +568,11 @@ static func gr_dmg_mult(lvl: int) -> float: return pow(1.035, lvl - 1)
 
 static func col(hex: String) -> Color: return Color.html(hex)
 static func el_col(e: int, cb: bool = false) -> Color: return Color.html(EL_COL_CB[e] if cb else EL_COL[e])
+## Frozen foes' glow, the one status colour that is no element's: the pale ice the 3D view always showed.
+const FROZEN_COL := "e1f9ff"
+const FROZEN_COL_CB := "e7f9ff"
+## The status glow on foes, indexed by status code (0 none, 1 burn, 2 chill, 3 shock, 4 poison, 5 bleed, 6 frozen):
+## the element swatches themselves, for the foe and swarm shaders' status_cols uniform (WorldView3D / WorldView bind).
+static func status_cols(cb: bool = false) -> PackedColorArray:
+	return PackedColorArray([Color.BLACK, el_col(El.FIRE, cb), el_col(El.COLD, cb), el_col(El.LIGHT, cb), el_col(El.CHAOS, cb),
+		el_col(El.PHYS, cb), Color.html(FROZEN_COL_CB if cb else FROZEN_COL)])

@@ -352,7 +352,7 @@ func bind(world: World) -> void:
 	for fm in foe_mats:
 		fm.set_shader_parameter("eye_col", _look.eye)
 		fm.set_shader_parameter("glow_col", Content.col(s.acc))
-		fm.set_shader_parameter("colorblind", w.colorblind)
+		fm.set_shader_parameter("status_cols", Content.status_cols(w.colorblind))
 		fm.set_shader_parameter("rim_col", _look.rim)
 		fm.set_shader_parameter("rim_k", RIM_FOE)
 	prop_mat.set_shader_parameter("glow_col", Content.col(s.acc))

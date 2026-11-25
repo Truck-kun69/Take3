@@ -6,7 +6,9 @@ shader_type canvas_item;
 //   flags bits: 1 elite, 2 boss, 4 breach, 8 exile, 16 goblin, 64 ally (ethereal)
 
 uniform float time = 0.0;
-uniform bool colorblind = false;
+// status tint by status code: Content.status_cols(colour-blind), set by WorldView.bind (the same swatches as the 3D
+// view and the UI; 2D canvas colours stay sRGB, so source_color changes nothing here)
+uniform vec3 status_cols[7] : source_color;
 varying vec4 v_custom;
 varying vec4 v_col;
 
@@ -15,22 +17,7 @@ const float AMP[12]  = float[](0.04, 0.10, 0.06, 0.03, 0.10, 0.12, 0.14, 0.16, 0
 const float LOBES[12]= float[](5.0, 2.0, 4.0, 6.0, 6.0, 4.0, 3.0, 9.0, 3.0, 8.0, 7.0, 5.0);
 
 vec3 status_col(float s) {
-	if (colorblind) {
-		if (s < 0.5) return vec3(0.0);
-		if (s < 1.5) return vec3(0.9, 0.62, 0.0);
-		if (s < 2.5) return vec3(0.34, 0.71, 0.91);
-		if (s < 3.5) return vec3(0.94, 0.89, 0.26);
-		if (s < 4.5) return vec3(0.0, 0.62, 0.45);
-		if (s < 5.5) return vec3(0.84, 0.37, 0.0);
-		return vec3(0.8, 0.95, 1.0);
-	}
-	if (s < 0.5) return vec3(0.0);
-	if (s < 1.5) return vec3(1.0, 0.54, 0.24);
-	if (s < 2.5) return vec3(0.5, 0.9, 1.0);
-	if (s < 3.5) return vec3(0.9, 0.82, 0.29);
-	if (s < 4.5) return vec3(0.49, 1.0, 0.42);
-	if (s < 5.5) return vec3(1.0, 0.29, 0.37);
-	return vec3(0.8, 0.95, 1.0);
+	return status_cols[clamp(int(s + 0.5), 0, 6)];
 }
 
 void vertex() {

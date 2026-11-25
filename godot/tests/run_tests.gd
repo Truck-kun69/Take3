@@ -3964,6 +3964,7 @@ func _look_feel_tests() -> void:
 	off += await _off_screen(mn.screens, ["Continue"])
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame
+	_status_colour_tests(mn)
 	mn.world.pending = 1
 	mn._on_level()
 	for k in 6: await get_tree().process_frame
@@ -3998,6 +3999,38 @@ func _look_feel_tests() -> void:
 	mn.queue_free()
 	await get_tree().process_frame
 	sv.data = keep
+
+## Colour roles (0.11.4 art-director pass): a status on a foe glows in its element's own swatch, in both palettes. The
+## shaders used to type sRGB numbers in as constants, which Godot reads as linear: vec3(1, .15, .2) rendered #ff6c7b, so
+## Bleed glowed pink while its damage numbers were red. status_cols is a source_color array set from Content.
+func _same_cols(a, b: PackedColorArray) -> bool:
+	if not (a is PackedColorArray) or (a as PackedColorArray).size() != b.size(): return false
+	for i in b.size():
+		if not (a as PackedColorArray)[i].is_equal_approx(b[i]): return false
+	return true
+
+func _status_colour_tests(mn: Node) -> void:
+	for p in ["res://shaders/3d/foe.gdshader", "res://shaders/swarm.gdshader"]:
+		var kinds := {}
+		for u in (load(p) as Shader).get_shader_uniform_list(): kinds[String(u.name)] = int(u.type)
+		ok(kinds.get("status_cols", -1) == TYPE_PACKED_COLOR_ARRAY and not kinds.has("colorblind"),
+			"%s takes its status colours as a source_color array (no typed-in constants, no palette switch of its own)" % p.get_file())
+	var sv: Node = get_node("/root/Save")
+	var v3: Node = mn.view3d
+	ok(v3 != null and not v3.foe_mats.is_empty(), "a run in the 3D view has its foe materials")
+	if v3 == null or v3.foe_mats.is_empty(): return
+	var bad := 0
+	for fm in v3.foe_mats:
+		if not _same_cols(fm.get_shader_parameter("status_cols"), Content.status_cols(false)): bad += 1
+	ok(bad == 0, "every foe material glows a status in Content.status_cols(): Bleed #%s, Burn #%s, Chill #%s, Shock #%s, Poison #%s (%d wrong)" % [
+		Content.EL_COL[Content.El.PHYS], Content.EL_COL[Content.El.FIRE], Content.EL_COL[Content.El.COLD], Content.EL_COL[Content.El.LIGHT], Content.EL_COL[Content.El.CHAOS], bad])
+	var cb0: bool = bool(sv.data.options.get("colorblind", false))
+	sv.data.options.colorblind = true
+	mn._on_act("options_changed", null)
+	ok(_same_cols(mn.view3d.foe_mats[0].get_shader_parameter("status_cols"), Content.status_cols(true)), "the colour-blind option switches the foes to the Okabe-Ito status colours")
+	sv.data.options.colorblind = cb0
+	mn._on_act("options_changed", null)
+	ok(_same_cols(mn.view3d.foe_mats[0].get_shader_parameter("status_cols"), Content.status_cols(false)), "and back")
 
 func main_script() -> GDScript:
 	return load("res://scripts/main.gd")

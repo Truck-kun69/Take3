@@ -130,7 +130,7 @@ func bind(world: World) -> void:
 	ground_mat.set_shader_parameter("c1", Content.col(s.g1))
 	ground_mat.set_shader_parameter("c2", Content.col(s.g2))
 	ground_mat.set_shader_parameter("acc", Content.col(s.acc))
-	swarm_mat.set_shader_parameter("colorblind", w.colorblind)
+	swarm_mat.set_shader_parameter("status_cols", Content.status_cols(w.colorblind))
 	p_n = 0
 	ghosts.clear()
 	_chunk_px.clear()
