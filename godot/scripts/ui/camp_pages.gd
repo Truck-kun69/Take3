@@ -62,7 +62,7 @@ static func show_camp(s: Screens) -> void:
 	_armed = -1
 	var d: Dictionary = Save.data
 	var first := not bool(d.get("camp_seen", false))
-	if first:
+	if first and int(d.stats.get("runs", 0)) > 0:        # a visit before any run is not the one a run's end points to
 		d.camp_seen = true
 		Save.mark_dirty()
 	if first:

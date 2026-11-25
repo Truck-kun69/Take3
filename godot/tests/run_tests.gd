@@ -3699,6 +3699,36 @@ func _btn(root: Node, txt: String) -> Button:
 		if String(b.text) == txt and (b as Control).is_visible_in_tree() and _live(b): return b
 	return null
 
+## The title's gold actions: a tile whose title is gold (the selected PLAY / CONTINUE) and a bar button lit because
+## something waits there.
+func _gold_actions(root: Node) -> Array:
+	var out: Array = []
+	for b in root.find_children("*", "Button", true, false):
+		if not _live(b) or not (b as Control).is_visible_in_tree() or (b as BaseButton).disabled: continue
+		if b.has_meta("title_label"):
+			var tl: Label = b.get_meta("title_label")
+			if tl.get_theme_color("font_color").is_equal_approx(UIKit.GOLD): out.append(String(tl.text))
+		elif (b as Control).has_theme_color_override("font_color") and (b as Button).get_theme_color("font_color").is_equal_approx(Color("ffd27a")):
+			out.append(String((b as Button).text))
+	return out
+
+func _tile_titles(root: Node) -> Array:
+	var out: Array = []
+	for b in root.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("title_label"): out.append(String((b.get_meta("title_label") as Label).text))
+	return out
+
+func _tile(root: Node, title: String) -> Button:
+	for b in root.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("title_label") and String((b.get_meta("title_label") as Label).text) == title: return b
+	return null
+
+## A tile's subline (UIKit.tile: the label under its title).
+func _tile_sub(t: Button) -> String:
+	for l in t.find_children("*", "Label", true, false):
+		if l != t.get_meta("title_label"): return String(l.text)
+	return ""
+
 func _npc_card(root: Node, id: String) -> Button:
 	for b in root.find_children("*", "Button", true, false):
 		if b.has_meta("npc") and String(b.get_meta("npc")) == id and _live(b): return b
@@ -3726,13 +3756,37 @@ func _camp_ui_tests() -> void:
 	await get_tree().process_frame
 	mn._menu()
 	ok(_btn(mn.screens, "Camp") != null and _btn(mn.screens, "Gear") == null, "the title's bar has Camp in place of Gear")
+	# a new profile's title: one gold action, PLAY (it showed CONTINUE with nothing to continue, a gold Camp, and New
+	# Campaign starting the very same run); the Daily Rift locked until Act I is cleared
+	var gold0 := _gold_actions(mn.screens)
+	var tiles0 := _tile_titles(mn.screens)
+	var daily0 := _tile(mn.screens, "Daily Rift")
+	ok(gold0 == ["PLAY"] and not tiles0.has("New Campaign") and not tiles0.has("Replay Act I") and daily0 != null and daily0.disabled and _tile_sub(daily0) == "Clear Act I to unlock",
+		"a new profile's title has exactly one gold action, PLAY, no second way into the same run, and the Daily Rift locked (%s; %s)" % [str(gold0), _tile_sub(daily0) if daily0 != null else "no Daily tile"])
 	_press(mn.screens, "Camp")
 	await get_tree().process_frame
 	var n_cards := 0
 	for id in CampPages.NPC_ORDER:
 		if _npc_card(mn.screens, id) != null: n_cards += 1
 	ok(n_cards == CampPages.NPC_ORDER.size(), "the hub shows the %d friendly NPCs (%d)" % [CampPages.NPC_ORDER.size(), n_cards])
-	ok(bool(sv.data.camp_seen), "the first visit is remembered")
+	ok(not bool(sv.data.camp_seen), "a visit before any run is not remembered: the end of the first run still points to the Camp")
+	# after a run: CONTINUE, Replay Act I (what New Campaign did), the Camp lit until visited; the Daily opens with Act I
+	sv.data.stats.runs = 1
+	mn._menu()
+	var gold1 := _gold_actions(mn.screens)
+	var tiles1 := _tile_titles(mn.screens)
+	var daily1 := _tile(mn.screens, "Daily Rift")
+	var locked1: bool = daily1 != null and daily1.disabled
+	sv.data.cleared[0] = true
+	mn._menu()
+	var daily2 := _tile(mn.screens, "Daily Rift")
+	var open2: bool = daily2 != null and not daily2.disabled and _tile_sub(daily2).contains(Daily.today().code)
+	sv.data.cleared[0] = false
+	ok(gold1.has("CONTINUE") and gold1.has("Camp") and gold1.size() == 2 and tiles1.has("Replay Act I") and locked1 and open2,
+		"after a run the title shows CONTINUE, Replay Act I and a lit Camp; the Daily Rift opens once Act I is cleared (%s %s %s)" % [str(gold1), locked1, open2])
+	CampPages.show_camp(mn.screens)
+	await get_tree().process_frame
+	ok(bool(sv.data.camp_seen), "the first visit after a run is remembered")
 	var rng := RandomNumberGenerator.new(); rng.seed = 9
 	sv.data.gold = 20000; sv.data.materials = {"scrap": 200, "ore": 40}
 	for k in 3: sv.data.stash.append(Items.make("ring", Content.Rarity.MAGIC, 12, rng))

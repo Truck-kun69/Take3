@@ -77,12 +77,13 @@ func _unhandled_key_input(ev: InputEvent) -> void:
 
 # ================================================================= main menu
 ## Title screen, phone first. The 3D stage (MenuStage3D) fills the screen with the chosen exile in the
-## middle, under light scrims. Bottom right, under the right thumb: Continue Campaign, the act pill over one
-## large tile that plays the chosen exile at that act (the highest one open, unless another is picked with the
-## pill). Left: the logo, a Gold and Echoes pill, then New Campaign, Daily Rift (today's code and your best),
-## Heroes (the showcase), Codex & Story (the acts, the exiles' bios, the bestiary), Options and Replay Intro,
-## and a compact bar for the rest (Gear, Upgrades, Modes). Narrow (portrait) windows stack it all in one
-## column. Every button is at least UIKit.MIN_TOUCH tall.
+## middle, under light scrims. Bottom right, under the right thumb: the act pill over one large tile that plays the
+## chosen exile at that act (the highest one open, unless another is picked with the pill): PLAY before the first
+## run, CONTINUE after. Left: the logo, a Gold and Echoes pill, then Replay Act I (once a run is played), Daily Rift
+## (today's code and your best; locked until Act I is cleared), Heroes (the showcase), Codex & Story (the acts, the
+## exiles' bios, the bestiary), Options and Replay Intro, and a compact bar for the rest (Camp, Upgrades, Modes).
+## A new profile sees one gold action, PLAY. Narrow (portrait) windows stack it all in one column. Every button is
+## at least UIKit.MIN_TOUCH tall.
 const ROMAN := ["I", "II", "III", "IV", "V", "VI"]
 var _act_sel := -1                   # act picked with the act pill this session; -1 (or a sealed one): the highest open
 
@@ -167,25 +168,35 @@ func _scrims(vs: Vector2, x0: float, col_w: float, bx: float, portrait: bool) ->
 	g2.add_point(0.14, Color(0, 0, 0, 0)); g2.add_point(0.8, Color(0, 0, 0, 0))
 	add_child(_grad_rect(g2, true))
 
-## New Campaign, Daily Rift, Heroes, Codex & Story, Options and Replay Intro: two to a row.
+## Replay Act I (once a run is played: it starts Act I, as New Campaign did, which a new profile read as a second way
+## to begin), Daily Rift (a random act and exile with two modifiers and no coach, not Act I on 80% of days: locked,
+## like the Atlas, until Act I is cleared), Heroes, Codex & Story, Options and Replay Intro: two to a row.
 func _menu_entries(d: Dictionary) -> GridContainer:
 	var g := _grid(2, 8)
 	var td := Daily.today()
 	var best := int((d.daily.best as Dictionary).get(td.code, -1))
 	var h: Dictionary = Content.HEROES[int(d.hero)]
-	var a0 := Story.act(0)
-	var entries := [
-		["New Campaign", "Act I \u00b7 %s" % a0.title, func(): act.emit("new_campaign", null), Content.col(Content.STAGES[0].acc)],
-		["Daily Rift", "%s \u00b7 %s" % [td.code, ("best %d" % best) if best >= 0 else "no run yet"], func(): act.emit("daily", null), Color("7fd8ff")],
+	var daily_open := daily_unlocked(d)
+	var entries := []
+	if int(d.stats.get("runs", 0)) > 0:
+		entries.append(["Replay Act I", String(Story.act(0).title), func(): act.emit("new_campaign", null), Content.col(Content.STAGES[0].acc)])
+	entries.append(["Daily Rift", ("Clear Act I to unlock" if not daily_open else (("%s \u00b7 best %d" % [td.code, best]) if best >= 0 else "Today: %s" % td.code)),
+		func(): act.emit("daily", null), Color("7fd8ff")])
+	entries.append_array([
 		["Heroes", "%s \u00b7 %s" % [h.name, Story.hero(String(h.id)).mechanic], func(): act.emit("heroes", null), Content.col(h.col)],
 		["Codex & Story", "Acts, exiles, bestiary", func(): act.emit("codex", "menu"), Color("e8dcc0")],
 		["Options", "Audio, graphics, controls", func(): act.emit("options", null), Color("b8ad98")],
-		["Replay Intro", Story.TITLE, func(): act.emit("intro", null), Color("c48aff")]]
+		["Replay Intro", "How it began", func(): act.emit("intro", null), Color("c48aff")]])
 	for e in entries:
 		var t := UIKit.tile(e[0], e[1], e[2], e[3], false, 62)
 		if t.has_meta("title_label"): (t.get_meta("title_label") as Label).add_theme_font_size_override("font_size", 20 if String(e[0]).length() <= 12 else 18)
+		if e[0] == "Daily Rift": _lock(t, not daily_open)
 		g.add_child(t)
 	return g
+
+## The Daily Rift opens once Act I is cleared (the title's tile, Modes' tile).
+static func daily_unlocked(d: Dictionary) -> bool:
+	return (d.cleared as Array).size() > 0 and bool(d.cleared[0])
 
 ## The act pill (previous, the act, next; tapping the act steps through the open ones) over PLAY.
 func _play_block(d: Dictionary) -> VBoxContainer:
@@ -206,8 +217,9 @@ func _play_block(d: Dictionary) -> VBoxContainer:
 	for c in [prev, at, nxt]: ar.add_child(c)
 	b.add_child(ar)
 	var tm := int(d.get("torment", 0))
-	var sub := "Continue Campaign  \u00b7  %s  \u00b7  Act %s%s" % [Content.HEROES[int(d.hero)].name, ROMAN[cur], ("  \u00b7  " + String(Content.TORMENT[tm].name)) if tm > 0 else ""]
-	var play := UIKit.tile("CONTINUE", sub, func(): act.emit("campaign", cur), UIKit.GOLD, true, 104)
+	var fresh := int(d.stats.get("runs", 0)) <= 0            # nothing to continue yet: PLAY
+	var sub := ("Begin the campaign" if fresh else "Continue Campaign") + "  \u00b7  %s  \u00b7  Act %s%s" % [Content.HEROES[int(d.hero)].name, ROMAN[cur], ("  \u00b7  " + String(Content.TORMENT[tm].name)) if tm > 0 else ""]
+	var play := UIKit.tile("PLAY" if fresh else "CONTINUE", sub, func(): act.emit("campaign", cur), UIKit.GOLD, true, 104)
 	var pt: Label = play.get_meta("title_label")
 	pt.add_theme_font_override("font", UIKit.font("display_heavy"))
 	pt.add_theme_font_size_override("font_size", 42)
@@ -219,7 +231,8 @@ func _menu_bar(d: Dictionary) -> HBoxContainer:
 	var row := UIKit.hbox(6)
 	var unspent := int(d.get("echoes", 0)) > 0
 	var prophecy := not (d.prophecy.active as Dictionary).is_empty()
-	var camp := Camp.has_news(d) or not bool(d.get("camp_seen", false))
+	# lit only once a run is played: before it, nothing there is affordable, and the end of the first run points to it
+	var camp := int(d.stats.get("runs", 0)) > 0 and (Camp.has_news(d) or not bool(d.get("camp_seen", false)))
 	for e in [["Camp", "camp"], ["Upgrades", "upgrades"], ["Modes", "endgame"]]:
 		var b := UIKit.button(e[0], func(): act.emit(e[1], null), 50)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -342,7 +355,7 @@ func show_endgame() -> void:
 	var d: Dictionary = Save.data
 	var portrait := get_viewport_rect().size.x < 820.0
 	var unlocked := bool(d.cleared[0])
-	_title(v, "Modes", "Daily rifts and prophecies are always open. The rest of the endgame opens when Mossglen Hollow falls." if not unlocked else "")
+	_title(v, "Modes", "Prophecies are always open. The Daily Rift and the rest of the endgame open when Mossglen Hollow falls." if not unlocked else "")
 	var sea := Save.season()
 	var sh := UIKit.hbox(8)
 	sh.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -362,7 +375,9 @@ func show_endgame() -> void:
 	var th := 62
 	var eg := _grid(1 if portrait else 2, 8)
 	var act_p: Dictionary = d.prophecy.active
-	eg.add_child(UIKit.tile("Daily Rift", "The same seeded rift for everyone today", func(): act.emit("daily", null), Color("ffd27a"), false, th))
+	var dt := UIKit.tile("Daily Rift", "The same seeded rift for everyone today" if daily_unlocked(d) else "Clear Mossglen Hollow to unlock", func(): act.emit("daily", null), Color("ffd27a"), false, th)
+	_lock(dt, not daily_unlocked(d))
+	eg.add_child(dt)
 	var pr := UIKit.tile("Prophecy" + (" \u2605" if not act_p.is_empty() else ""), (String(Content.PROPHECIES[act_p.id].d)) if not act_p.is_empty() else "Take a contract before a run, for a reward you choose", func(): act.emit("prophecy", null), Color("e8b54e"), not act_p.is_empty(), th)
 	eg.add_child(pr)
 	var atl := UIKit.tile("Atlas of Falls", "Chart the shattered maps" if unlocked else "Clear Mossglen Hollow to unlock", func(): show_atlas(), Color("8fd8ff"), false, th)
