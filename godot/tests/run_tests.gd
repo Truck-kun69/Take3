@@ -55,10 +55,13 @@ func _ready() -> void:
 		_camp_tests()
 		_coach_tests()
 		await _camp_ui_tests()
+		await _look_feel_tests()
 	elif "camp" in args:
 		_camp_tests()
 		_coach_tests()
 		await _camp_ui_tests()
+	elif "look" in args:
+		await _look_feel_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -3786,7 +3789,15 @@ func _camp_ui_tests() -> void:
 	var up := ""
 	for id in ["smith", "kiln", "nim", "sella", "brask"]:
 		CampPages.show(mn.screens, id)
-		up += await _off_screen(mn.screens, ["Back"])
+		var r_up := await _off_screen(mn.screens, ["Back"])
+		if r_up != "":
+			var widest := ""
+			var ww := 0.0
+			for c in mn.screens.find_children("*", "Control", true, false):
+				if _live(c) and (c as Control).get_combined_minimum_size().x > ww and not (c is ScrollContainer) and (c as Control).get_parent() is VBoxContainer:
+					ww = (c as Control).get_combined_minimum_size().x
+					widest = "%s %s" % [c.get_class(), (c as Control).name]
+			up += "  [%s: widest %s %.0f]%s" % [id, widest, ww, r_up]
 		small.append_array(_small_buttons(mn.screens, id + " upright"))
 	CampPages.show_camp(mn.screens)
 	small.append_array(_small_buttons(mn.screens, "camp upright"))
@@ -3891,6 +3902,91 @@ func _camp_ui_tests() -> void:
 	mn.queue_free()
 	await get_tree().process_frame
 	sv.data = keep
+
+## 0.11.4 readability (iteration 1 of the colour / beginner / shader-feel pass): text sizes measured in sp on a real phone,
+## the phone UI scale, and every page's labels at or over UIKit.MIN_TEXT, with the key buttons still on screen when
+## the UI is scaled up as on a dense phone.
+func _labels_under(root: Node, floor_size: int) -> Array:
+	var out: Array = []
+	for l in root.find_children("*", "Label", true, false):
+		if not _live(l) or not (l as Control).is_visible_in_tree() or String(l.text).strip_edges() == "": continue
+		var fs := (l as Label).get_theme_font_size("font_size")
+		if fs < floor_size: out.append("%s (%d)" % [String(l.text).left(24), fs])
+	return out
+
+func _look_feel_tests() -> void:
+	print("== 0.11.4 look and feel")
+	var s22: float = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	ok(absf(s22 - 1.127) < 0.01, "an S22 held sideways scales the UI x%.3f (a unit 0.57 sp -> 0.64 sp)" % s22)
+	ok(absf(main_script().phone_ui_scale(Vector2(1080, 2340), 422.0) - s22) < 0.001, "the same held upright")
+	ok(main_script().phone_ui_scale(Vector2(1920, 1200), 224.0) == 1.0, "a 10-inch tablet is left at x1")
+	ok(main_script().phone_ui_scale(Vector2(2340, 1080), 0.0) == 1.0 and main_script().phone_ui_scale(Vector2(0, 0), 400.0) == 1.0, "a bad dpi or window reading changes nothing")
+	ok(main_script().phone_ui_scale(Vector2(2400, 1080), 640.0) == 1.2, "a very dense small phone stops at x1.2")
+	ok(UIKit.label("x", 12).get_theme_font_size("font_size") == UIKit.MIN_TEXT, "a label asked for 12 units gets the %d floor" % UIKit.MIN_TEXT)
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.stats.runs = 1
+	sv.data.seen_version = Diag.version()
+	var rng := RandomNumberGenerator.new(); rng.seed = 12
+	for k in 6: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, rng))
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	win.size = Vector2i(2340, 1080)
+	sv.data.options.ui_scale = 1.15                  # as main.phone_ui_scale gives an S22 (x1.13), a little over
+	mn._ui_scale()
+	await get_tree().process_frame
+	var small: Array = []
+	var off := ""
+	mn._menu()
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	for page in ["camp", "smith", "kiln", "nim", "sella", "brask"]:
+		CampPages.show(mn.screens, page)
+		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+		off += await _off_screen(mn.screens, ["Back"])
+	mn.screens._sel_item = 0
+	mn.screens.show_stash(false)
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	off += await _off_screen(mn.screens, ["Equip", "Salvage", "Back"])
+	for tab in 4:
+		mn.screens._opt_tab = tab
+		mn.screens.show_options("menu")
+		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	mn.screens._opt_tab = 0
+	mn.screens.show_whats_new(true)
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	off += await _off_screen(mn.screens, ["Continue"])
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.pending = 1
+	mn._on_level()
+	for k in 6: await get_tree().process_frame
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	mn._on_act("pick", mn.world.make_choices()[0])
+	mn._pause()
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	off += await _off_screen(mn.screens, ["Resume", "Main Menu"])
+	mn._resume()
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	off += await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
+	ok(small.is_empty(), "every label on the title, the Camp, Gear, Options, What's new, level-up, pause and the end of a run is %d units or more%s" % [UIKit.MIN_TEXT, ("" if small.is_empty() else ": " + str(small.slice(0, 6)))])
+	ok(off == "", "with the UI scaled x1.15 on an S22 held sideways, every page keeps its main buttons and Back on screen%s" % off)
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	win.size = size0
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
+
+func main_script() -> GDScript:
+	return load("res://scripts/main.gd")
 
 # ================================================================= bot-played runs
 func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:

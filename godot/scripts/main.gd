@@ -169,7 +169,18 @@ func _ui_scale() -> void:
 	var vs := get_window().size                 # the root window: the screen on a phone, and settable in the tests
 	var f := 1.0
 	if vs.y > vs.x: f = clampf(float(vs.y) / float(vs.x), 1.0, 1.9)
+	if OS.has_feature("mobile"): f *= phone_ui_scale(Vector2(vs), DisplayServer.screen_get_dpi())
 	get_window().content_scale_factor = f * float(Save.opt("ui_scale"))
+
+## On a dense phone the 1280x720 design units are physically small: an S22 held sideways (2340x1080, 422 ppi) gives
+## 1.5 px a unit, 0.57 sp. Scale the UI so a unit is at least UNIT_SP_MIN sp (UIKit.MIN_TEXT then reaches 11.5 sp),
+## at most x1.2 so the pages still fit; a tablet or a large phone is left at x1. A bad dpi reading changes nothing.
+const UNIT_SP_MIN := 0.64
+static func phone_ui_scale(win: Vector2, dpi: float) -> float:
+	if dpi < 100.0 or win.x <= 0.0 or win.y <= 0.0: return 1.0
+	var px_per_unit := minf(maxf(win.x, win.y) / 1280.0, minf(win.x, win.y) / 720.0)
+	var unit_sp := px_per_unit / (dpi / 160.0)
+	return clampf(UNIT_SP_MIN / unit_sp, 1.0, 1.2)
 
 ## 3D render resolution. Phones are fill-rate bound: rendering the 3D at 75%
 ## (FSR 1 upscale where the renderer has it, bilinear on Compatibility) and drawing the UI at full

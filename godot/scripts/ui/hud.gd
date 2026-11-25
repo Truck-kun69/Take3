@@ -386,10 +386,10 @@ func _draw() -> void:
 		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color("c99a50"), 1.5)
 	_lantern()
 
-## Small HUD text (hoard, prophecy, Engulfed): 13 px with a dark outline so it reads over effects.
+## Small HUD text (hoard, prophecy, Engulfed): UIKit.MIN_TEXT - 2 with a dark outline so it reads over effects.
 func _small(f: Font, p: Vector2, txt: String, c: Color) -> void:
-	draw_string_outline(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0.02, 0.015, 0.02, 0.85 * c.a))
-	draw_string(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, c)
+	draw_string_outline(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0.02, 0.015, 0.02, 0.85 * c.a))
+	draw_string(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, c)
 
 ## The lantern (World.light): a flame and a bar left of the timer plate. Gold while lit, guttering
 ## toward violet as it fades; below the Engulfed line it pulses and the flame shrinks to an ember.
@@ -535,11 +535,11 @@ class ActionBar extends Control:
 				draw_colored_polygon(pts, Color(0, 0, 0, 0.55))
 			elif SLOTS[k][0] == "ult":
 				draw_arc(c, slot * 0.42, 0, TAU, 40, Color(0.85, 0.6, 1.0, 0.5 + 0.4 * sin(Time.get_ticks_msec() * 0.006)), 3.0)
-			draw_string_outline(fnt, r.position + Vector2(6, 18), SLOTS[k][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 4, Color(0, 0, 0, 0.9))
-			draw_string(fnt, r.position + Vector2(6, 18), SLOTS[k][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("e8d6b0"))
-			var lw := lfont.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-			draw_string_outline(lfont, Vector2(c.x - lw * 0.5, r.end.y + 15), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.9))
-			draw_string(lfont, Vector2(c.x - lw * 0.5, r.end.y + 15), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.DIM)
+			draw_string_outline(fnt, r.position + Vector2(6, 20), SLOTS[k][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 17, 4, Color(0, 0, 0, 0.9))
+			draw_string(fnt, r.position + Vector2(6, 20), SLOTS[k][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color("e8d6b0"))
+			var lw := lfont.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string_outline(lfont, Vector2(c.x - lw * 0.5, r.end.y + 17), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0, 0, 0, 0.9))
+			draw_string(lfont, Vector2(c.x - lw * 0.5, r.end.y + 17), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UIKit.DIM)
 	func _glyph_roll(c: Vector2, r: float, col: Color) -> void:
 		draw_arc(c, r, -2.4, 1.2, 24, col, 3.0)
 		var tip := c + Vector2(cos(1.2), sin(1.2)) * r
@@ -583,9 +583,9 @@ class BuffTray extends Control:
 			var frac := clampf(b.t / maxf(0.01, b.dur), 0, 1)
 			draw_rect(Rect2(r.position + Vector2(5, s - 7), Vector2((s - 10) * frac, 3)), col, true)
 			var txt := "%d" % ceili(b.t)
-			draw_string_outline(fnt, r.position + Vector2(4, s + 14), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, 4, Color(0, 0, 0, 0.9))
-			draw_string(fnt, r.position + Vector2(4, s + 14), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("e8d6b0"))
+			draw_string_outline(fnt, r.position + Vector2(4, s + 16), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0, 0, 0, 0.9))
+			draw_string(fnt, r.position + Vector2(4, s + 16), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("e8d6b0"))
 			if b.stacks > 1:
-				draw_string_outline(fnt, r.position + Vector2(s - 16, 16), str(b.stacks), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, 4, Color(0, 0, 0, 0.9))
-				draw_string(fnt, r.position + Vector2(s - 16, 16), str(b.stacks), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+				draw_string_outline(fnt, r.position + Vector2(s - 18, 17), str(b.stacks), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0, 0, 0, 0.9))
+				draw_string(fnt, r.position + Vector2(s - 18, 17), str(b.stacks), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 			x += s + 8

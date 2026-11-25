@@ -75,7 +75,7 @@ static func theme() -> Theme:
 	t.set_stylebox("pressed", "Button", nine("btn_pressed", 16, pad))
 	t.set_stylebox("disabled", "Button", nine("btn_disabled", 16, pad))
 	t.set_font("font", "Button", font("display"))
-	t.set_font_size("font_size", "Button", 19)
+	t.set_font_size("font_size", "Button", 21)          # 13.4 sp on an S22 with the phone scale (was 19: 10.8 sp)
 	t.set_color("font_color", "Button", TEXT)
 	t.set_color("font_hover_color", "Button", Color("fff1d2"))
 	t.set_color("font_pressed_color", "Button", GOLD)
@@ -100,7 +100,7 @@ static func theme() -> Theme:
 	t.set_stylebox("tab_unselected", "TabContainer", nine("btn_normal", 16, Vector4(18, 8, 18, 8)))
 	t.set_stylebox("tab_hovered", "TabContainer", nine("btn_hover", 16, Vector4(18, 8, 18, 8)))
 	t.set_font("font", "TabContainer", font("display"))
-	t.set_font_size("font_size", "TabContainer", 17)
+	t.set_font_size("font_size", "TabContainer", 19)
 	t.set_color("font_selected_color", "TabContainer", GOLD)
 	t.set_color("font_unselected_color", "TabContainer", DIM)
 	t.set_stylebox("background", "ProgressBar", nine("bar", 14, Vector4(6, 6, 6, 6)))
@@ -125,9 +125,15 @@ static func theme() -> Theme:
 	return t
 
 ## role: body | display | display_heavy | label | num | italic | deco
+## The smallest text the UI draws, in 1280x720 design units. Measured on a Galaxy S22 held sideways (2340x1080 at
+## 422 ppi: 1 unit = 1.5 px = 0.57 sp), 78% of the labels were under 11 sp, the floor Android's type guidance sets for
+## the smallest readable text (body 14 sp). With the phone UI scale (main.phone_ui_scale: x1.13 there) 18 units is
+## 11.5 sp. tests/run_tests.gd (_type_tests) checks every label against it.
+const MIN_TEXT := 18
 static func label(txt: String, size: int = 20, col: Color = TEXT, wrap: bool = false, role: String = "body") -> Label:
 	var l := Label.new()
 	l.text = txt
+	size = maxi(size, MIN_TEXT)
 	l.add_theme_font_override("font", font(role))
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
@@ -167,6 +173,7 @@ const MIN_TOUCH := 48
 static func button(txt: String, cb: Callable, min_h: int = 56) -> Button:
 	var b := Button.new()
 	b.text = txt
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART       # a long label wraps to two lines instead of widening its row off a phone held upright
 	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
 	b.pressed.connect(func(): Sfx.play("click"); cb.call())
 	press_fx(b)

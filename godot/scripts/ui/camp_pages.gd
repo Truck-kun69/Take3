@@ -484,11 +484,11 @@ static func show_trader(s: Screens) -> void:
 		var rc := Content.col(Content.RARITY_COL[int(it.rarity)])
 		var left := UIKit.vbox(2)
 		left.add_child(UIKit.label(Items.name_of(it), 20, rc, false, "display"))
-		var sub := UIKit.hbox(10)
-		sub.add_child(UIKit.label("%s %s  ·  item level %d  ·  score %d" % [Content.RARITY_NAME[int(it.rarity)], Content.SLOT_NAME[it.slot], int(it.ilvl), int(Items.score(it))], 14, UIKit.DIM, false, "italic"))
+		var sub := UIKit.vbox(0)                    # stacked and wrapping: side by side they widened the page off a phone held upright
+		sub.add_child(UIKit.label("%s %s  ·  item level %d  ·  score %d" % [Content.RARITY_NAME[int(it.rarity)], Content.SLOT_NAME[it.slot], int(it.ilvl), int(Items.score(it))], 14, UIKit.DIM, true, "italic"))
 		var cur: Dictionary = d.equipped.get(it.slot, {})
 		var diff := Items.score(it) - Items.score(cur)
-		sub.add_child(UIKit.label(("%+d vs equipped" % int(diff)) if not cur.is_empty() else "nothing equipped there", 14, Color("7dff6b") if diff > 0 else Color("ff8a7a"), false, "italic"))
+		sub.add_child(UIKit.label(("%+d vs equipped" % int(diff)) if not cur.is_empty() else "nothing equipped there", 14, Color("7dff6b") if diff > 0 else Color("ff8a7a"), true, "italic"))
 		left.add_child(sub)
 		var ls := Items.lines(it)
 		var shown := PackedStringArray()
@@ -510,7 +510,7 @@ static func show_trader(s: Screens) -> void:
 			show_trader(s), 48)
 		b.disabled = int(d.gold) < p
 		b.add_theme_color_override("font_color", Content.col(Content.CURRENCY[id].col))
-		b.add_theme_font_size_override("font_size", 15)
+		b.add_theme_font_size_override("font_size", 18)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		g.add_child(b)
 	v.add_child(g)
@@ -574,7 +574,7 @@ static func show_drill(s: Screens) -> void:
 	var back := UIKit.button("Back", func(): show_camp(s), 50)
 	for b in [tips, replay, train, back]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_font_size_override("font_size", 15)
+		b.add_theme_font_size_override("font_size", 18)
 		row.add_child(b)
 	UIKit.foot(v).add_child(row)
 

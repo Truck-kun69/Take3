@@ -183,7 +183,7 @@ func _menu_entries(d: Dictionary) -> GridContainer:
 		["Replay Intro", Story.TITLE, func(): act.emit("intro", null), Color("c48aff")]]
 	for e in entries:
 		var t := UIKit.tile(e[0], e[1], e[2], e[3], false, 62)
-		if t.has_meta("title_label"): (t.get_meta("title_label") as Label).add_theme_font_size_override("font_size", 19 if String(e[0]).length() <= 12 else 17)
+		if t.has_meta("title_label"): (t.get_meta("title_label") as Label).add_theme_font_size_override("font_size", 20 if String(e[0]).length() <= 12 else 18)
 		g.add_child(t)
 	return g
 
@@ -223,7 +223,7 @@ func _menu_bar(d: Dictionary) -> HBoxContainer:
 	for e in [["Camp", "camp"], ["Upgrades", "upgrades"], ["Modes", "endgame"]]:
 		var b := UIKit.button(e[0], func(): act.emit(e[1], null), 50)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_font_size_override("font_size", 16)
+		b.add_theme_font_size_override("font_size", 19)
 		if (e[1] == "upgrades" and unspent) or (e[1] == "endgame" and prophecy) or (e[1] == "camp" and camp):
 			b.add_theme_color_override("font_color", Color("ffd27a"))        # something waits in there
 		row.add_child(b)
@@ -647,7 +647,7 @@ func show_stash(in_run: bool = false) -> void:
 			b2.tooltip_text = Content.CURRENCY[c].d
 			b2.disabled = n <= 0
 			b2.add_theme_color_override("font_color", Content.col(Content.CURRENCY[c].col))
-			b2.add_theme_font_size_override("font_size", 16)
+			b2.add_theme_font_size_override("font_size", 18)
 			b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			grid.add_child(b2)
 		right.add_child(grid)
@@ -1227,7 +1227,7 @@ func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: 
 	h.add_child(l)
 	var b := UIKit.button(value, cb, 48)
 	b.custom_minimum_size.x = 230
-	b.add_theme_font_size_override("font_size", 17)
+	b.add_theme_font_size_override("font_size", 19)
 	b.add_theme_color_override("font_color", UIKit.GOLD if on else UIKit.DIM)
 	h.add_child(b)
 	v.add_child(h)
