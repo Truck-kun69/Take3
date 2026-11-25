@@ -52,6 +52,7 @@ func defaults() -> Dictionary:
 		"trader": {"day": "", "rolls": 0, "stock": []},
 		"tutorial": {"on": true, "done": []}, "camp_seen": false,
 		"new_items": [],                                 # uids of stash finds not yet seen on the Gear page (World.stash_add)
+		"seen_version": "",                              # the last version whose "What's new" this profile saw (WhatsNew)
 	}
 
 func load_profile() -> void:
@@ -145,6 +146,7 @@ func _normalise() -> void:
 	for s2 in data.tutorial.get("done", []): dn.append(String(s2))
 	data.tutorial.done = dn
 	data.camp_seen = bool(data.camp_seen)
+	data.seen_version = String(data.seen_version)
 	var have := {}
 	for it in data.stash: have[int(it.uid)] = true
 	var nw: Array = []

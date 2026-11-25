@@ -87,6 +87,11 @@ func _ready() -> void:
 		screens.show_crash(Diag.report)
 	elif not bool(Save.data.get("intro_seen", false)) and not bot_drive:
 		show_intro()
+	elif not bot_drive and WhatsNew.due(Save.data, Diag.version()):
+		screens.show_whats_new()                    # an update since this profile last played: what changed
+	if int(Save.data.stats.get("runs", 0)) <= 0 and String(Save.data.get("seen_version", "")) != Diag.version():
+		Save.data.seen_version = Diag.version()     # a new exile learns from the tutorial, not a changelog
+		Save.mark_dirty()
 
 ## The narrated cold open: on first launch, and from Main Menu > Replay Intro. On the 3D renderer the words sit
 ## over Act I itself (ColdOpen: the run's WorldView3D, its camera sweeping down as the Rift Shard strikes); the

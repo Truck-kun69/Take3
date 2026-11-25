@@ -3861,6 +3861,24 @@ func _camp_ui_tests() -> void:
 		if _live(l) and String(l.text).contains("NEW"): news3 += 1
 	ok(hub_new and news == 3 and count_line and cleared and news2 == 3 and news3 == 0,
 		"the hub counts new finds, the Gear page marks them NEW with the stash count, keeps the marks while it is open and drops them after (%s %d %s %s %d %d)" % [hub_new, news, count_line, cleared, news2, news3])
+	# "What's new": due once after an update to a profile that has played; never for a new one
+	var dw: Dictionary = Save.defaults()
+	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "a new profile never gets What's new")
+	dw.stats.runs = 3
+	ok(WhatsNew.due(dw, "0.11.2-alpha"), "a profile that has played, updated from before 0.11.0, does")
+	dw.seen_version = "0.11.2-alpha"
+	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "once seen, not again")
+	ok(WhatsNew.key("0.11.2-alpha") > WhatsNew.key("0.11.1-alpha") and WhatsNew.key("0.11.0") > WhatsNew.key("0.10.6-alpha"), "versions order by number")
+	var sn := WhatsNew.since("0.11.0-alpha")
+	ok(sn.size() == 2 and sn[0][0] == "0.11.2" and sn[1][0] == "0.11.1", "since 0.11.0: the two newer versions, newest first")
+	sv.data.seen_version = "0.11.0-alpha"
+	mn.screens.show_whats_new()
+	var wn_ok := _btn(mn.screens, "Continue") != null and String(sv.data.seen_version) == Diag.version()
+	var wn_sections := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).begins_with("ALPHA 0.11."): wn_sections += 1
+	ok(wn_ok and wn_sections >= 1, "the page lists what changed since the version seen, and marks this one seen (%s %d)" % [wn_ok, wn_sections])
+	_press(mn.screens, "Continue")
 	# the end of a run offers the Camp, which frees the run
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame

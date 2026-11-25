@@ -1580,6 +1580,23 @@ func show_end(w: World) -> void:
 		row.add_child(bt)
 	UIKit.foot(v).add_child(row)
 
+## "What's new" (WhatsNew): once after an update, from the title; Captain Brask's page rereads it (all=true).
+func show_whats_new(all: bool = false) -> void:
+	var v := _open(860)
+	var ver := Diag.version()
+	_title(v, "What's new", "Alpha " + ver.split("-")[0])
+	var seen := "" if all else String(Save.data.get("seen_version", ""))
+	for e in WhatsNew.since(seen if seen != "" else ("0.0.0" if all else "0.10.6")):
+		v.add_child(_section("Alpha " + String(e[0])))
+		for n in e[1]:
+			var h := UIKit.vbox(0)
+			h.add_child(UIKit.label(String(n[0]), 20, UIKit.GOLD, false, "display"))
+			h.add_child(UIKit.label(String(n[1]), 16, UIKit.TEXT, true, "italic"))
+			v.add_child(h)
+	Save.data.seen_version = ver
+	Save.mark_dirty()
+	UIKit.foot(v).add_child(UIKit.button("Continue", func(): act.emit("camp" if parent_page == "camp" else "menu", null)))
+
 ## The Wayside Forge (a friendly NPC met in a run): Doran's apprentice hones each weapon you carry once, a temper rank
 ## for this run, for run gold (World.hone_weapon). Leave resumes the run.
 func show_forge(w: World) -> void:

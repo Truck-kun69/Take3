@@ -541,6 +541,12 @@ static func show_drill(s: Screens) -> void:
 		left.add_child(UIKit.label(String(e[0]), 19, Color("cfe8c0"), false, "display"))
 		left.add_child(UIKit.label(String(e[1]), 15, UIKit.TEXT, true, "italic"))
 		v.add_child(_row(left, null, Color("9fe08a")))
+	var wl := UIKit.vbox(2)
+	wl.add_child(UIKit.label("What's new", 19, Color("cfe8c0"), false, "display"))
+	wl.add_child(UIKit.label("What changed in the last few versions, as testers were told.", 15, UIKit.TEXT, true, "italic"))
+	var wb := UIKit.button("Read", func(): s.parent_page = "camp"; s.show_whats_new(true), 50)
+	wb.custom_minimum_size.x = 160
+	v.add_child(_row(wl, wb, Color("9fe08a")))
 	var T: Dictionary = d.tutorial
 	var row := s._grid(2 if s.get_viewport_rect().size.x < 820.0 else 4, 8)
 	var tips := UIKit.button("Tutorial tips: %s" % ("On" if bool(T.on) else "Off"), func():
