@@ -276,6 +276,9 @@ static func show_smith(s: Screens) -> void:
 			left.add_child(UIKit.label("Not yet earned: %s." % need, 15, UIKit.DIM, true, "italic"))
 		else:
 			left.add_child(UIKit.label(Camp.temper_text(r), 15, UIKit.TEXT, true, "italic"))
+			var hit := "Level-1 hit %.1f" % Camp.temper_hit(id, r)
+			if r < Camp.TEMPER_MAX: hit += "  \u2192  %.1f" % Camp.temper_hit(id, r + 1)
+			left.add_child(UIKit.label(hit, 14, UIKit.DIM, false, "italic"))
 			var cost := Camp.temper_cost(d, id)
 			if cost.is_empty():
 				var ml := UIKit.label("MASTERWORK", 16, UIKit.GOLD, false, "label")
@@ -450,6 +453,12 @@ static func _furnace_weapons(s: Screens, v: VBoxContainer, d: Dictionary) -> voi
 	else:
 		_note(v, "Pick two weapons to kindle. In a run a kindled pair may fuse as soon as both reach level 5, evolved or not, and its fusion deals 35% more damage instead of 25%.", UIKit.TEXT)
 	v.add_child(g)
+	v.add_child(s._section("Named hybrids"))
+	var hy := PackedStringArray()
+	for key in Content.FUSIONS:
+		var ab := String(key).split("+")
+		hy.append("%s%s (%s + %s)" % ["\u2605 " if Camp.kindled(d, key) else "", Content.FUSIONS[key].name, Content.WEAPONS[ab[0]].name, Content.WEAPONS[ab[1]].name])
+	_note(v, "These six pairs fuse into something new; any other pair shares its elements for 25% more damage (35% kindled). \u2605 kindled.  " + ",  ".join(hy), UIKit.DIM)
 	if not (d.kindled as Array).is_empty():
 		v.add_child(s._section("Kindled pairs  ·  %d" % (d.kindled as Array).size()))
 		var names := PackedStringArray()

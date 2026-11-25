@@ -5,6 +5,11 @@ extends RefCounted
 ## covers it), and it can be reread from Captain Brask's page. Newest first; keep each version to a few lines.
 
 const NOTES := {
+	"0.11.3": [
+		["What's new", "This page: after an update, what changed since you last played. Captain Brask can show it again."],
+		["The smith's numbers", "Doran shows each weapon's level-1 hit now and after the next temper."],
+		["Named hybrids", "Mother Kiln lists the six weapon pairs that fuse into something new."],
+	],
 	"0.11.2": [
 		["Salvage on the way", "Nim can break down weak Normal or Magic finds as you pick them up. Set it at his bench."],
 		["New finds marked", "Items found since your last look are marked NEW on the Gear page, and the stash shows how full it is."],

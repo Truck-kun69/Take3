@@ -3322,6 +3322,7 @@ func _camp_tests() -> void:
 	st.set_source("temper", Camp.temper_mods(5))
 	ok(absf(st.value("damage", 1.0) - 1.4 * 1.1) < 0.001, "rank 5: +40%% damage and a further 10%% more (%.3f)" % st.value("damage", 1.0))
 	ok(absf(st.value("cooldown", 1.0) - 0.92) < 0.001, "rank 3 and up: 8% faster")
+	ok(absf(Camp.temper_hit("bolt", 0) - 9.0) < 0.001 and absf(Camp.temper_hit("bolt", 5) - 9.0 * 1.4 * 1.1) < 0.001, "the smith's preview: Rime Bolt hits 9.0 untempered, 13.9 as a masterwork")
 	var st2 := Stats.new()
 	st2.set_source("temper", Camp.temper_mods(2))
 	ok(absf(st2.value("damage", 1.0) - 1.16) < 0.001 and absf(st2.value("cooldown", 1.0) - 1.0) < 0.001, "rank 2: +16% damage only")
@@ -3870,7 +3871,7 @@ func _camp_ui_tests() -> void:
 	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "once seen, not again")
 	ok(WhatsNew.key("0.11.2-alpha") > WhatsNew.key("0.11.1-alpha") and WhatsNew.key("0.11.0") > WhatsNew.key("0.10.6-alpha"), "versions order by number")
 	var sn := WhatsNew.since("0.11.0-alpha")
-	ok(sn.size() == 2 and sn[0][0] == "0.11.2" and sn[1][0] == "0.11.1", "since 0.11.0: the two newer versions, newest first")
+	ok(sn.size() >= 2 and sn[0][0] == WhatsNew.since("")[0][0] and sn[sn.size() - 1][0] == "0.11.1", "since 0.11.0: every newer version, newest first (%s)" % str(sn.map(func(e): return e[0])))
 	sv.data.seen_version = "0.11.0-alpha"
 	mn.screens.show_whats_new()
 	var wn_ok := _btn(mn.screens, "Continue") != null and String(sv.data.seen_version) == Diag.version()

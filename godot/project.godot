@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Shardfall: Rift Survivors"
 config/description="Survivor-like ARPG: elemental reaction cascades, linked support gems, crafted loot, rifts and an atlas of maps."
-config/version="0.11.2-alpha"
+config/version="0.11.3-alpha"
 run/main_scene="res://scenes/main.tscn"
 config/project_settings_override="user://override.cfg"
 config/quit_on_go_back=false

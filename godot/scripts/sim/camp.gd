@@ -105,6 +105,13 @@ static func temper_mods(rank: int) -> Array:
 	if rank >= 5: m.append(["damage", "more", TEMPER_MASTER])
 	return m
 
+## A weapon's level-1 hit at a temper rank (its first level's damage times the rank's damage), for the smith's preview.
+static func temper_hit(wid: String, rank: int) -> float:
+	var base := float(Content.WEAPONS[wid].lv[0].get("dmg", 0.0))
+	var k := 1.0 + TEMPER_DMG * rank
+	if rank >= 5: k *= TEMPER_MASTER
+	return base * k
+
 static func temper_text(rank: int) -> String:
 	if rank <= 0: return "No temper yet."
 	var s := "+%d%% damage" % int(round(TEMPER_DMG * rank * 100.0))
