@@ -569,7 +569,7 @@ func _pickups(gn: int) -> int:
 			"progress": c = Color("ff4fd8"); em = 2.5
 			"flask": shape = "box"; c = Color("c9f3ff"); s = Vector3(6, 11, 6); em = 0.8
 			_:
-				c = {"magnet": Color("8b6bff"), "frenzy": Color("ff8a2b"), "aegis": Color("ffd24a"), "vital": Color("5dff6b"), "nuke": Color("9fefff")}.get(p.k, Color.WHITE) as Color
+				c = {"magnet": Color("8b6bff"), "frenzy": Content.col(Content.BUFFS.frenzy.col), "aegis": Color("ffd24a"), "vital": Color("5dff6b"), "nuke": Color("9fefff")}.get(p.k, Color.WHITE) as Color
 				em = 2.5
 				s = Vector3(11, 11, 11)
 		var mm: MultiMesh = pick_mm[shape].multimesh

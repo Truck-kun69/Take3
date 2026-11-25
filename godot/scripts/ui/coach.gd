@@ -75,7 +75,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel = PanelContainer.new()
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_panel.add_theme_stylebox_override("panel", UIKit.nine("tile", 24, Vector4(20, 10, 20, 12), Color("9fe08a").lerp(Color(0.75, 0.72, 0.68), 0.5)))
+	_panel.add_theme_stylebox_override("panel", UIKit.nine("tile", 24, Vector4(20, 10, 20, 12), Color(String(CampPages.NPCS.brask.col)).lerp(Color(0.75, 0.72, 0.68), 0.5)))
 	var v := UIKit.vbox(2)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var who := UIKit.label("CAPTAIN BRASK", 13, Color("cfe8c0"), false, "label")
@@ -150,7 +150,7 @@ func tick(dt: float) -> void:
 			gap = GAP
 			_show_panel("")
 			if remaining(d).filter(func(id): return id != LEVELUP).is_empty():
-				w.banner.emit("Drills done", "Captain Brask: “You will do. Find me at the Camp if you forget.”", Color("9fe08a"))
+				w.banner.emit("Drills done", "Captain Brask: “You will do. Find me at the Camp if you forget.”", Color(String(CampPages.NPCS.brask.col)))
 			return
 		if shown_t > SHOW_MAX:
 			snooze[active] = SNOOZE
@@ -246,7 +246,7 @@ func _draw() -> void:
 	if q.z <= 0.0: return
 	var c := Vector2(q.x, q.y)
 	var pulse := 0.5 + 0.5 * sin(_anim * 5.0)
-	var col := Color("9fe08a")
+	var col := Color(String(CampPages.NPCS.brask.col))       # Captain Brask's colour
 	draw_arc(c, q.z + 6.0 * pulse, 0.0, TAU, 56, Color(col, 0.35 + 0.5 * pulse), 4.0, true)
 	draw_arc(c, q.z + 16.0 * pulse, 0.0, TAU, 56, Color(col, 0.25 * (1.0 - pulse)), 2.0, true)
 

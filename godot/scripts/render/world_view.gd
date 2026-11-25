@@ -366,7 +366,7 @@ func _draw_event(c: Node2D, ev: Dictionary) -> void:
 		"forge":
 			c.draw_circle(p + Vector2(0, 14), 18.0, Color(0, 0, 0, 0.3))
 			c.draw_rect(Rect2(p + Vector2(-16, -2), Vector2(26, 9)), Color("4a4a52"))
-			c.draw_circle(p + Vector2(14, 6), 7.0, Color("ff9a5a"))
+			c.draw_circle(p + Vector2(14, 6), 7.0, Content.col(Content.EVENTS.forge.col))
 			_label(c, p + Vector2(0, -34), "Forge", Color("ffb98a"), 16)
 		"merchant":
 			c.draw_circle(p + Vector2(0, 14), 16.0, Color(0, 0, 0, 0.3))
@@ -434,7 +434,7 @@ func _draw_pick(c: Node2D, p: Dictionary) -> void:
 		"progress": c.draw_circle(pos + Vector2(0, bob), 7.0, Color("ff4fd8")); c.draw_circle(pos + Vector2(0, bob), 11.0, Color(1, 0.3, 0.85, 0.25))
 		"flask": c.draw_rect(Rect2(pos + Vector2(-5, -8 + bob), Vector2(10, 14)), Color("c9f3ff")); c.draw_rect(Rect2(pos + Vector2(-3, -12 + bob), Vector2(6, 4)), Color("8a7a5a"))
 		_:
-			var pc := {"magnet": Color("8b6bff"), "frenzy": Color("ff8a2b"), "aegis": Color("ffd24a"), "vital": Color("5dff6b"), "nuke": Color("9fefff")}.get(p.k, Color.WHITE) as Color
+			var pc := {"magnet": Color("8b6bff"), "frenzy": Content.col(Content.BUFFS.frenzy.col), "aegis": Color("ffd24a"), "vital": Color("5dff6b"), "nuke": Color("9fefff")}.get(p.k, Color.WHITE) as Color
 			c.draw_circle(pos + Vector2(0, bob), 10.0, Color(pc.r, pc.g, pc.b, 0.3))
 			c.draw_circle(pos + Vector2(0, bob), 6.5, pc)
 			_label(c, pos + Vector2(0, bob + 4), String(p.k).substr(0, 1).to_upper(), Color(0.05, 0.05, 0.1), 11)

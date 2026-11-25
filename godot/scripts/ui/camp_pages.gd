@@ -5,20 +5,23 @@ extends RefCounted
 ## Camp's (scripts/sim/camp.gd): these pages show them, call them, then save and redraw. A station's Back (and
 ## Android Back, main.back) returns to the hub: Screens.parent_page is "camp" while a station is up.
 
+# Accents: forge terracotta, white-hot cream, ash grey, coin cyan, drill olive, parchment, periwinkle. Worst pair
+# (CIEDE2000, normal / protan / deutan / tritan) 9.2 / 4.8 / 6.6 / 8.4 -> 12.6 / 11.0 / 11.3 / 6.3; Doran no longer
+# wears Legendary's orange and Mother Kiln no longer wears the Rare / gold yellow. Their pages' rows use these too.
 const NPCS := {
-	"smith": {"name": "Doran Ashhand", "role": "Weaponsmith", "col": "ff9a5a", "glyph": "D",
+	"smith": {"name": "Doran Ashhand", "role": "Weaponsmith", "col": "cf7a5a", "glyph": "D",
 		"lines": ["Every weapon you carry in there, I can make bite harder.", "Ore from the rift, scrap from your junk, gold for my time.", "Temper it once and it stays tempered. Steel remembers."]},
-	"kiln": {"name": "Mother Kiln", "role": "Fusion Furnace", "col": "ffcf6a", "glyph": "K",
+	"kiln": {"name": "Mother Kiln", "role": "Fusion Furnace", "col": "ffe8b2", "glyph": "K",
 		"lines": ["Three trinkets in, one better thing out. The fire is fair.", "Name two weapons and I will teach them to burn together.", "Kindled steel finds its partner sooner, child."]},
-	"nim": {"name": "Nim", "role": "Salvager", "col": "c9b79a", "glyph": "N",
+	"nim": {"name": "Nim", "role": "Salvager", "col": "b2a7a1", "glyph": "N",
 		"lines": ["Bring me what you will not wear. I will make it useful.", "Locked things I leave alone. I am a salvager, not a thief.", "Scrap today, a masterwork tomorrow."]},
 	"sella": {"name": "Sella Coinwright", "role": "Trader", "col": "7fd8ff", "glyph": "S",
 		"lines": ["Fresh stock at dawn, every dawn.", "Gold spends the same on either side of the rift.", "Shards, gear, a fair price. Mostly fair."]},
-	"brask": {"name": "Captain Brask", "role": "Drillmaster", "col": "9fe08a", "glyph": "B",
+	"brask": {"name": "Captain Brask", "role": "Drillmaster", "col": "a1cc70", "glyph": "B",
 		"lines": ["Keep moving. A still exile is a dead exile.", "Roll through them, not away from them.", "Forget something out there? Ask, and I will drill it again."]},
-	"chronicler": {"name": "The Chronicler", "role": "Codex & Story", "col": "e8dcc0", "glyph": "C",
+	"chronicler": {"name": "The Chronicler", "role": "Codex & Story", "col": "e0d7ca", "glyph": "C",
 		"lines": ["Every Echo you carry back, I write down.", "The acts, the exiles, the things that hunt them: all here.", "Ink lasts longer than any of us."]},
-	"cartographer": {"name": "Wend", "role": "Cartographer", "col": "8fb8ff", "glyph": "W",
+	"cartographer": {"name": "Wend", "role": "Cartographer", "col": "7aa2ff", "glyph": "W",
 		"lines": ["The Atlas grows with every map you clear.", "Today's rift is the same for everyone. Beat them all.", "Prophecies, fragments, deeper rifts: pick your road."]},
 }
 const NPC_ORDER := ["smith", "kiln", "nim", "sella", "brask", "chronicler", "cartographer"]
@@ -334,7 +337,7 @@ static func show_bench(s: Screens) -> void:
 		show_bench(s), 50)
 	ab.custom_minimum_size.x = 200
 	ab.add_theme_color_override("font_color", UIKit.GOLD if mode > 0 else UIKit.DIM)
-	grid.add_child(_row(al, ab, Color("c9b79a")))
+	grid.add_child(_row(al, ab, Color(String(NPCS.nim.col))))
 	var locked := 0
 	for it in d.stash:
 		if Camp.is_locked(d, it): locked += 1
@@ -357,7 +360,7 @@ static func show_furnace(s: Screens) -> void:
 	var tabs := s._grid(2, 8)
 	for k in 2:
 		var tb := UIKit.tile(["Gear", "Weapons"][k], ["Three items become one, a rarity higher", "Kindle a pair to fuse sooner, and harder"][k],
-			func(): _furnace_tab = k; _fused = {}; show_furnace(s), Color("ffcf6a"), _furnace_tab == k, 64)
+			func(): _furnace_tab = k; _fused = {}; show_furnace(s), Color(String(NPCS.kiln.col)), _furnace_tab == k, 64)
 		tabs.add_child(tb)
 	v.add_child(tabs)
 	_flash(v)
@@ -549,13 +552,13 @@ static func show_drill(s: Screens) -> void:
 		var left := UIKit.vbox(2)
 		left.add_child(UIKit.label(String(e[0]), 19, Color("cfe8c0"), false, "display"))
 		left.add_child(UIKit.label(String(e[1]), 15, UIKit.TEXT, true, "italic"))
-		v.add_child(_row(left, null, Color("9fe08a")))
+		v.add_child(_row(left, null, Color(String(NPCS.brask.col))))
 	var wl := UIKit.vbox(2)
 	wl.add_child(UIKit.label("What's new", 19, Color("cfe8c0"), false, "display"))
 	wl.add_child(UIKit.label("What changed in the last few versions, as testers were told.", 15, UIKit.TEXT, true, "italic"))
 	var wb := UIKit.button("Read", func(): s.parent_page = "camp"; s.show_whats_new(true), 50)
 	wb.custom_minimum_size.x = 160
-	v.add_child(_row(wl, wb, Color("9fe08a")))
+	v.add_child(_row(wl, wb, Color(String(NPCS.brask.col))))
 	var T: Dictionary = d.tutorial
 	var row := s._grid(2 if s.get_viewport_rect().size.x < 820.0 else 4, 8)
 	var tips := UIKit.button("Tutorial tips: %s" % ("On" if bool(T.on) else "Off"), func():

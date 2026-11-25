@@ -14,7 +14,7 @@ extends Node3D
 ## a cool sky above, a dark warm ground below, so tops of things read cool and undersides warm and dim.
 const STAGE_LOOK := [
 	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3),
-		"rim": Color(0.5, 0.8, 1.0)},                     # I: moon-cyan
+		"rim": Color(0.6, 0.7, 1.0)},                     # I: moonlight, bluer than Chill's ice (dE00 6.4 -> 10.5)
 	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2),
 		"rim": Color(1.0, 0.6, 0.2)},                     # II: molten-amber
 	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85),

@@ -7,7 +7,7 @@ extends RefCounted
 
 const MATERIALS := {
 	"scrap": {"name": "Shard Scrap", "col": "c9b79a", "d": "Salvaged from gear at Nim's bench."},
-	"ore": {"name": "Rift Ore", "col": "ff9a5a", "d": "Carried out of the rift: from champions, tyrants and long fights."},
+	"ore": {"name": "Rift Ore", "col": "cf7a5a", "d": "Carried out of the rift: from champions, tyrants and long fights."},
 }
 const MATERIAL_IDS := ["scrap", "ore"]
 

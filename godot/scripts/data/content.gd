@@ -7,7 +7,10 @@ extends RefCounted
 enum El { PHYS, FIRE, COLD, LIGHT, CHAOS }
 const EL_NAME := ["Physical", "Fire", "Cold", "Lightning", "Chaos"]
 const EL_STATUS := ["Bleed", "Burn", "Chill", "Shock", "Poison"]
-const EL_COL := ["ff4a5e", "ff8a3c", "7fe6ff", "e6d24a", "7dff6b"]
+# Blood crimson, vermilion, ice, pale straw, toxic jade (art-director pass, tools: CIEDE2000 under normal, protan,
+# deutan and tritan vision): worst pair 24.7 / 6.8 / 4.1 / 7.9 -> 21.0 / 16.6 / 16.2 / 5.9; Fire sits 15.5 from the
+# Legendary orange (was 2.7) and Chaos's jade no longer equals the green of "better than equipped".
+const EL_COL := ["e0556f", "ff4b14", "7fe6ff", "ffeb99", "5ed1b2"]
 # Colour-blind safe alternates (Okabe-Ito); the renderer also adds per-element mote shapes.
 const EL_COL_CB := ["d55e00", "e69f00", "56b4e9", "f0e442", "009e73"]
 # Every element hue comes from EL_COL through el_col() / status_cols() (World.el, the shaders' status_cols), so a palette
@@ -352,7 +355,9 @@ const SLOTS := ["relic", "amulet", "ring", "boots"]
 const SLOT_NAME := {"relic": "Relic", "amulet": "Amulet", "ring": "Ring", "boots": "Boots"}
 enum Rarity { NORMAL, MAGIC, RARE, LEGENDARY }
 const RARITY_NAME := ["Normal", "Magic", "Rare", "Legendary"]
-const RARITY_COL := ["d8d8d8", "6f9bff", "ffd84a", "ff8a2b"]
+# Rare is lemon, away from the gold of titles and selection (UIKit.GOLD, 10.9 deutan) and from gold coins; Legendary's
+# orange belongs to Legendary alone (Fire, Overclock and Doran's forge moved off it).
+const RARITY_COL := ["d8d8d8", "6f9bff", "fff25c", "ff8a2b"]
 const MAX_PREFIX := {0: 0, 1: 1, 2: 3, 3: 3}
 const MAX_SUFFIX := {0: 0, 1: 1, 2: 3, 3: 3}
 const BASES := {
@@ -411,13 +416,15 @@ const CODEX_SLOTS := 3
 
 # ---------------------------------------------------------------- crafting currency (component-driven, PoE orbs)
 const CURRENCY := {
-	"transmute": {"name": "Shard of Change", "d": "Normal to Magic.", "col": "9fc8ff"},
+	# Growth wears Magic's blue and Crown wears Rare's lemon (the rarity each one makes or feeds); Chaos is jade like the
+	# element, Star is white: worst pair 8.2 / 7.9 / 7.3 / 7.6 -> 12.2 / 11.1 / 11.4 / 8.3 (normal / protan / deutan / tritan)
+	"transmute": {"name": "Shard of Change", "d": "Normal to Magic.", "col": "85c6ff"},
 	"augment": {"name": "Shard of Growth", "d": "Adds an affix to a Magic item with room.", "col": "6f9bff"},
-	"regal": {"name": "Crown Shard", "d": "Magic to Rare, adding an affix.", "col": "ffe07a"},
-	"chaos": {"name": "Chaos Shard", "d": "Rerolls every affix of a Rare item.", "col": "ffb24a"},
-	"exalt": {"name": "Star Shard", "d": "Adds an affix to a Rare item with room.", "col": "fff2b0"},
+	"regal": {"name": "Crown Shard", "d": "Magic to Rare, adding an affix.", "col": "fff25c"},
+	"chaos": {"name": "Chaos Shard", "d": "Rerolls every affix of a Rare item.", "col": "5ccc85"},
+	"exalt": {"name": "Star Shard", "d": "Adds an affix to a Rare item with room.", "col": "fff8eb"},
 	"annul": {"name": "Null Shard", "d": "Removes a random affix.", "col": "c0c0c0"},
-	"divine": {"name": "Divine Shard", "d": "Rerolls the values of every affix within its tier.", "col": "ffd0f0"},
+	"divine": {"name": "Divine Shard", "d": "Rerolls the values of every affix within its tier.", "col": "ffd9f7"},
 	"corrupt": {"name": "Rift Ember", "d": "Corrupts: upgrades a random affix tier, or bricks it. Corrupted items cannot be crafted.", "col": "ff4a4a"},
 }
 const CURRENCY_IDS := ["transmute", "augment", "regal", "chaos", "exalt", "annul", "divine", "corrupt"]
@@ -441,7 +448,7 @@ const BUFFS := {
 	"quicksilver": {"name": "Quicksilver", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "c9f3ff", "mods": [["move_speed", "inc", 0.4]]},
 	"granite": {"name": "Granite", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "a0a0a0", "mods": [["armor", "add", 120.0]]},
 	"diamond": {"name": "Diamond", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "e0faff", "mods": [["crit_chance", "add", 0.3]]},
-	"frenzy": {"name": "Overclock", "dur": 12.0, "policy": Stack.REFRESH, "col": "ff8a2b", "mods": [["cooldown", "more", 0.5]]},
+	"frenzy": {"name": "Overclock", "dur": 12.0, "policy": Stack.REFRESH, "col": "ff4b14", "mods": [["cooldown", "more", 0.5]]},   # hot, not Legendary's orange
 	"aegis": {"name": "Aegis", "dur": 12.0, "policy": Stack.UNIQUE, "col": "ffd24a", "mods": [["invuln", "add", 1.0], ["move_speed", "inc", 0.3]]},
 	"gate": {"name": "Rift Gate", "dur": 0.0, "policy": Stack.REFRESH, "col": "7fd8ff", "mods": []},        # a ground object: banks the hoard
 	"whisper": {"name": "The Whisperer", "dur": 0.0, "policy": Stack.REFRESH, "col": "9a6bff", "mods": []},   # a ground object, never applied
@@ -542,7 +549,7 @@ const EVENTS := {
 	"delirium": {"name": "Delirium Mirror", "d": "Step into the fog. The deeper you go, the more it pays.", "weight": 5, "cd": 110.0, "min_t": 70.0, "col": "d8d8e8"},
 	"ritual": {"name": "Blood Ritual", "d": "Slay everything the altar summons.", "weight": 6, "cd": 90.0, "min_t": 35.0, "col": "ff2b4a"},
 	"exile": {"name": "Rogue Exile", "d": "Another survivor wants your loot.", "weight": 5, "cd": 999.0, "min_t": 55.0, "col": "ff8a2b"},
-	"forge": {"name": "Wayside Forge", "d": "Doran's apprentice works by the road. Spend gold to hone a weapon for this run.", "weight": 4, "cd": 160.0, "min_t": 90.0, "col": "ff9a5a"},
+	"forge": {"name": "Wayside Forge", "d": "Doran's apprentice works by the road. Spend gold to hone a weapon for this run.", "weight": 4, "cd": 160.0, "min_t": 90.0, "col": "cf7a5a"},   # Doran's forge colour
 }
 const EVENT_IDS := ["breach", "goblin", "cursed", "strongbox", "eclipse", "meteor", "merchant", "delirium", "ritual", "exile", "forge"]
 const EXILE_NAMES := ["Varkas", "Ilsa", "Torven", "Mireth", "Dunmor", "Kesh", "Oriane", "Bram", "Sefa", "Corvin"]

@@ -2275,7 +2275,7 @@ func collect(p: Dictionary) -> void:
 			Sfx.play("coin")
 		"heart": hp = minf(max_hp, hp + max_hp * 0.25); Sfx.play("heal")
 		"magnet": vacuum(); toast.emit("Vacuum Orb", Color("8b6bff"))
-		"frenzy": buffs.add("frenzy"); toast.emit("Overclock", Color("ff8a2b"))
+		"frenzy": buffs.add("frenzy"); toast.emit("Overclock", Content.col(Content.BUFFS.frenzy.col))
 		"aegis": buffs.add("aegis"); toast.emit("Aegis", Color("ffd24a"))
 		"vital": buffs.add("vital"); toast.emit("Vital Surge", Color("5dff6b"))
 		"nuke":

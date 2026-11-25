@@ -11,7 +11,6 @@ const BG := Color("0a090c")
 const TEXT := Color("e9e1cf")        # parchment white
 const DIM := Color("9b917f")         # aged ink
 const GOLD := Color("e8b54e")        # forged gold, the one accent
-const EMBER := Color("ff7a32")
 const BLOOD := Color("b3242c")
 const RIFT := Color("8fd8ff")
 

@@ -353,7 +353,8 @@ func show_endgame() -> void:
 	v.add_child(sh)
 	v.add_child(_sky_row())
 	if Save.has_nemesis():
-		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, UIKit.EMBER, true, "italic")
+		# the nemesis drops a Legendary when slain (Bosses), so it wears Legendary's orange, as its name does in a run
+		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, Content.col(Content.RARITY_COL[Content.Rarity.LEGENDARY]), true, "italic")
 		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(nl)
 	v.add_child(_resources(d, [["Rupture", int(d.fragments.rupture), Color("ff6a4a")], ["Greed", int(d.fragments.greed), Color("ffd24a")],
@@ -1603,7 +1604,7 @@ func show_forge(w: World) -> void:
 	var v := _open(820)
 	var h := UIKit.hbox(14)
 	h.alignment = BoxContainer.ALIGNMENT_CENTER
-	var md := CampPages.Medallion.new(Color("ff9a5a"), "A", 62.0)
+	var md := CampPages.Medallion.new(Content.col(Content.EVENTS.forge.col), "A", 62.0)
 	md.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(md)
 	var t := UIKit.vbox(0)
