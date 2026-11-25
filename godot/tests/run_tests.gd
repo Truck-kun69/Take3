@@ -3516,6 +3516,34 @@ func _camp_tests() -> void:
 	for k in 200:
 		if wrift.director.pick() == "forge": rift_forge = true
 	ok(not rift_forge, "no forge in a Greater Rift")
+	# ---- salvage on the way (Nim's option): finds below the chosen rarity that are no upgrade go straight to scrap
+	var keep_s: Dictionary = Save.data
+	Save.data = Save.defaults()
+	var sa: Dictionary = Save.data
+	var was_eq: bool = bool(sa.options.auto_equip)
+	sa.options.auto_equip = false
+	sa.equipped.ring = Items.make("ring", Content.Rarity.RARE, 30, rng)
+	sa.options.auto_salvage = 1
+	var ws := _world({"mode": "campaign", "hero": 0, "seed": 44})
+	var weak_n := Items.make("ring", Content.Rarity.NORMAL, 2, rng)
+	ws._take_item(weak_n)
+	ok(sa.stash.is_empty() and Camp.mat(sa, "scrap") == Camp.SCRAP[0] and ws.salvaged_run == 1, "on Normal: a weak Normal find goes straight to scrap")
+	var weak_m := Items.make("ring", Content.Rarity.MAGIC, 2, rng)
+	ws._take_item(weak_m)
+	ok(sa.stash.has(weak_m), "a Magic find is kept")
+	var up_n := Items.make("boots", Content.Rarity.NORMAL, 9, rng)
+	ws._take_item(up_n)
+	ok(sa.stash.has(up_n), "an upgrade is never salvaged on the way (an empty slot: anything is)")
+	sa.options.auto_salvage = 2
+	var weak_m2 := Items.make("ring", Content.Rarity.MAGIC, 2, rng)
+	ws._take_item(weak_m2)
+	ok(not sa.stash.has(weak_m2) and ws.salvaged_run == 2, "on Normal and Magic: the weak Magic find is salvaged too")
+	sa.options.auto_salvage = 0
+	var weak_n2 := Items.make("ring", Content.Rarity.NORMAL, 2, rng)
+	ws._take_item(weak_n2)
+	ok(sa.stash.has(weak_n2), "off: every find is kept")
+	sa.options.auto_equip = was_eq
+	Save.data = keep_s
 	# ---- the run's ore
 	var wo := _world({"mode": "campaign", "hero": 0, "seed": 35})
 	wo.kills = 900; wo.champions_slain = 2

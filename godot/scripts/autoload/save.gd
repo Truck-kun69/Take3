@@ -15,6 +15,7 @@ const DEFAULT_OPTIONS := {
 	"joy_mode": 0, "left_handed": false, "auto_equip": true, "loot_filter": 0,   # 0 all, 1 hide normal, 2 rare+
 	"show_fps": false, "quality": 1, "gfx": 0, "gpu_crowd": 0, "ambient": true, "sfx_safe": false, "frame_cap": 0, "gfx_off": [], "ui_scale": 1.0, "force_touch_ui": false, "renderer": 0, "render_scale": 0,
 	"gfx_api": 0,                                   # 0 Vulkan (Mobile renderer), 1 OpenGL Safe Mode (Compatibility); applies on launch
+	"auto_salvage": 0,                              # Nim's bench: 0 off, 1 Normal finds, 2 Normal and Magic finds salvaged as found
 	"music_volume": 1.0, "sfx_volume": 1.0,         # Options > Audio: volume = the Master bus, voice_volume = the Voice bus,
 	                                                # music_volume and sfx_volume scale those players (apply_audio)
 }

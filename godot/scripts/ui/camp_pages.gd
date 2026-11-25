@@ -318,6 +318,18 @@ static func show_bench(s: Screens) -> void:
 			show_bench(s))
 		(right.get_child(0) as Button).disabled = items.is_empty()
 		v.add_child(_row(left, right, rc))
+	var mode := int(Save.opt("auto_salvage"))
+	var al := UIKit.vbox(2)
+	al.add_child(UIKit.label("Salvage on the way", 20, Color("e8dcc0"), false, "display"))
+	al.add_child(UIKit.label("Nim breaks down finds that are no upgrade as you pick them up: no stash clutter, the scrap and shards straight to you.", 14, UIKit.DIM, true, "italic"))
+	var names := ["Off", "Normal finds", "Normal and Magic"]
+	var ab := UIKit.button(names[mode % 3], func():
+		Save.set_opt("auto_salvage", (mode + 1) % 3)
+		_say("Salvage on the way: %s." % names[(mode + 1) % 3].to_lower(), true)
+		show_bench(s), 50)
+	ab.custom_minimum_size.x = 220
+	ab.add_theme_color_override("font_color", UIKit.GOLD if mode > 0 else UIKit.DIM)
+	v.add_child(_row(al, ab, Color("c9b79a")))
 	var locked := 0
 	for it in d.stash:
 		if Camp.is_locked(d, it): locked += 1

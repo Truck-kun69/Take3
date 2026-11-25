@@ -1524,6 +1524,7 @@ func show_end(w: World) -> void:
 	if w.daily: rows.push_front(["Rift score" + ("  NEW BEST" if w.daily_best else ""), str(w.daily_score)])
 	rows.append(["Echoes", "+%d" % w.echoes_run])
 	if not w.daily: rows.append(["Rift Ore", "+%d" % w.ore_run])
+	if w.salvaged_run > 0: rows.append(["Salvaged on the way", "%d (+%d scrap)" % [w.salvaged_run, w.salvaged_scrap]])
 	if w.hoard_banked > 0.0: rows.append(["Hoard banked", str(int(w.hoard_banked))])
 	if w.hoard_lost > 0.0: rows.append(["Hoard lost", str(int(w.hoard_lost))])
 	if w.torment > 0: rows.append(["Difficulty", String(Content.TORMENT[w.torment].name)])

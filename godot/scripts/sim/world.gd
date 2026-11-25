@@ -2325,9 +2325,21 @@ func _take_item(it: Dictionary) -> void:
 		if not cur.is_empty(): stash_add(cur)
 		equip(it)
 		toast.emit("Equipped " + Items.name_of(it), Content.col(Content.RARITY_COL[it.rarity]))
+	elif not upgrade and int(it.rarity) < int(Save.opt("auto_salvage")):
+		_salvage_found(it)                           # Nim's "salvage on the way": no upgrade, below the chosen rarity
 	else:
 		stash_add(it)
 	item_found.emit(it, upgrade and not Save.opt("auto_equip"))
+
+## Salvage on the way (Nim's bench, option "auto_salvage"): a find is broken down as it is picked up.
+var salvaged_run := 0
+var salvaged_scrap := 0
+func _salvage_found(it: Dictionary) -> void:
+	var y := Camp.salvage_yield(it)
+	Camp.add_yield(Save.data, y)
+	salvaged_run += 1
+	salvaged_scrap += int(y.get("scrap", 0))
+	Save.mark_dirty()
 
 ## A full stash (STASH_CAP) makes room by salvaging, at Nim's rates (Camp.salvage_yield: shards and scrap), the
 ## weakest unlocked item below Legendary, the new one included: the lowest rarity first, then the lowest score.
