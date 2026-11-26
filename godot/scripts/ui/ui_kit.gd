@@ -9,7 +9,7 @@ extends RefCounted
 
 const BG := Color("0a090c")
 const TEXT := Color("e9e1cf")        # parchment white
-const DIM := Color("9b917f")         # aged ink
+const DIM := Color("a79e8e")         # aged ink: 6.7:1 on the panel (9b917f was 5.7, and its thin italic at the 18 floor rendered 3.6-4.5)
 const GOLD := Color("e8b54e")        # forged gold, the one accent
 const BLOOD := Color("b3242c")
 const RIFT := Color("8fd8ff")
