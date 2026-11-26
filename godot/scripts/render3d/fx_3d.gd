@@ -14,6 +14,9 @@ extends Node3D
 var view: WorldView3D
 var w: World
 var time := 0.0
+## When the last sky strike landed (time): a strike that follows another within ZAP_GAP takes the soft look.
+var _zap_t := -10.0
+const ZAP_GAP := 0.34
 const GLOW_CAP := 2400
 const DEBRIS_CAP := 600
 const SPARK_CAP := 700
@@ -317,7 +320,12 @@ func _consume_feed() -> void:
 				# Reduce flashing: a dimmer, slower light. The Stormwright's Thunderdome strikes every 0.1 s for 4 s; at
 				# energy 5 for 0.22 s each lit its ground in pulses, 4 flashes a second over a quarter of a 10-degree
 				# field (WCAG 2.3.1 allows 3), with the option on as well as off
-				var rf := bool(Save.opt("reduce_flash"))
+				# The soft look is also the default for a strike that lands within ZAP_GAP of the last one: a train of
+				# strikes (the Thunderdome, every 0.1 s) stays under 3 flashes a second for everyone, while a lone
+				# strike keeps its full flash. Reduce flashing softens every strike.
+				var rf := bool(Save.opt("reduce_flash")) or time - _zap_t < ZAP_GAP
+				_zap_t = time
+				f.soft = rf
 				add_light(Vector3(f.pos.x, g3 + 60.0, f.pos.y), f.col, 1.5 if rf else 5.0, 200.0, 0.5 if rf else 0.22)
 				_mark(f.pos, f.r * 0.9, 1)
 			"arc": add_light(p3, f.col, 2.0, 120.0, 0.15)
@@ -717,7 +725,7 @@ func _lightning() -> void:
 			# Reduce flashing: no white core, and a narrower bolt at 0.4 of the intensity. The bolts themselves (additive,
 			# x2.5, falling from 420 units, wide near the camera) were most of each strike's pulse: with the dimmer
 			# light alone a quarter of a 10-degree field still flashed 3.5 times a second (7 transitions)
-			var rfz := bool(Save.opt("reduce_flash"))
+			var rfz := bool(f.get("soft", false)) or bool(Save.opt("reduce_flash"))
 			if rfz: col.a *= 0.4
 			_ribbon(pts, (5.0 if rfz else 9.0) * k + 2.0, col)
 			_ribbon(pts, 3.0, col if rfz else Color(1, 1, 1, k))
