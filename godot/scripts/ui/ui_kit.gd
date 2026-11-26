@@ -305,10 +305,21 @@ static func sheet(parent: Control, max_w: int = 980) -> VBoxContainer:
 ## A sheet's foot: the row under its scrolling body that stays on screen however long the body is (Back, and a
 ## screen's main actions: on a phone held sideways the UI is 720 units tall, and a long sheet would scroll them
 ## out of sight).
+## Every button in the foot is at least FOOT_H tall: Back and a page's main actions are the targets a thumb aims at most,
+## and at 48-52 units (31-33 dp on an S22 at its x1.13 scale; Android asks 48 dp) they were among the smallest.
+const FOOT_H := 56
 static func foot(v: VBoxContainer) -> VBoxContainer:
 	var ft: VBoxContainer = v.get_parent().get_parent().get_node("Foot")
 	ft.visible = true
+	if not ft.has_meta("sized"):
+		ft.set_meta("sized", true)
+		ft.child_entered_tree.connect(func(n: Node): _foot_size(n))
 	return ft
+
+static func _foot_size(n: Node) -> void:
+	var all: Array = [n] + n.find_children("*", "Button", true, false)
+	for b in all:
+		if b is Button: (b as Button).custom_minimum_size.y = maxf((b as Button).custom_minimum_size.y, FOOT_H)
 
 ## The room a sheet leaves at the top for the subtitle banner (Subtitles._layout): the safe area's top inset
 ## (a camera cutout) plus the banner's offset and two lines in landscape, three in portrait, where it is narrower.

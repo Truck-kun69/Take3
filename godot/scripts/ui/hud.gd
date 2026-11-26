@@ -36,6 +36,7 @@ var _frame_ms := 16.0
 var flash_rect: ColorRect
 var vignette: ColorRect
 var pause_btn: Button
+const PAUSE_SIDE := 64
 var top_plate: PanelContainer
 var _cache := {}
 
@@ -114,8 +115,10 @@ func _ready() -> void:
 	add_child(upgrade_lbl)
 	fps_lbl = UIKit.label("", 14, UIKit.DIM, false, "num")
 	add_child(fps_lbl)
-	pause_btn = UIKit.button("II", func(): pause_pressed.emit(), 46)
-	pause_btn.custom_minimum_size = Vector2(56, 46)
+	# 64 x 64 (it was 56 x 46: 30 dp tall on an S22, the only way into Gear, Settings and leaving a run on touch)
+	pause_btn = UIKit.button("II", func(): pause_pressed.emit(), PAUSE_SIDE)
+	pause_btn.custom_minimum_size = Vector2(PAUSE_SIDE, PAUSE_SIDE)
+	pause_btn.add_theme_font_size_override("font_size", 26)
 	add_child(pause_btn)
 
 func _rect(c: Color) -> ColorRect:
@@ -240,11 +243,11 @@ func _process(dt: float) -> void:
 		var xr := (ultg.position.x - 10) if not touch else (vs.x * 0.55)
 		xp_bar.position = Vector2(xl, vs.y - 26 - m.w)
 		xp_bar.size = Vector2(maxf(60.0, xr - xl), 16)
-		pause_btn.position = Vector2(vs.x - 70 - m.z, 10 + m.y)
+		pause_btn.position = Vector2(vs.x - PAUSE_SIDE - 12 - m.z, 10 + m.y)
 		buffs.position = Vector2(14 + m.x, 12 + m.y)
 		buffs.size = Vector2(vs.x * 0.35, 60)
 		events_lbl.size = Vector2(minf(360, vs.x * 0.4), 0)
-		events_lbl.position = Vector2(vs.x - events_lbl.size.x - 16 - m.z, 70 + m.y)
+		events_lbl.position = Vector2(vs.x - events_lbl.size.x - 16 - m.z, PAUSE_SIDE + 22 + m.y)       # under the pause button
 		combo_lbl.size = Vector2(200, 0)
 		banner_box.pivot_offset = Vector2(vs.x * 0.5, 40.0)
 		banner_box.size = Vector2(vs.x, 0)

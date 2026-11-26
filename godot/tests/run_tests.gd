@@ -1863,6 +1863,16 @@ func _off_screen(root: Control, labels: Array) -> String:
 		if not found: bad.append(want + " missing")
 	return "" if bad.is_empty() else "  (" + "; ".join(bad) + ")"
 
+## A page's foot buttons (UIKit.foot) shorter than UIKit.FOOT_H.
+func _short_foot(root: Node, tag: String) -> Array:
+	var out: Array = []
+	for f in root.find_children("Foot", "VBoxContainer", true, false):
+		if not _live(f) or not (f as Control).visible: continue
+		for b in f.find_children("*", "Button", true, false):
+			if _live(b) and (b as Control).get_combined_minimum_size().y < UIKit.FOOT_H - 0.5:
+				out.append("%s: %s (%.0f)" % [tag, String((b as Button).text), (b as Control).get_combined_minimum_size().y])
+	return out
+
 ## The labels (by their text, or its start) that are missing or not wholly in view: off the screen or scrolled out of
 ## a scroll area around them.
 func _labels_out_of_view(root: Control, starts: Array) -> Array:
@@ -4193,26 +4203,38 @@ func _look_feel_tests() -> void:
 	var off := ""
 	mn._menu()
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	var short: Array = []                          # page foot buttons under UIKit.FOOT_H
 	for page in ["camp", "smith", "kiln", "nim", "sella", "brask"]:
 		CampPages.show(mn.screens, page)
 		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+		short.append_array(_short_foot(mn.screens, page))
 		off += await _off_screen(mn.screens, ["Back"])
 	mn.screens._sel_item = 0
 	mn.screens.show_stash(false)
 	_selected_rarity_tests(mn)
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	short.append_array(_short_foot(mn.screens, "gear"))
 	off += await _off_screen(mn.screens, ["Equip", "Salvage", "Back"])
 	for tab in 4:
 		mn.screens._opt_tab = tab
 		mn.screens.show_options("menu")
 		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+		short.append_array(_short_foot(mn.screens, "options %d" % tab))
 		if tab == 2: _colourblind_option_tests(mn)
 	mn.screens._opt_tab = 0
 	mn.screens.show_whats_new(true)
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	short.append_array(_short_foot(mn.screens, "what's new"))
 	off += await _off_screen(mn.screens, ["Continue"])
+	for pg in ["daily", "upgrades", "endgame", "codex", "web"]:
+		mn._on_act(pg, null)
+		short.append_array(_short_foot(mn.screens, pg))
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame
+	await get_tree().process_frame
+	var pb: Button = mn.hud.pause_btn
+	ok(pb.size.x >= Hud.PAUSE_SIDE - 0.5 and pb.size.y >= Hud.PAUSE_SIDE - 0.5 and pb.get_global_rect().end.x <= mn.hud.get_viewport_rect().size.x,
+		"the HUD's pause button is %dx%d, inside the screen (%s)" % [Hud.PAUSE_SIDE, Hud.PAUSE_SIDE, str(pb.size)])
 	_status_colour_tests(mn)
 	mn.world.pending = 1
 	mn._on_level()
@@ -4227,7 +4249,9 @@ func _look_feel_tests() -> void:
 	sv.data.camp_seen = false                      # a new exile's first run: Brask's Camp tip shows
 	mn.screens.show_end(mn.world)
 	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	short.append_array(_short_foot(mn.screens, "end"))
 	off += await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
+	ok(short.is_empty(), "every page's foot buttons (Back and its main actions) are %d tall or more%s" % [UIKit.FOOT_H, ("" if short.is_empty() else ": " + str(short.slice(0, 6)))])
 	var hid := _labels_out_of_view(mn.screens, ["GOLD", "ECHOES", "RIFT ORE", "ITEMS", "Captain Brask: \u201cBring that gold"])
 	ok(hid.is_empty(), "held sideways at an S22's scale, the end of a run shows what it brought home and Brask's tip without scrolling%s" % ("" if hid.is_empty() else ": hidden " + str(hid)))
 	ok(small.is_empty(), "every label on the title, the Camp, Gear, Options, What's new, level-up, pause and the end of a run is %d units or more%s" % [UIKit.MIN_TEXT, ("" if small.is_empty() else ": " + str(small.slice(0, 6)))])
