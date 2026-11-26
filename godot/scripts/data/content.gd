@@ -460,6 +460,10 @@ const PYLON_IDS := ["power", "conduit", "channel", "shield", "speed"]
 const SHRINE_IDS := ["fortune", "enlight", "frenzied", "empowered"]
 const UTIL_FLASKS := ["quicksilver", "granite", "diamond", "sulphur"]
 const FLASK_NAME := {"life": "Life Flask", "quicksilver": "Quicksilver Flask", "granite": "Granite Flask", "diamond": "Diamond Flask", "sulphur": "Sulphur Flask"}
+## What each flask does, short: the touch buttons only say "1" and "2", and flask 2 is a different one each run (the coach's
+## "flask2" step, and the toast when it is drunk, say it; Content.BUFFS holds the numbers).
+const FLASK_EFFECT := {"life": "heals 45% of your life", "quicksilver": "40% faster for 5 s", "granite": "+120 armour for 5 s",
+	"diamond": "+30% critical strike chance for 5 s", "sulphur": "burns the foes around you for 5 s"}
 
 # ---------------------------------------------------------------- lore (collectibles)
 const LORE := [

@@ -537,7 +537,7 @@ const HOW_TO := [
 	["Fight", "Your weapons fire on their own at the nearest foe. Options › Game sets what they aim at."],
 	["Grow", "Foes drop blue crystals. Gather them to level up, then pick one of the cards: a new weapon (up to four), a weapon level, a perk or a support gem."],
 	["Evolve and fuse", "A weapon at level 5 evolves with the perk its card names (the Codex's Arsenal lists every pair). Two evolved weapons can fuse into a hybrid. A pair kindled at Mother Kiln's furnace fuses at level 5, evolved or not."],
-	["Survive", "ROLL dashes through attacks (Space); rolling just before a hit is a perfect dodge. JUMP clears rocks, walls and gaps (F). Flasks 1 and 2 heal and buff, and refill as you kill."],
+	["Survive", "ROLL dashes through attacks (Space); rolling just before a hit is a perfect dodge. JUMP clears rocks, walls and gaps (F). Flask 1 heals; flask 2 is a different utility flask each run, named when you drink it. Both refill as you kill."],
 	["Ultimate", "ULT charges as you fight. When its ring glows, tap it (R)."],
 	["The dark", "The light fades as a run goes on and kills relight it. In the dark you are Engulfed: foes hit harder and drop richer loot."],
 	["Rift Gates", "Kills fill your hoard. Step into a Rift Gate to bank it: gold, Echoes and rare items. Walk past one and the hoard grows, but if you fall first it is lost."],

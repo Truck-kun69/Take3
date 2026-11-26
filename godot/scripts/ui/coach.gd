@@ -4,7 +4,8 @@ extends Control
 ## while Options > Game > Tutorial tips is on and steps remain, Captain Brask shows one prompt at a time over the
 ## HUD, with a pulsing ring on the touch button it names. A step finishes when the player does the thing
 ## (Save.data.tutorial.done keeps it, so it is taught once); a contextual step waits for its moment (hurt: the
-## flask; a Rift Gate open: banking the hoard; charged: the ultimate; a find: the loot); a prompt left undone for
+## flask; flask 1 learnt and flask 2 charged: what flask 2 holds; a Rift Gate open: banking the hoard; charged: the
+## ultimate; a find: the loot); a prompt left undone for
 ## SHOW_MAX seconds steps aside and comes back SNOOZE seconds later. The level-up step is taught on the level-up page
 ## itself (Screens.show_levelup). The goal (survive the clock, then the boss) follows the first fight: the review
 ## found the run never said it, nor that a hoard not banked at a gate is lost on death.
@@ -16,14 +17,15 @@ const STEPS := {
 	"shards": {"touch": "Foes drop blue crystals. Walk over them to gain experience.", "keys": "Foes drop blue crystals. Walk over them to gain experience.", "ring": ""},
 	"roll": {"touch": "Tap ROLL to dash through danger. Rolling just before a hit is a perfect dodge.", "keys": "Press Space to roll through danger. Rolling just before a hit is a perfect dodge.", "ring": "roll"},
 	"flask": {"touch": "Hurt? Tap flask 1 to heal. Kills refill it.", "keys": "Hurt? Press 1 to drink your life flask. Kills refill it.", "ring": "f0"},
+	"flask2": {"touch": "Flask 2 holds %s: %s. Tap 2 to drink it.", "keys": "Flask 2 holds %s: %s. Press 2 to drink it.", "ring": "f1"},
 	"jump": {"touch": "Tap JUMP to leap over rocks, walls and gaps.", "keys": "Press F to leap over rocks, walls and gaps.", "ring": "jump"},
 	"ult": {"touch": "Your ultimate is charged: tap ULT.", "keys": "Your ultimate is charged: press R.", "ring": "ult"},
 	"loot": {"touch": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "keys": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "ring": ""},
 	"gate": {"touch": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "keys": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "ring": ""},
 }
 const LOOT_AUTO := "Better gear equips itself. See every find in Pause > Gear & Crafting."
-const ORDER := ["move", "fight", "goal", "shards", "roll", "flask", "jump", "ult", "loot", "gate"]
-const CONTEXT := ["flask", "gate", "ult", "loot"]  # these wait for their moment, and take the stage when it comes
+const ORDER := ["move", "fight", "goal", "shards", "roll", "flask", "flask2", "jump", "ult", "loot", "gate"]
+const CONTEXT := ["flask", "gate", "ult", "flask2", "loot"]  # these wait for their moment, and take the stage when it comes
 const LEVELUP := "levelup"                         # taught on the level-up page (Screens.show_levelup; main's "pick")
 const SHOW_MAX := 12.0
 const SNOOZE := 25.0
@@ -68,6 +70,8 @@ var _roll_prev := 9.0
 var _rolled := false
 var _f_prev := 0.0
 var _drank := false
+var _f2_prev := 0.0
+var _drank2 := false
 var _ult_prev := 0.0
 var _ulted := false
 var _item := false
@@ -107,6 +111,7 @@ func bind(world: World, tc: TouchControls) -> void:
 	_last_pp = world.pp
 	_roll_prev = world.roll_age
 	_f_prev = float(world.flasks[0].c)
+	_f2_prev = float(world.flasks[1].c)
 	_ult_prev = world.ult
 	_item = false
 	if not world.item_found.is_connected(_on_item): world.item_found.connect(_on_item)
@@ -141,6 +146,9 @@ func tick(dt: float) -> void:
 	var fc := float(w.flasks[0].c)
 	if fc < _f_prev - 0.5: _drank = true                  # the life flask was drunk (kills only ever add)
 	_f_prev = fc
+	var fc2 := float(w.flasks[1].c)
+	if fc2 < _f2_prev - 0.5: _drank2 = true               # flask 2 was drunk (a new flask picked up only adds)
+	_f2_prev = fc2
 	if w.ult < _ult_prev - 50.0: _ulted = true
 	_ult_prev = w.ult
 	for k in snooze.keys():
@@ -184,6 +192,7 @@ func _ready_for(id: String, d: Dictionary) -> bool:
 		"shards": return w.gem_n > 0 and (T.has("fight") or w.t > 12.0)
 		"roll": return (T.has("shards") or w.t > 30.0) and (w.t > 20.0 and foes_near(220.0) >= 3)
 		"flask": return w.hp < w.max_hp * 0.7 and float(w.flasks[0].c) >= float(w.flasks[0].cost)
+		"flask2": return T.has("flask") and float(w.flasks[1].c) >= float(w.flasks[1].cost)
 		"jump": return T.has("roll") and w.t > 50.0
 		"ult": return w.ult >= 100.0
 		"loot": return _item
@@ -199,6 +208,7 @@ func _done(id: String) -> bool:
 		"shards": return w.lvl > _lv0 or w.xp > _xp0 + 0.001
 		"roll": return _rolled
 		"flask": return _drank
+		"flask2": return _drank2
 		"jump": return w.jump_t > 0.0
 		"ult": return _ulted or w.ult < 100.0
 		"loot": return shown_t > INFO_T
@@ -212,17 +222,23 @@ func _start(id: String) -> void:
 	_lv0 = w.lvl
 	_rolled = false
 	_drank = false
+	_drank2 = false
 	_ulted = false
 	_bank0 = int(w.metrics.get("banked", 0))
 	if id == "move": _moved = 0.0
-	_show_panel(prompt(id, _touch_ui()))
+	_show_panel(prompt(id, _touch_ui(), w))
 
 ## A step's words: for touch or for keys. With "Auto-equip upgrades" on (the default), a find that is an upgrade is
 ## already worn when the loot step speaks, so it says so instead of "Equip it" (the review found the two disagreeing).
-static func prompt(id: String, touch_ui: bool) -> String:
+## Flask 2 is a different utility flask each run, a bare "2" on the touch buttons: its step names it and what it does.
+static func prompt(id: String, touch_ui: bool, w: World = null) -> String:
 	if id == "loot" and bool(Save.opt("auto_equip")): return LOOT_AUTO
 	var S: Dictionary = STEPS[id]
-	return String(S.touch) if touch_ui else String(S.keys)
+	var txt := String(S.touch) if touch_ui else String(S.keys)
+	if id == "flask2":
+		var fid := String(w.flasks[1].id) if w != null else "quicksilver"
+		txt = txt % [String(Content.FLASK_NAME.get(fid, fid)).trim_suffix(" Flask"), String(Content.FLASK_EFFECT.get(fid, ""))]
+	return txt
 
 func _touch_ui() -> bool:
 	return touch != null and touch.shows_buttons()

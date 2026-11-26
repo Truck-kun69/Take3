@@ -3648,6 +3648,19 @@ func _coach_tests() -> void:
 	ok(c.active == "ult", "a charged ultimate takes the stage")
 	w.ult = 0.0; c.tick(0.1)
 	ok((d.tutorial.done as Array).has("ult"), "using it finishes it")
+	# flask 2: a different utility flask each run, a bare "2" on touch; once flask 1 is learnt Brask names it and rings it
+	c.tick(Coach.GAP + 0.1)
+	var f2id := String(w.flasks[1].id)
+	var f2 := Coach.prompt("flask2", true, w)
+	var f2k := Coach.prompt("flask2", false, w)
+	ok(c.active == "flask2" and Coach.STEPS.flask2.ring == "f1" and f2.contains(String(Content.FLASK_NAME[f2id]).trim_suffix(" Flask")) and f2.contains(String(Content.FLASK_EFFECT[f2id]))
+		and f2.ends_with("Tap 2 to drink it.") and f2k.ends_with("Press 2 to drink it."), "with flask 1 learnt and flask 2 charged, Brask names it and what it does, ringing its button (%s)" % f2)
+	var toasts: Array = []
+	w.toast.connect(func(t, _c): toasts.append(t))
+	w.use_flask(1)
+	c.tick(0.1)
+	ok((d.tutorial.done as Array).has("flask2") and c.active == "" and toasts.has("%s: %s" % [Content.FLASK_NAME[f2id], Content.FLASK_EFFECT[f2id]]),
+		"drinking it finishes the step, and a toast says which flask it was and what it did (%s)" % str(toasts))
 	# the goal follows the first fight: survive the clock, then the boss (the run never said it); it informs, then is done
 	c.tick(Coach.GAP + 0.1)
 	ok(c.active == "goal" and String(Coach.STEPS.goal.touch).contains("0:00") and String(Coach.STEPS.goal.touch).contains("boss"),

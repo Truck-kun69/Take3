@@ -836,6 +836,9 @@ func use_flask(f: int) -> bool:
 		return false
 	fl.c -= fl.cost
 	Sfx.play("flask")
+	if f == 1:                                          # flask 2 is a different one each run: say which, and what it did
+		toast.emit("%s: %s" % [Content.FLASK_NAME.get(fl.id, String(fl.id)), Content.FLASK_EFFECT.get(fl.id, "")],
+			Content.col(Content.BUFFS[fl.id].col) if Content.BUFFS.has(fl.id) else el(Content.El.FIRE))
 	match fl.id:
 		"life": heal_hot += max_hp * 0.45 * stats.value("flask_heal", 1.0)
 		"sulphur":
