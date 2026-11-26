@@ -78,7 +78,7 @@ func _pose(k: float, glide: float) -> void:
 	var gy: float = world.terrain.height(Vector2(pos.x, pos.z))
 	pos.y = maxf(pos.y, gy + HOVER * (1.0 - 0.5 * gl))
 	look.y += world.terrain.height(Vector2(look.x, look.z))
-	var sh := _shake * _shake * 22.0
+	var sh := _shake * _shake * 22.0 * float(Save.opt("shake"))     # Options > Screen shake, as in a run (it shook at 0%)
 	var t := Time.get_ticks_msec() / 1000.0
 	view.cine_pos = pos + Vector3(sin(t * 53.0), sin(t * 41.0) * 0.6, cos(t * 47.0)) * sh
 	view.cine_look = look

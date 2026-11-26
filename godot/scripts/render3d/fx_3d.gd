@@ -313,7 +313,13 @@ func _consume_feed() -> void:
 		var p3 := Vector3(f.pos.x, g3 + 30.0, f.pos.y)
 		match f.k:
 			"ring": add_light(p3, f.col, 3.5, maxf(120.0, float(f.max) * 1.2), f.life)
-			"zap": add_light(Vector3(f.pos.x, g3 + 60.0, f.pos.y), f.col, 5.0, 200.0, 0.22); _mark(f.pos, f.r * 0.9, 1)
+			"zap":
+				# Reduce flashing: a dimmer, slower light. The Stormwright's Thunderdome strikes every 0.1 s for 4 s; at
+				# energy 5 for 0.22 s each lit its ground in pulses, 4 flashes a second over a quarter of a 10-degree
+				# field (WCAG 2.3.1 allows 3), with the option on as well as off
+				var rf := bool(Save.opt("reduce_flash"))
+				add_light(Vector3(f.pos.x, g3 + 60.0, f.pos.y), f.col, 1.5 if rf else 5.0, 200.0, 0.5 if rf else 0.22)
+				_mark(f.pos, f.r * 0.9, 1)
 			"arc": add_light(p3, f.col, 2.0, 120.0, 0.15)
 			"incinerate":                    # the Emberwitch's detonation: a scorch, a flash, a spray of embers
 				_mark(f.pos, float(f.r) * 0.95, 1)
@@ -708,8 +714,13 @@ func _lightning() -> void:
 				var y := 420.0 * (1.0 - s / 8.0)
 				var j := 0.0 if s == 8 else 1.0
 				pts.append(Vector3(at.x + sin(seed_v + s * 2.1 + time * 30.0) * 16.0 * j, y, at.y + cos(seed_v * 0.7 + s * 1.7) * 16.0 * j))
-			_ribbon(pts, 9.0 * k + 2.0, col)
-			_ribbon(pts, 3.0, Color(1, 1, 1, k))
+			# Reduce flashing: no white core, and a narrower bolt at 0.4 of the intensity. The bolts themselves (additive,
+			# x2.5, falling from 420 units, wide near the camera) were most of each strike's pulse: with the dimmer
+			# light alone a quarter of a 10-degree field still flashed 3.5 times a second (7 transitions)
+			var rfz := bool(Save.opt("reduce_flash"))
+			if rfz: col.a *= 0.4
+			_ribbon(pts, (5.0 if rfz else 9.0) * k + 2.0, col)
+			_ribbon(pts, 3.0, col if rfz else Color(1, 1, 1, k))
 		elif f.k == "arc":
 			var src: PackedVector2Array = f.pts
 			var pts2 := PackedVector3Array()
