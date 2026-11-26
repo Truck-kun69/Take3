@@ -400,10 +400,11 @@ func _draw() -> void:
 		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color("c99a50"), 1.5)
 	_lantern()
 
-## Small HUD text (hoard, prophecy, Engulfed): UIKit.MIN_TEXT - 2 with a dark outline so it reads over effects.
+## Small HUD text (hoard, prophecy, Engulfed): UIKit.MIN_TEXT (it was 16, 10.3 sp on an S22) with a dark outline so
+## it reads over effects.
 func _small(f: Font, p: Vector2, txt: String, c: Color) -> void:
-	draw_string_outline(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0.02, 0.015, 0.02, 0.85 * c.a))
-	draw_string(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, c)
+	draw_string_outline(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.MIN_TEXT, 4, Color(0.02, 0.015, 0.02, 0.85 * c.a))
+	draw_string(f, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.MIN_TEXT, c)
 
 ## The lantern (World.light): a flame and a bar left of the timer plate. Gold while lit, guttering
 ## toward violet as it fades; below the Engulfed line it pulses and the flame shrinks to an ember.
@@ -451,11 +452,11 @@ func _lantern() -> void:
 		var pr: Vector2 = w.prophecy_progress()
 		var pc := Color("ffd27a") if not w.prophecy_done else Color("8aff9a")
 		var ptx := ("%s  %d/%d" % [Content.PROPHECIES[w.prophecy.id].name.to_upper(), int(pr.x), int(pr.y)]) if not w.prophecy_done else "PROPHECY FULFILLED"
-		_small(f4, Vector2(bar.position.x, bar.end.y + 32.0), ptx, pc)
+		_small(f4, Vector2(bar.position.x, bar.end.y + 36.0), ptx, pc)      # 20 under the hoard's line at the 18 floor
 	if eng:
 		var f2 := UIKit.font("label")
 		var et := "ENGULFED"
-		var ew := f2.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		var ew := f2.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.MIN_TEXT).x     # measured at the size _small draws
 		_small(f2, Vector2(fc.x - 14.0 - ew, bar.end.y - 1.0), et, Color(0.8, 0.68, 1.0, 0.6 + 0.4 * pulse))
 
 
@@ -493,7 +494,7 @@ class Globe extends Control:
 		_liq.size = size - inset * 2.0
 		_frame.size = size
 		_val.size = size
-		_val.add_theme_font_size_override("font_size", int(size.x * 0.15))
+		_val.add_theme_font_size_override("font_size", maxi(UIKit.MIN_TEXT, int(size.x * 0.15)))     # 16 on a touch S22 (10.3 sp)
 		_val.text = value_text
 		var m := _liq.material as ShaderMaterial
 		m.set_shader_parameter("fill", fill)

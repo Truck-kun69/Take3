@@ -251,7 +251,7 @@ func _draw() -> void:
 			if ready and b.id == "ult":
 				var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)
 				draw_arc(bp, br + 5.0, 0, TAU, 48, Color(col.r, col.g, col.b, 0.35 + 0.35 * pulse), 3.0, true)
-		var fs := int(br * 0.4)
+		var fs := maxi(UIKit.MIN_TEXT, int(br * 0.4))      # the flasks' "1" / "2" were 11 units (7.1 sp on an S22), JUMP 12
 		var tw := font.get_string_size(b.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		var tp := bp + Vector2(-tw * 0.5, fs * 0.36)
 		draw_string_outline(font, tp, b.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.8))

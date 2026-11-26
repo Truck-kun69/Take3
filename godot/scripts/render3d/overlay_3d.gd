@@ -13,6 +13,10 @@ var f_tag: Font                    # events, affixes (Marcellus SC)
 var f_loot: Font                   # loot plates (EB Garamond)
 var _vig: ColorRect
 const VIGNETTE_MAX := 0.35
+## An elite's affix names over its life bar: 16 units (10.3 sp on an S22; they were 12, 7.7 sp). Not the UI's 18-unit
+## floor: measured over 60 frames of a fight with 8 drops and 6 affixed elites, tags overlapped loot plates 387 times at
+## 12, 520 at 16 and 622 at 18 (133 and 235 new). A variable so a probe can draw the same frame at another size.
+var affix_size := 16
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -105,7 +109,7 @@ func _draw() -> void:
 			_text(sp4 + Vector2(0, -12), w.bosses.exile_name, Color("ff8a2b"), 16, 5, f_name)
 			_bar(sp4, 70.0, w.sw.hp[i] / w.sw.mhp[i], Color("ff8a2b"))
 		else:
-			_text(sp4, e[1], Color("8ab4ff"), 12, 4)
+			_text(sp4, e[1], Color("8ab4ff"), affix_size, 4)
 			_bar(sp4 + Vector2(0, 6), 40.0, w.sw.hp[i] / w.sw.mhp[i], Color("ffd84a"))
 	# damage numbers
 	if not w.texts.is_empty(): Diag.first("damage numbers")
