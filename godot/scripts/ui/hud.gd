@@ -156,6 +156,7 @@ func _put(k: String, node: Label, txt: String) -> bool:
 
 var _last_vs := Vector2(-1, -1)
 var _last_touch := false
+var _last_lh := false
 var _last_hp := -1
 var _last_ult := -1
 var _last_clock := -1
@@ -225,16 +226,20 @@ func _process(dt: float) -> void:
 	# every control every frame, and reset the top plate's size, which re-ran its container layout).
 	# Content-driven positions (the plate's centring, the boss bar under it, the combo under the event
 	# list) follow their text through `_put`, which reports a change.
-	var relayout := vs != _last_vs or touch != _last_touch
+	# the left-handed layout puts the touch buttons bottom left, so the life globe takes the bottom right (it sat on
+	# ROLL: the button's centre 129 px from the globe's on an S22, their radii 78 + 95)
+	var lh := touch and bool(Save.opt("left_handed"))
+	var relayout := vs != _last_vs or touch != _last_touch or lh != _last_lh
 	if relayout:
 		_last_vs = vs
 		_last_touch = touch
+		_last_lh = lh
 		var gs := clampf(minf(vs.x, vs.y) / 720.0, 0.75, 1.25) * (0.85 if touch else 1.0)
 		var m := UIKit.safe_margins(vs)          # x left, y top, z right, w bottom: camera cutouts, rounded corners
 		_safe = m
 		var gsize := 150.0 * gs
 		life.size = Vector2(gsize, gsize)
-		life.position = Vector2(14 + m.x, vs.y - gsize - 12 - m.w)
+		life.position = Vector2((vs.x - gsize - 14 - m.z) if lh else (14 + m.x), vs.y - gsize - 12 - m.w)
 		ultg.visible = not touch
 		ultg.size = Vector2(gsize, gsize)
 		ultg.position = Vector2(vs.x - gsize - 14 - m.z, vs.y - gsize - 12 - m.w)
@@ -243,8 +248,8 @@ func _process(dt: float) -> void:
 		bar.slot = 76.0 * gs
 		bar.size = Vector2(bw, 76.0 * gs + 20)
 		bar.position = Vector2((vs.x - bw) * 0.5, vs.y - bar.size.y - 22 - m.w)
-		var xl := life.position.x + gsize + 10
-		var xr := (ultg.position.x - 10) if not touch else (vs.x * 0.55)
+		var xl := (vs.x * 0.45) if lh else (life.position.x + gsize + 10)
+		var xr := (life.position.x - 10) if lh else ((ultg.position.x - 10) if not touch else (vs.x * 0.55))
 		xp_bar.position = Vector2(xl, vs.y - 26 - m.w)
 		xp_bar.size = Vector2(maxf(60.0, xr - xl), 16)
 		pause_btn.position = Vector2(vs.x - PAUSE_SIDE - 12 - m.z, 10 + m.y)

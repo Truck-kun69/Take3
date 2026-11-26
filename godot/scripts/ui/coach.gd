@@ -79,6 +79,7 @@ var _bank0 := 0
 var _panel: PanelContainer
 var _body: Label
 var _anim := 0.0
+var _base_y := 0.0           # the panel's top as _show_panel placed it (a tall subtitle lifts it from there)
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -134,6 +135,12 @@ func _process(dt: float) -> void:
 	tick(dt)
 	_anim += dt
 	if active != "" and _ring_at().z > 0.0: queue_redraw()
+	# a subtitle taller than Subtitles.RUN_ROOM (four lines upright) pushes the panel up, so the two never overlap
+	if _panel != null and _panel.visible and UIKit.is_touch():
+		var y := _base_y
+		var sp: Control = main.subtitles._panel if main.get("subtitles") != null else null
+		if sp != null and sp.visible: y = minf(_base_y, sp.get_global_rect().position.y - 8.0 - _panel.size.y)
+		_panel.position.y = y
 
 ## One step of the coach's watch: the trackers, then the prompt on screen (finished? stepped aside?) or the next.
 func tick(dt: float) -> void:
@@ -238,6 +245,7 @@ static func prompt(id: String, touch_ui: bool, w: World = null) -> String:
 	if id == "flask2":
 		var fid := String(w.flasks[1].id) if w != null else "quicksilver"
 		txt = txt % [String(Content.FLASK_NAME.get(fid, fid)).trim_suffix(" Flask"), String(Content.FLASK_EFFECT.get(fid, ""))]
+	if touch_ui and bool(Save.opt("left_handed")): txt = txt.replace("the left half", "the right half")   # the stick's side
 	return txt
 
 func _touch_ui() -> bool:
@@ -255,10 +263,12 @@ func _show_panel(txt: String) -> void:
 	_panel.reset_size()
 	_panel.size.x = wdt
 	var h := _panel.get_combined_minimum_size().y
-	# under the in-run subtitle (Subtitles._layout: its foot is 196 units up, 330 upright) and over the bottom edge
+	# on touch above the in-run subtitle (Subtitles.run_foot, just over the bottom controls) and room for three of its
+	# lines; with a keyboard under it (its foot is 196 units up, 330 upright) and over the bottom edge
 	var m := UIKit.safe_margins(vs)
-	var foot := vs.y - m.w - (96.0 if vs.x >= 820.0 else 236.0)
+	var foot := vs.y - Subtitles.run_foot(vs, m) - Subtitles.RUN_ROOM if UIKit.is_touch() else vs.y - m.w - (96.0 if vs.x >= 820.0 else 236.0)
 	_panel.position = Vector2((vs.x - wdt) * 0.5, foot - h)
+	_base_y = foot - h
 	_panel.modulate.a = 0.0
 	create_tween().tween_property(_panel, "modulate:a", 1.0, 0.25)
 

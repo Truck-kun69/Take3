@@ -116,18 +116,37 @@ func shown_text() -> String:
 
 ## Centred, at most 920 px wide; in a run its bottom edge sits above the globes and the action bar (higher in
 ## portrait, over the touch buttons), in the menus it hangs from the top of the safe area.
+## In a run on touch the banner's foot sits just above the bottom controls: held sideways in the XP bar's row between
+## the life globe and the touch buttons (RUN_FOOT_SIDE), at most RUN_W_SIDE of the width so it clears both; upright
+## just above the touch cluster (RUN_FOOT_UP). Held sideways it used to sit 196 units up, across the playfield just
+## under the hero (57-69% of the screen's height, 67% of its width). With a keyboard the action bar fills the bottom
+## and it stays above it (RUN_FOOT_KEYS). The coach's panel sits RUN_ROOM (a three-line banner) above its foot.
+const RUN_FOOT_SIDE := 34.0
+const RUN_FOOT_UP := 244.0
+const RUN_FOOT_KEYS := 196.0
+const RUN_W_SIDE := 0.58
+const RUN_ROOM := 112.0
+static func run_foot(vs: Vector2, m: Vector4) -> float:
+	if not UIKit.is_touch(): return m.w + (RUN_FOOT_KEYS if vs.x >= 820.0 else 330.0)
+	return m.w + (RUN_FOOT_SIDE if vs.x >= 820.0 else RUN_FOOT_UP)
+
 func _layout() -> void:
 	if _panel == null: return
 	var vs := get_viewport_rect().size
 	var m := UIKit.safe_margins(vs)
 	var w := minf(vs.x - m.x - m.z - 48.0, 920.0)
+	var shift := 0.0
+	if in_run and UIKit.is_touch() and vs.x >= 820.0:
+		# centred in the safe area, not the screen: a camera cutout on the left-handed side shifts the touch buttons
+		w = minf(w, (vs.x - m.x - m.z) * RUN_W_SIDE)
+		shift = (m.x - m.z) * 0.5
 	_panel.anchor_left = 0.5
 	_panel.anchor_right = 0.5
-	_panel.offset_left = -w * 0.5
-	_panel.offset_right = w * 0.5
+	_panel.offset_left = -w * 0.5 + shift
+	_panel.offset_right = w * 0.5 + shift
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	if in_run:
-		var lift := m.w + (196.0 if vs.x >= 820.0 else 330.0)
+		var lift := run_foot(vs, m)
 		_panel.anchor_top = 1.0
 		_panel.anchor_bottom = 1.0
 		_panel.offset_top = -lift
