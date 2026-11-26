@@ -13,6 +13,10 @@ var _craft_msg := ""
 var parent_page := ""          # "camp" while a Camp station (or a page opened from the Camp) is up: Back returns there
 var _in_stash := false         # the Gear page is up (a redraw of it is not a new visit)
 var _stash_new: Array = []     # the finds marked NEW on this visit to the Gear page
+var _armed := ""               # Gear: the action waiting for its second tap ("salvage", "extract" or a shard's id) ...
+var _armed_uid := -1           # ... on this item
+var _body_sc: ScrollContainer  # the open sheet's scrolling body (a Gear redraw keeps its scroll)
+var _prev_scroll := 0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -34,9 +38,11 @@ func _open(max_w: int = 980) -> VBoxContainer:
 	_was_stash = _in_stash
 	_in_stash = false
 	var fresh := get_child_count() == 0          # opening over the game, not refreshing an open sheet
+	_prev_scroll = _body_sc.scroll_vertical if is_instance_valid(_body_sc) else 0
 	UIKit.clear(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var v := UIKit.sheet(self, max_w)
+	_body_sc = v.get_parent() as ScrollContainer
 	if fresh:                                    # fade in and settle up a few pixels (polish pass)
 		modulate.a = 0.0
 		var m: Control = get_child(get_child_count() - 1)
@@ -554,6 +560,24 @@ func show_atlas() -> void:
 	_back(v, "endgame")
 
 # ================================================================= stash / crafting / cube
+## Gear's two-tap actions: the one waiting for its second tap, on which item.
+func _arm(what: String, uid: int) -> void:
+	_armed = what
+	_armed_uid = uid
+
+func _disarm() -> void:
+	_armed = ""
+	_armed_uid = -1
+
+func _is_armed(what: String, uid: int) -> bool:
+	return _armed == what and _armed_uid == uid
+
+## A redrawn page's scrolling body back where it was, once its new content is laid out.
+func _keep_scroll(sc: ScrollContainer, at: int) -> void:
+	if at <= 0 or sc == null: return
+	await get_tree().process_frame
+	if is_instance_valid(sc): sc.scroll_vertical = at
+
 ## Equipped gear first (slot order), then the stash: the rarest first, the strongest first within a rarity.
 func _gear_list() -> Array:
 	var out: Array = []
@@ -579,6 +603,9 @@ func show_stash(in_run: bool = false) -> void:
 		_stash_new = (Save.data.get("new_items", []) as Array).duplicate()
 		Save.data.new_items = []
 		Save.mark_dirty()
+		_disarm()
+	else:                                    # a redraw (a tap on this page) keeps the page where the thumb left it
+		_keep_scroll(_body_sc, _prev_scroll)
 	_title(v, "Gear, Crafting & Cube", "Select an item, then apply a shard. Legendary items dissolve in the Cube and keep their power in the Codex forever.")
 	v.add_child(_resources(Save.data))                     # the crafting shards you hold
 	var list := _gear_list()
@@ -614,7 +641,7 @@ func show_stash(in_run: bool = false) -> void:
 		if not e.eq and _stash_new.has(int(it.uid)): marks += "  \u00b7  NEW"
 		if not e.eq and Camp.is_locked(Save.data, it): marks += "  \u00b7  locked"
 		var t := UIKit.tile(Items.name_of(it), "%s  \u00b7  %s  \u00b7  item level %d%s" % [Content.RARITY_NAME[it.rarity], Content.SLOT_NAME[it.slot], it.ilvl, marks],
-			func(): _sel_item = k; show_stash(in_run), rc, k == _sel_item, 62, true, rc.lightened(0.15))
+			func(): _sel_item = k; _disarm(); show_stash(in_run), rc, k == _sel_item, 62, true, rc.lightened(0.15))
 		left.add_child(t)
 	if _sel_item >= 0 and _sel_item < list.size():
 		var sel: Dictionary = list[_sel_item]
@@ -643,23 +670,55 @@ func show_stash(in_run: bool = false) -> void:
 		cp.add_theme_stylebox_override("panel", UIKit.nine("card", 46, Vector4(26, 26, 26, 24), Color(0.78, 0.76, 0.74).lerp(rc2, 0.5)))
 		cp.add_child(card)
 		right.add_child(cp)
+		# what cannot be undone takes two taps, as the bench's "Salvage all" does: salvaging a Rare or a Legendary,
+		# extracting a legendary power, applying a shard (its first tap shows what it does: touch shows no tooltips)
+		var uid := int(it.uid)
 		if not sel.eq:
 			var locked := Camp.is_locked(Save.data, it)
-			var yl := UIKit.label(("Locked: salvage, the bench and the furnace leave it alone." if locked else "Salvage gives " + Camp.yield_text(Camp.salvage_yield(it)) + "."), 15, UIKit.DIM, true, "italic")
+			var known: bool = String(it.leg) != "" and (Save.data.codex as Array).has(String(it.leg))
+			var yt := "Locked: salvage, the bench and the furnace leave it alone." if locked else "Salvage gives " + Camp.yield_text(Camp.salvage_yield(it)) + "."
+			if known: yt += " Its power is already in your Codex: extracting it again gives nothing."
+			var yl := UIKit.label(yt, 15, UIKit.DIM, true, "italic")
 			yl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			card.add_child(yl)
-			foot_acts.append(UIKit.button("Equip", func(): act.emit("equip", it); show_stash(in_run), 50))
-			var sb := UIKit.button("Salvage", func(): act.emit("salvage", it); _sel_item = -1; show_stash(in_run), 50)
+			foot_acts.append(UIKit.button("Equip", func(): _disarm(); act.emit("equip", it); show_stash(in_run), 50))
+			var two := int(it.rarity) >= Content.Rarity.RARE
+			var armed_s := _is_armed("salvage", uid)
+			var sb := UIKit.button("Tap to confirm" if armed_s else "Salvage", func():
+				if two and not armed_s:
+					_arm("salvage", uid)
+				else:
+					_disarm()
+					act.emit("salvage", it)
+					_sel_item = -1
+				show_stash(in_run), 50)
 			sb.disabled = locked
 			foot_acts.append(sb)
-			foot_acts.append(UIKit.button("Unlock" if locked else "Lock", func(): Camp.toggle_lock(Save.data, it); Save.mark_dirty(); show_stash(in_run), 50))
+			foot_acts.append(UIKit.button("Unlock" if locked else "Lock", func(): _disarm(); Camp.toggle_lock(Save.data, it); Save.mark_dirty(); show_stash(in_run), 50))
 			if String(it.leg) != "":
-				foot_acts.append(UIKit.button("Cube: extract", func(): act.emit("extract", it); _sel_item = -1; show_stash(in_run), 50))
+				var armed_x := _is_armed("extract", uid)
+				var xb := UIKit.button("Power known" if known else ("Tap to confirm" if armed_x else "Cube: extract"), func():
+					if not armed_x:
+						_arm("extract", uid)
+					else:
+						_disarm()
+						act.emit("extract", it)
+						_sel_item = -1
+					show_stash(in_run), 50)
+				xb.disabled = known
+				foot_acts.append(xb)
 		right.add_child(_section("Craft"))
 		var grid := _grid(2, 8)
 		for c in Content.CURRENCY_IDS:
 			var n := int(Save.data.currency[c])
-			var b2 := UIKit.button("%s  %d" % [Content.CURRENCY[c].name, n], func(): _craft_msg = main.craft(it, c); show_stash(in_run), 46)
+			var armed_c := _is_armed(c, uid)
+			var b2 := UIKit.button("Tap to apply" if armed_c else "%s  %d" % [Content.CURRENCY[c].name, n], func():
+				if not armed_c:
+					_arm(c, uid)
+				else:
+					_disarm()
+					_craft_msg = main.craft(it, c)
+				show_stash(in_run), 46)
 			b2.tooltip_text = Content.CURRENCY[c].d
 			b2.disabled = n <= 0
 			b2.add_theme_color_override("font_color", Content.col(Content.CURRENCY[c].col))
@@ -667,6 +726,10 @@ func show_stash(in_run: bool = false) -> void:
 			b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			grid.add_child(b2)
 		right.add_child(grid)
+		if Content.CURRENCY.has(_armed) and _armed_uid == uid:          # under the grid, so no button moves
+			var sd := UIKit.label("%s: %s Tap it again to apply it to this item." % [Content.CURRENCY[_armed].name, Content.CURRENCY[_armed].d], 17, UIKit.TEXT, true, "italic")
+			sd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			right.add_child(sd)
 		if _craft_msg != "":
 			right.add_child(UIKit.label(_craft_msg, 17, Color("ffcf9a"), true, "italic"))
 	else:

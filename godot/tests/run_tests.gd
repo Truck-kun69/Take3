@@ -3978,6 +3978,61 @@ func _camp_ui_tests() -> void:
 		if _live(l) and String(l.text).contains("NEW"): news3 += 1
 	ok(hub_new and news == 3 and count_line and cleared and news2 == 3 and news3 == 0,
 		"the hub counts new finds, the Gear page marks them NEW with the stash count, keeps the marks while it is open and drops them after (%s %d %s %s %d %d)" % [hub_new, news, count_line, cleared, news2, news3])
+	# the Gear page: what cannot be undone takes two taps (salvaging a Rare or better, extracting a power, applying a
+	# shard); one tap leaves the stash as it was; a duplicate power cannot be extracted for nothing; Normal and Magic
+	# still salvage in one tap
+	sv.data.stash = []
+	sv.data.codex = []
+	sv.data.locked = []
+	var rare := Items.make("ring", Content.Rarity.RARE, 20, rng)
+	var rare2 := Items.make("ring", Content.Rarity.RARE, 20, rng)
+	var leg := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
+	var magic := Items.make("boots", Content.Rarity.MAGIC, 20, rng)
+	for it in [rare, rare2, leg, magic]: sv.data.stash.append(it)
+	sv.data.currency.chaos = 2
+	mn.screens.parent_page = "camp"
+	var at := func(it: Dictionary) -> int:
+		var gl: Array = mn.screens._gear_list()
+		for k in gl.size():
+			if int(gl[k].it.uid) == int(it.uid): return k
+		return -1
+	mn.screens._sel_item = at.call(rare)
+	mn.screens.show_stash(false)
+	var g0: int = sv.data.stash.size()
+	var s1: bool = _press(mn.screens, "Salvage") and sv.data.stash.size() == g0 and (sv.data.stash as Array).has(rare) and _btn(mn.screens, "Tap to confirm") != null
+	var s2: bool = _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(rare)
+	mn.screens._sel_item = at.call(leg)
+	mn.screens.show_stash(false)
+	var x1: bool = _press(mn.screens, "Cube: extract") and (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).is_empty()
+	var x2: bool = _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).has(String(leg.leg))
+	var dup := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
+	dup.leg = leg.leg
+	sv.data.stash.append(dup)
+	mn.screens._sel_item = at.call(dup)
+	mn.screens.show_stash(false)
+	var pk := _btn(mn.screens, "Power known")
+	var known_ok: bool = pk != null and pk.disabled and _btn(mn.screens, "Cube: extract") == null
+	mn.screens._sel_item = at.call(rare2)
+	mn.screens.show_stash(false)
+	var aff0 := JSON.stringify(rare2.affixes)
+	var ch0 := int(sv.data.currency.chaos)                 # the Rare salvaged above gave one more
+	await get_tree().process_frame
+	var sc0: ScrollContainer = mn.screens._body_sc
+	sc0.scroll_vertical = 100000                           # down to the craft grid, as a thumb would
+	var at_sv := sc0.scroll_vertical
+	var c1: bool = _press(mn.screens, "%s  %d" % [Content.CURRENCY.chaos.name, ch0]) and int(sv.data.currency.chaos) == ch0 and JSON.stringify(rare2.affixes) == aff0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var kept: bool = absi(mn.screens._body_sc.scroll_vertical - at_sv) <= 2         # the redraw keeps the page where it was
+	var told := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).begins_with("%s: %s" % [Content.CURRENCY.chaos.name, Content.CURRENCY.chaos.d]): told = true
+	var c2: bool = _press(mn.screens, "Tap to apply") and int(sv.data.currency.chaos) == ch0 - 1
+	mn.screens._sel_item = at.call(magic)
+	mn.screens.show_stash(false)
+	var m1: bool = _press(mn.screens, "Salvage") and not (sv.data.stash as Array).has(magic)
+	ok(s1 and s2 and x1 and x2 and known_ok and c1 and told and c2 and m1 and kept,
+		"Gear: one tap on Salvage (Rare), Cube: extract or a shard leaves the stash unchanged and the second applies it; a shard's first tap shows its effect, the page staying where it was (scrolled %d); a known power cannot be extracted; Magic salvages in one tap (%s %s %s %s %s %s %s %s %s %s)" % [at_sv, s1, s2, x1, x2, known_ok, c1, told, c2, m1, kept])
 	# "What's new": due once after an update to a profile that has played; never for a new one
 	var dw: Dictionary = Save.defaults()
 	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "a new profile never gets What's new")
