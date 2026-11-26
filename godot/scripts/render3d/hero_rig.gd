@@ -145,6 +145,7 @@ func _tag_meshes(n: Node, fm: ShaderMaterial) -> void:
 			d.rim_enabled = true
 			d.rim = 0.55
 			d.rim_tint = 0.35
+			if d.albedo_texture != null: d.albedo_color = Models.albedo_gain_color(hero_id)   # the albedo floor (Models.ALBEDO_GAIN)
 			if xray:                       # write XRAY_REF where visible; draw the silhouette pass where hidden
 				d.stencil_mode = BaseMaterial3D.STENCIL_MODE_CUSTOM
 				d.stencil_flags = BaseMaterial3D.STENCIL_FLAG_WRITE

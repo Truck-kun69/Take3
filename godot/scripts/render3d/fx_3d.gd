@@ -768,7 +768,10 @@ func _decals() -> void:
 	if not w.over and w.hp > 0.0:
 		var hc := Content.col(String(Content.HEROES[w.hero].col))
 		_circle(w.pp, HERO_RING_R * 1.6, 5, Color(hc.r, hc.g, hc.b, 0.16), 1.0)
-		_circle(w.pp, HERO_RING_R, 1, Color(hc.r, hc.g, hc.b, 0.85), 1.0, 0.8)
+		# the ring halfway to white: the Warden's gold was the rare elites' aura gold (dE00 5.6), the Stormwright's violet
+		# the breach ring's (4.4); the soft pool under it keeps the hero's own colour
+		var rc := hc.lerp(Color.WHITE, 0.5)
+		_circle(w.pp, HERO_RING_R, 1, Color(rc.r, rc.g, rc.b, 0.85), 1.0, 0.8)
 	if w.arena_r > 0.0:
 		_circle(Vector2.ZERO, w.arena_r + 20.0, 1, Color(0.75, 0.5, 1.0, 0.8), 1.0, w.arena_r / (w.arena_r + 20.0))
 	for z in w.teles:

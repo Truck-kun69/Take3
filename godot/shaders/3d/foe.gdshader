@@ -15,9 +15,13 @@ uniform vec3 glow_col : source_color = vec3(0.5, 0.85, 1.0);
 // the element swatches the UI shows, set by WorldView3D.bind. source_color, so they arrive linearised: the old typed-in
 // constants were read as linear (vec3(1, .15, .2) rendered #ff6c7b), which washed Bleed pink and paled every status.
 uniform vec3 status_cols[7] : source_color;
-// the act's Fresnel rim (WorldView3D STAGE_LOOK.rim): moon-cyan, molten-amber, frost-cyan, rift-violet, teal
+// the act's Fresnel rim (WorldView3D STAGE_LOOK.rim): moonlight, neutral, frost-cyan, neutral, teal
 uniform vec3 rim_col : source_color = vec3(0.0);
 uniform float rim_k = 0.0;
+// noise scale in model units (WorldView3D.bind, per kind): 2.2 for the 2-unit procedural meshes; the textured ones are
+// modelled 26-42 units tall, where 2.2 tiled g_noise ~20x per foe, its mips averaged to 0.5 and the ember crust's
+// cracks (abs(n - 0.5) < w) covered the whole body: burning foes rendered as blown cream blobs
+uniform float mp_scale = 2.2;
 // Vertex animation texture (Models.foe_vat, SVA3): row = frame, column = vertex (UV.x). INSTANCE_CUSTOM.x is
 // then the frame coordinate into it (the CPU picks the clip and time), blended between two rows. Positions
 // are RGBA8, 10 bits per axis over the clip set's box (vat_min + q / 1023 * vat_ext: RGB the top 8 bits,
@@ -38,7 +42,10 @@ uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform bool has_orm = false;
 uniform sampler2D orm_tex : filter_linear_mipmap, repeat_enable;
 varying flat float v_part;
-varying vec4 v_custom;
+// flat: per-instance values. Interpolated, a foe carrying Burn stacks (custom.w = flags + 256 x stacks) read 1279.9999
+// in places, and mod(w, 256) decoded those pixels as elite + exile + ally: white-lilac specks over every Emberwitch
+// pack (11-18% of its pixels above 245 luma, most of its shimmer)
+varying flat vec4 v_custom;
 varying vec3 v_mpos;
 // bump height of the skin noise, in world units (a foe is about 40-60 units tall)
 const float BUMP = 2.5;
@@ -139,7 +146,7 @@ void fragment() {
 	float seed = floor(COLOR.a * 63.0 + 0.5);
 	bool corpse = v_custom.z > 6.5;
 	// organic detail: mottled skin, darker crevices toward the feet, faint veins, per-foe variation
-	vec3 mp = v_mpos * 2.2 + seed * 1.37;
+	vec3 mp = v_mpos * mp_scale + seed * 1.37;
 	// one lookup in the shared noise texture (a sheared projection of the model position, so no axis
 	// shows stretching) replaces three 3D value noises = 24 hash evaluations per pixel of every foe
 	vec4 nz = texture(g_noise, (mp.xy + mp.z * vec2(0.71, 0.37)) * 0.2);
@@ -181,8 +188,12 @@ void fragment() {
 	if (burn_n > 0.0 && !corpse) {
 		// thin cracks (the noise's 0.5 crossings) widen a little with the stacks; the char darkens the hide
 		// between them, so the glow reads as lines of fire on a black crust, not a white blob
-		float crack = smoothstep(0.035 + 0.035 * burn_n, 0.0, abs(nz.g - 0.5));
-		float flick = 0.75 + 0.25 * sin(time * 13.0 + seed * 2.3 + v_mpos.y * 3.0) * sin(time * 7.3 + seed);
+		// anti-aliased: the edge widened to the pixel footprint, and a crack thinner than a pixel fades to its area
+		// (cw / (cw + aw)) instead of breaking up into specks that crawl as the camera moves
+		float cw = 0.06 * (1.0 + burn_n);
+		float aw = fwidth(nz.g) * 3.0;
+		float crack = smoothstep(cw + aw, 0.0, abs(nz.g - 0.5)) * cw / (cw + aw);
+		float flick = 0.75 + 0.25 * sin(time * 13.0 + seed * 2.3 + v_mpos.y * mp_scale * 1.364) * sin(time * 7.3 + seed);
 		base *= 1.0 - 0.8 * burn_n;
 		rough = mix(rough, 0.9, burn_n * 0.6);
 		vec3 fire = mix(vec3(0.9, 0.16, 0.02), vec3(1.0, 0.42, 0.06), burn_n);

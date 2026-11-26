@@ -16,17 +16,26 @@ const STAGE_LOOK := [
 	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3),
 		"rim": Color(0.6, 0.7, 1.0)},                     # I: moonlight, bluer than Chill's ice (dE00 6.4 -> 10.5)
 	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2),
-		"rim": Color(1.0, 0.6, 0.2)},                     # II: molten-amber
+		"rim": Color(0.85, 0.85, 0.85)},                  # II: neutral (molten-amber sat on Burn's hue and the red ground)
 	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85),
 		"rim": Color(0.74, 1.0, 0.98)},                   # III: frost-cyan
 	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85),
-		"rim": Color(0.7, 0.42, 1.0)},                    # IV: rift-violet
+		"rim": Color(0.85, 0.85, 0.85)},                  # IV: neutral (rift-violet foes sank 14 luma under the blue ground)
 	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85),
 		"rim": Color(0.2, 1.0, 0.8)}                      # V: bioluminescent-teal
 ]
-## The act's Fresnel rim (STAGE_LOOK.rim) on foes (foe.gdshader rim_col) and heroes (HeroRig.set_rim).
-const RIM_FOE := 0.45
+## The act's Fresnel rim (STAGE_LOOK.rim) on foes (foe.gdshader rim_col) and rogue exiles (HeroRig.set_rim). 0.6 on
+## foes: at 0.45 a foe without a status sat within 3 luma of the ground beside it in Acts I, II and IV.
+const RIM_FOE := 0.6
 const RIM_HERO := 0.35
+## The hero's own rim, in the hero's colour (the ring's): in the act's rim the hero wore the foes' outline.
+const RIM_OWN := 0.6
+## The sky's energy: the ambient light (AMBIENT_SOURCE_SKY at full sky contribution, so the environment's own
+## ambient energy is ignored). Set once per run: its radiance map re-filters over several frames.
+const SKY_ENERGY := 1.8
+## Fog: at 0.0007 the ground 500-890 units from the camera took 29-46% of the near-black fog colour.
+const FOG_DENSITY := 0.00035
+const FOG_GLOOM := 0.0009
 const CHUNK := 640.0
 ## Godot's omni falloff is distance^-attenuation in world units. This world is ~60 units per hero,
 ## so the default-ish 1.0-1.6 falloff made every light ~0.002x as bright (cycle G2 finding).
@@ -116,8 +125,7 @@ func _ready() -> void:
 	env.sky = sky
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 1.0
-	env.ambient_light_energy = AMBIENT_ENERGY
+	env.ambient_light_sky_contribution = 1.0      # all ambient from the sky: ambient_light_energy is ignored (SKY_ENERGY)
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
 	# glow only from what is brighter than 1.25 after exposure (spells, embers, loot), screen-blended so it
@@ -130,7 +138,7 @@ func _ready() -> void:
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	env.set_glow_level(1, 1.0); env.set_glow_level(3, 1.0); env.set_glow_level(5, 0.6)
 	env.fog_enabled = true
-	env.fog_density = 0.0007
+	env.fog_density = FOG_DENSITY
 	env.fog_sky_affect = 0.0
 	env.ssao_enabled = RenderingServer.get_current_rendering_method() == "forward_plus"   # Forward+ only
 	env.ssao_radius = 18.0
@@ -149,6 +157,7 @@ func _ready() -> void:
 	sun.directional_shadow_max_distance = SHADOW_DIST      # scaled with the camera distance in _camera
 	sun.directional_shadow_fade_start = 0.9                # the fade starts past the hero (camera distance 600)
 	sun.shadow_blur = 1.5
+	sun.shadow_opacity = 0.65                           # shadows keep a third of the sun: tree shadows read as shade, not holes
 	add_child(sun)
 	torch = OmniLight3D.new()
 	torch.light_color = Color(1.0, 0.78, 0.5)
@@ -372,7 +381,7 @@ func bind(world: World) -> void:
 	add_child(hero)
 	var h: Dictionary = Content.HEROES[w.hero]
 	hero.build(String(h.id), Content.col(h.col))
-	hero.set_rim(_look.rim, RIM_HERO)
+	hero.set_rim(Content.col(String(h.col)), RIM_OWN)
 	for u in boss_rigs: boss_rigs[u].queue_free()
 	boss_rigs.clear()
 	for e in boss_dying: (e[0] as BossRig).queue_free()
@@ -384,6 +393,7 @@ func bind(world: World) -> void:
 	sky_mat.sky_horizon_color = _look.sky.lerp(_look.fog, 0.4)
 	sky_mat.ground_bottom_color = _look.gnd
 	sky_mat.ground_horizon_color = _look.gnd.lerp(_look.fog, 0.4)
+	sky_mat.energy_multiplier = SKY_ENERGY
 	_clear_props()
 	# terrain: liquid kind and colours per stage; textures recomposed on the first frame
 	var lk := {"water": 0, "lava": 1, "void": 2, "none": 3}.get(w.terrain.liquid, 3) as int
@@ -415,6 +425,7 @@ func bind(world: World) -> void:
 		foe_mats[k].set_shader_parameter("has_orm", pbr.has("orm"))
 		for key in pbr: foe_mats[k].set_shader_parameter(key + "_tex", pbr[key])
 		foe_mats[k].set_shader_parameter("corpse_sink", mh * (0.3 if not vat.is_empty() else 0.45))
+		foe_mats[k].set_shader_parameter("mp_scale", mp_scale(mh))
 		foe_mats[k].set_shader_parameter("has_vat", not vat.is_empty())
 		if not vat.is_empty():
 			foe_mats[k].set_shader_parameter("vat_pos", vat.pos)
@@ -625,8 +636,6 @@ func _camera(dt: float) -> void:
 
 const SUN_ENERGY := 1.2
 const SUN_FLOOR := 0.32
-const AMBIENT_ENERGY := 0.3
-const AMBIENT_FLOOR := 0.22
 const TORCH_ENERGY := 1.6           # x LIGHT_GAIN; full gloom raises it by 40%
 const TORCH_RANGE := 360.0
 const KEY_ENERGY := 0.9             # x LIGHT_GAIN
@@ -642,15 +651,14 @@ func _lighting(dt: float) -> void:
 	var to_cam := (cam.global_position - Vector3(hero_p.x, 0, hero_p.y))
 	to_cam.y = 0.0
 	key_light.position = Vector3(hero_p.x, 46.0 + gy, hero_p.y) + to_cam.normalized() * 55.0
-	# full gloom dims the sun and ambient to floors (SUN_FLOOR, AMBIENT_FLOOR), never to black: the ground and
-	# the swarm stay readable outside the torch's pool
+	# full gloom dims the sun to its floor (SUN_FLOOR) and thickens the fog, never to black: the sky's ambient stays,
+	# so the ground and the swarm stay readable outside the torch's pool
 	sun.light_energy = lerpf(sun.light_energy, lerpf(SUN_ENERGY, SUN_FLOOR, gl), minf(1.0, dt * 2.0))
-	env.ambient_light_energy = lerpf(env.ambient_light_energy, lerpf(AMBIENT_ENERGY, AMBIENT_FLOOR, gl), minf(1.0, dt * 2.0))
 	torch.light_energy = TORCH_ENERGY * lerpf(1.0, 1.4, gl) * flick * LIGHT_GAIN
 	torch.omni_range = TORCH_RANGE * lerpf(1.0, 0.87, gl)
 	# the cold open looks far across the Hollow: thicker fog, over the sky too, so the streamed ground fades
 	# into the dark instead of ending at an edge
-	env.fog_density = lerpf(env.fog_density, CINE_FOG if cine else lerpf(0.0007, 0.0014, gl), minf(1.0, dt * (4.0 if cine else 1.0)))
+	env.fog_density = lerpf(env.fog_density, CINE_FOG if cine else lerpf(FOG_DENSITY, FOG_GLOOM, gl), minf(1.0, dt * (4.0 if cine else 1.0)))
 	env.fog_sky_affect = 1.0 if cine else 0.0
 
 # ================================================================= props
@@ -1300,6 +1308,11 @@ func _aura(p: Vector2, r: float, c: Color) -> void:
 	mm.set_instance_transform(_aura_n, Transform3D(Basis().scaled(Vector3(r, 1, r)), Vector3(p.x, 0.8 + ground_y(p), p.y)))
 	mm.set_instance_color(_aura_n, c)
 	_aura_n += 1
+
+## The foe shader's noise scale for a mesh this tall (model units): the procedural meshes are ~2 units and keep 2.2;
+## the textured ones are 26-42 units, scaled to about half a noise tile per foe (2.31 / height).
+static func mp_scale(mesh_h: float) -> float:
+	return 2.2 if mesh_h <= 10.0 else 2.31 / mesh_h
 
 func _foe_color(k: int) -> Color:
 	var s: Dictionary = Content.STAGES[w.stage]

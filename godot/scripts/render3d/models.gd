@@ -38,6 +38,19 @@ static func has_pbr(m: Mesh) -> bool:
 
 static var _cache := {}
 
+## Albedo floor for the generated models (tech-art finding 4): their base-colour maps came out 2-4 stops darker than
+## the ground's photographs (median linear albedo 0.011-0.028 against 0.13-0.20), so trees and walls read as black
+## cut-outs and heroes as dark blobs. The linear gain lifts each map's median to 0.05 (x4 at most), the rule
+## tools/blender/process_fal_assets.py lift_albedo applies to the bush; set as the material's albedo colour at load.
+## Computed from the maps by the tech-art review's albedo_table.py. Foes and bosses keep theirs (status contrast).
+const ALBEDO_GAIN := {"tree": 4.0, "tree_dead": 4.0, "wall": 4.0, "bones": 2.98, "rock": 1.77,
+	"warden": 2.85, "spark": 2.1, "ember": 3.31, "storm": 4.0}
+
+## The albedo colour that multiplies a map's linear values by the model's gain (1 when it has none).
+static func albedo_gain_color(id: String) -> Color:
+	var g: float = ALBEDO_GAIN.get(id, 1.0)
+	return Color(g, g, g).linear_to_srgb()
+
 static func find_asset(dir: String, id: String) -> String:
 	for ext in ["tscn", "glb", "gltf", "tres", "res"]:
 		var p := "res://models/%s/%s.%s" % [dir, id, ext]
@@ -166,6 +179,12 @@ static func _prop_mesh(kind: String, stage: int) -> Mesh:
 	if _cache.has(key): return _cache[key]
 	var p := find_asset("props_hi" if hi else "props", kind)
 	var m: Mesh = mesh_from_asset(p) if p != "" else _build_prop(kind)
+	var id := p.get_file().get_basename()
+	if m != null and ALBEDO_GAIN.has(id):                # the imported material is shared: set once, not multiplied
+		for i in m.get_surface_count():
+			var mat := m.surface_get_material(i)
+			if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null:
+				(mat as BaseMaterial3D).albedo_color = albedo_gain_color(id)
 	_cache[key] = m
 	return m
 
@@ -325,6 +344,7 @@ static func _build_prop(kind: String) -> ArrayMesh:
 			for i in 5:
 				var a := TAU * i / 5.0 + 0.4
 				var hgt := 11.0 + (i % 3) * 3.5
-				# their own colours (the prop shader's tint is neutral): dark olive and dry straw blades
-				k.add("cone", Vector3(cos(a) * 3.5, hgt * 0.45, sin(a) * 3.5), Vector3(5.0, hgt, 1.6), Color(0.27, 0.31, 0.17) if i % 2 == 0 else Color(0.42, 0.4, 0.24), MeshKit.PART_TAIL, 0, Vector3(sin(a) * 0.45, a, -cos(a) * 0.45), 3)
+				# their own colours (the prop shader's tint is neutral): dark olive and dry straw blades. Read as linear albedo,
+				# so halved from 0.27-0.42: at full value the clumps were 2-4x the ground's luma, the brightest thing unlit
+				k.add("cone", Vector3(cos(a) * 3.5, hgt * 0.45, sin(a) * 3.5), Vector3(5.0, hgt, 1.6), Color(0.135, 0.155, 0.085) if i % 2 == 0 else Color(0.21, 0.2, 0.12), MeshKit.PART_TAIL, 0, Vector3(sin(a) * 0.45, a, -cos(a) * 0.45), 3)
 	return k.commit()
