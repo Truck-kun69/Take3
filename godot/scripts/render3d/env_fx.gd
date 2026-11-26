@@ -228,10 +228,11 @@ func _status_fx() -> void:
 	var c_chill := Color(Content.el_col(Content.El.COLD, w.colorblind).lerp(Color.WHITE, 0.35), 0.35)
 	var c_pois := Color(Content.el_col(Content.El.CHAOS, w.colorblind).darkened(0.2), 0.4)
 	var c_shock := Content.el_col(Content.El.LIGHT, w.colorblind).lerp(Color.WHITE, 0.4)
+	var c_bleed := Content.el_col(Content.El.PHYS, w.colorblind).darkened(0.25)
 	for i in range(_frame % 2, sw.n, 2):
 		var p := sw.pos[i]
 		if p.distance_squared_to(w.pp) > r2: continue
-		if sw.flash[i] <= 0.099 and sw.burn[i] <= 0.0 and sw.chill_t[i] <= 0.0 and sw.pois[i] <= 0.0 and sw.shock_t[i] <= 0.0: continue
+		if sw.flash[i] <= 0.099 and sw.burn[i] <= 0.0 and sw.chill_t[i] <= 0.0 and sw.pois[i] <= 0.0 and sw.shock_t[i] <= 0.0 and sw.bleed[i] <= 0.0: continue
 		var h := view.ground_y(p) + sw.rad[i] * 1.6           # world height of the body's middle
 		if sw.flash[i] > 0.099:                          # fresh hit: ichor sparks and sometimes a splatter
 			fxv._spark(Vector3(p.x, h, p.y), Vector3(randf_range(-1, 1), randf_range(0.5, 1.4), randf_range(-1, 1)) * 140.0, Color(0.55, 0.05, 0.06), 0.35, 5.0)
@@ -245,6 +246,12 @@ func _status_fx() -> void:
 			puff(Vector3(p.x, h - sw.rad[i] * 0.8, p.y), Vector3(randf_range(-8, 8), 14, randf_range(-8, 8)), c_pois, 1.1, 15.0, 0.4)
 		if sw.shock_t[i] > 0.0 and randf() < 0.15:
 			fxv._spark(Vector3(p.x + randf_range(-10, 10), h + randf_range(-5, 8), p.y + randf_range(-10, 10)), Vector3(randf_range(-60, 60), randf_range(0, 60), randf_range(-60, 60)), c_shock, 0.12, 6.0)
+		# Bleed: small dark drops that fall straight down from the body, and now and then a spot on the ground. It had
+		# no particle at all, so it differed from Burn (embers popping up, smoke) by its glow's colour alone: on foes
+		# in Act II 7.9 dE00 apart for deuteranopes, 6.9 for tritanopes
+		if sw.bleed[i] > 0.0 and randf() < 0.3:
+			fxv._spark(Vector3(p.x + randf_range(-5, 5), h - sw.rad[i] * 0.3, p.y + randf_range(-5, 5)), Vector3(randf_range(-6, 6), -90.0, randf_range(-6, 6)), c_bleed, 0.4, 5.0)
+			if randf() < 0.06: fxv._mark(p + Vector2(randf_range(-6, 6), randf_range(-6, 6)), sw.rad[i] * 0.45, 0)
 
 func _cast_flash() -> void:
 	if w.cast_t != _last_cast:

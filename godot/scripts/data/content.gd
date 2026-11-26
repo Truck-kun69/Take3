@@ -11,8 +11,11 @@ const EL_STATUS := ["Bleed", "Burn", "Chill", "Shock", "Poison"]
 # deutan and tritan vision): worst pair 24.7 / 6.8 / 4.1 / 7.9 -> 21.0 / 16.6 / 16.2 / 5.9; Fire sits 15.5 from the
 # Legendary orange (was 2.7) and Chaos's jade no longer equals the green of "better than equipped".
 const EL_COL := ["e0556f", "ff4b14", "7fe6ff", "ffeb99", "5ed1b2"]
-# Colour-blind safe alternates (Okabe-Ito); the renderer also adds per-element mote shapes.
-const EL_COL_CB := ["d55e00", "e69f00", "56b4e9", "f0e442", "009e73"]
+# Colour-blind safe alternates (Okabe-Ito); the renderer also adds per-element mote shapes. Physical is Okabe-Ito's
+# reddish purple, not its vermilion d55e00: on foes in Act II the vermilion Bleed and the orange Burn rendered 6.4
+# dE00 apart for deuteranopes (worse than the default palette's 7.9); as hexes its worst Physical pair goes from
+# 12.5 to 15.7 deutan and 18.2 to 14.0 protan (every pair of the palette stays above 10 for both).
+const EL_COL_CB := ["cc79a7", "e69f00", "56b4e9", "f0e442", "009e73"]
 # Every element hue comes from EL_COL through el_col() / status_cols() (World.el, the shaders' status_cols), so a palette
 # change or the colour-blind option reaches every status glow, number and particle. Colours that once shared those
 # hexes but mean something else are named here instead, so a palette change never drags them along:

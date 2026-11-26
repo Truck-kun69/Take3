@@ -1131,6 +1131,18 @@ func _look_tests() -> void:
 	var fp := v.env_fx.fog.mesh as PlaneMesh
 	ok(fp.subdivide_width == 24 and fp.subdivide_depth == 24 and v.env_fx.fog_mat.get_shader_parameter("drape") == true and v.env_fx.fog.position.y == 0.0,
 		"the ground fog is a 25 x 25 grid draped onto the terrain in its shader")
+	# Bleed sheds small dark drops that fall from the body (Burn's embers pop upward): not its glow's colour alone
+	var bi := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(60, 0))
+	if bi >= 0: w.sw.bleed[bi] = 1.0
+	var s0: int = v.fx.s_n
+	for k in 40:
+		v.env_fx._frame += 1
+		v.env_fx._status_fx()
+	var drops := 0
+	for k in range(s0, v.fx.s_n):
+		if v.fx.s_vel[k].y < -50.0: drops += 1
+	ok(bi >= 0 and drops > 0, "a bleeding foe sheds drops that fall (%d in 40 frames), not only a red glow" % drops)
+	if bi >= 0: w.sw.bleed[bi] = 0.0
 	v._features()
 	var wet: bool = v.water.visible
 	w.terrain.liquid = "none"
