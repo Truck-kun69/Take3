@@ -4203,9 +4203,8 @@ func _camp_ui_tests() -> void:
 		if _live(l) and String(l.text).contains("NEW"): news3 += 1
 	ok(hub_new and news == 3 and count_line and cleared and news2 == 3 and news3 == 0,
 		"the hub counts new finds, the Gear page marks them NEW with the stash count, keeps the marks while it is open and drops them after (%s %d %s %s %d %d)" % [hub_new, news, count_line, cleared, news2, news3])
-	# the Gear page: what cannot be undone takes two taps (salvaging a Rare or better, extracting a power, applying a
-	# shard); one tap leaves the stash as it was; a duplicate power cannot be extracted for nothing; Normal and Magic
-	# still salvage in one tap
+	# the Gear page: what cannot be undone takes two taps (salvaging any item, extracting a power, applying a shard);
+	# one tap leaves the stash as it was; a duplicate power cannot be extracted for nothing
 	sv.data.stash = []
 	sv.data.codex = []
 	sv.data.locked = []
@@ -4255,9 +4254,10 @@ func _camp_ui_tests() -> void:
 	var c2: bool = _press(mn.screens, "Tap to apply") and int(sv.data.currency.chaos) == ch0 - 1
 	mn.screens._sel_item = at.call(magic)
 	mn.screens.show_stash(false)
-	var m1: bool = _press(mn.screens, "Salvage") and not (sv.data.stash as Array).has(magic)
+	# a Magic (or Normal) item takes two taps too: Salvage sits 6 dp from Equip, and one stray tap lost the item
+	var m1: bool = _press(mn.screens, "Salvage") and (sv.data.stash as Array).has(magic) and _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(magic)
 	ok(s1 and s2 and x1 and x2 and known_ok and c1 and told and c2 and m1 and kept,
-		"Gear: one tap on Salvage (Rare), Cube: extract or a shard leaves the stash unchanged and the second applies it; a shard's first tap shows its effect, the page staying where it was (scrolled %d); a known power cannot be extracted; Magic salvages in one tap (%s %s %s %s %s %s %s %s %s %s)" % [at_sv, s1, s2, x1, x2, known_ok, c1, told, c2, m1, kept])
+		"Gear: one tap on Salvage (any rarity), Cube: extract or a shard leaves the stash unchanged and the second applies it; a shard's first tap shows its effect, the page staying where it was (scrolled %d); a known power cannot be extracted (%s %s %s %s %s %s %s %s %s %s)" % [at_sv, s1, s2, x1, x2, known_ok, c1, told, c2, m1, kept])
 	# "What's new": due once after an update to a profile that has played; never for a new one
 	var dw: Dictionary = Save.defaults()
 	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "a new profile never gets What's new")

@@ -678,8 +678,9 @@ func show_stash(in_run: bool = false) -> void:
 		cp.add_theme_stylebox_override("panel", UIKit.nine("card", 46, Vector4(26, 26, 26, 24), Color(0.78, 0.76, 0.74).lerp(rc2, 0.5)))
 		cp.add_child(card)
 		right.add_child(cp)
-		# what cannot be undone takes two taps, as the bench's "Salvage all" does: salvaging a Rare or a Legendary,
-		# extracting a legendary power, applying a shard (its first tap shows what it does: touch shows no tooltips)
+		# what cannot be undone takes two taps, as the bench's "Salvage all" does: salvaging any item (Salvage sits 6 dp
+		# from Equip on an S22, and Normal and Magic went in one tap), extracting a legendary power, applying a shard
+		# (its first tap shows what it does: touch shows no tooltips)
 		var uid := int(it.uid)
 		if not sel.eq:
 			var locked := Camp.is_locked(Save.data, it)
@@ -690,7 +691,7 @@ func show_stash(in_run: bool = false) -> void:
 			yl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			card.add_child(yl)
 			foot_acts.append(UIKit.button("Equip", func(): _disarm(); act.emit("equip", it); show_stash(in_run), 50))
-			var two := int(it.rarity) >= Content.Rarity.RARE
+			var two := true
 			var armed_s := _is_armed("salvage", uid)
 			var sb := UIKit.button("Tap to confirm" if armed_s else "Salvage", func():
 				if two and not armed_s:
