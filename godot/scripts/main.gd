@@ -381,7 +381,8 @@ func _sim(dt: float) -> void:
 	if view3d != null: view3d.alpha = _clock.alpha()
 
 ## Run moments main presents itself (VoiceDirector voices the rest): a Rift Echo's exchange, written, in the
-## subtitle banner: the exile's remark, then the narrator reading the fragment (5 s, never pausing the run).
+## subtitle banner: the exile's remark, then the narrator reading the fragment (2.2 s and 2.8 s, or longer to read
+## them at 15 characters a second: Subtitles holds each for VoiceBank.read_seconds; never pausing the run).
 func _on_moment(kind: String, info: Dictionary) -> void:
 	if kind != "echo" or subtitles == null: return
 	var hid := String(info.get("hero", "warden"))

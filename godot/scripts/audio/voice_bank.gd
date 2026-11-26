@@ -84,6 +84,14 @@ static func stop_all(_fade: float = 0.0) -> void:
 static func subtitle_seconds(duration: float) -> float:
 	return maxf(0.0, duration) + SUBTITLE_PAD_S
 
+## The least time a subtitle stays up so it can be read: READ_BASE_S plus its text at READ_CPS (about 15 characters a
+## second). Held for the clip alone, 35 of the 61 voice lines ran faster (up to 20.1 cps), and a Rift Echo's written
+## fragment, 2.8 s for 63-96 characters, 22-34 cps. Subtitles holds each line for the longer of the two.
+const READ_CPS := 15.0
+const READ_BASE_S := 0.8
+static func read_seconds(text: String) -> float:
+	return READ_BASE_S + float(text.length()) / READ_CPS
+
 func _enter_tree() -> void:
 	if current == null: current = self
 

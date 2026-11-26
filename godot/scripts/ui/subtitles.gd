@@ -3,8 +3,9 @@ extends Control
 ## The subtitle banner: each voice line's speaker and text (VoiceBank.line_started), above the action bar while
 ## a run is being played and along the top otherwise (menus, and the level-up, pause and end screens, whose
 ## cards and buttons fill the middle and bottom), held for VoiceBank.subtitle_seconds(duration) = duration + 0.35
-## s, so a clip is never cut off mid-sentence on screen. A line said with "subtitle": false (the intro's own
-## narration) or a line that is stopped clears it.
+## s, so a clip is never cut off mid-sentence on screen, and never less than VoiceBank.read_seconds(text) (0.8 s +
+## 15 characters a second), so it can be read. A line said with "subtitle": false (the intro's own narration) or a
+## line that is stopped clears it.
 
 const FADE_S := 0.2
 var manual_clock := false
@@ -72,7 +73,7 @@ func _on_line(info: Dictionary) -> void:
 	var col: Color = info.get("color", UIKit.GOLD)
 	_shown = String(info.get("text", ""))
 	_text.text = "[b][color=#%s]%s[/color][/b]   %s" % [col.to_html(false), String(info.get("name", "")).to_upper(), _shown.replace("[", "[lb]")]
-	_left = float(info.get("subtitle_s", VoiceBank.subtitle_seconds(float(info.get("duration", 0.0)))))
+	_left = maxf(float(info.get("subtitle_s", VoiceBank.subtitle_seconds(float(info.get("duration", 0.0))))), VoiceBank.read_seconds(_shown))
 	_layout()
 
 ## Written lines with no voice clip (a Rift Echo's hero/narrator exchange): each [name, colour, text, seconds],
@@ -89,7 +90,7 @@ func _next_written() -> void:
 	var col: Color = ln[1]
 	_shown = String(ln[2])
 	_text.text = "[b][color=#%s]%s[/color][/b]   %s" % [col.to_html(false), String(ln[0]).to_upper(), _shown.replace("[", "[lb]")]
-	_left = float(ln[3])
+	_left = maxf(float(ln[3]), VoiceBank.read_seconds(_shown))       # a 96-character fragment: 7.2 s, not 2.8
 	_layout()
 
 func _on_end(info: Dictionary) -> void:

@@ -1512,11 +1512,23 @@ func _voice_tests() -> void:
 	add_child(subs)
 	subs.bind(sb)
 	var sl := sb.say("warden", "boss_spawn")
-	var hold := VoiceBank.subtitle_seconds(float(sl.duration))
+	# held for its clip (+ 0.35 s) and never less than reading it at 15 characters a second (+ 0.8 s)
+	var hold := maxf(VoiceBank.subtitle_seconds(float(sl.duration)), VoiceBank.read_seconds(String(sl.text)))
 	subs.step(hold - 0.05)
 	var shown := subs.is_showing() and subs.shown_text() == String(sl.text)
 	subs.step(0.1)
 	ok(shown and not subs.is_showing(), "the subtitle banner shows the line and clears after %.2f s" % hold)
+	# every voice line and every written Rift Echo line is up long enough to read at 15 characters a second
+	var fast: Array = []
+	for id in sb.entries:
+		var e: Dictionary = sb.entries[id]
+		var up := maxf(VoiceBank.subtitle_seconds(sb.duration_of(String(e.speaker), String(e.cue), int(e.variant))), VoiceBank.read_seconds(String(e.text)))
+		if String(e.text).length() / up > VoiceBank.READ_CPS + 0.01: fast.append(id)
+	var frag: String = Story.echo(0, 0).text
+	subs.exchange([["Narrator", UIKit.TEXT, frag, 2.8]])
+	subs.step(VoiceBank.read_seconds(frag) - 0.05)
+	var frag_up := subs.shown_text() == frag
+	ok(fast.is_empty() and frag_up and VoiceBank.read_seconds(frag) > 2.8, "every subtitle reads at 15 characters a second or slower, a Rift Echo's fragment too (%.1f s for %d characters, was 2.8 s)%s" % [VoiceBank.read_seconds(frag), frag.length(), "" if fast.is_empty() else ": " + str(fast.slice(0, 4))])
 	subs.queue_free()
 	sb.queue_free()
 	# the stream cache keeps at most 16 voice clips in memory
@@ -4138,8 +4150,11 @@ func _camp_ui_tests() -> void:
 	sv.data.tutorial.done.append("move")
 	mn._on_act("campaign", 0)
 	await get_tree().process_frame
-	var full: bool = mn.hud.banner_s.text.contains(Story.act(0).intro_lines[0]) and (VoiceBank.current == null or VoiceBank.current.active_id() == "narrator_act_0_0")
-	ok(full, "once moving is learnt, a run opens with the act's lore and the narrator's line again")
+	# the banner's line is the act's short subtitle (its lore, 108-122 characters in 3.5 s, read at 31-35 a second, stays
+	# in the Codex), up long enough to read at 15 characters a second
+	var sub_line: String = Story.act(0).subtitle
+	var full: bool = mn.hud.banner_s.text == sub_line and mn.hud.banner_dur >= VoiceBank.read_seconds(sub_line) - 0.01 and (VoiceBank.current == null or VoiceBank.current.active_id() == "narrator_act_0_0")
+	ok(full, "once moving is learnt, a run opens with the act's place in the story (%d characters, %.1f s) and the narrator's line again" % [sub_line.length(), mn.hud.banner_dur])
 	mn._on_act("leave", null)
 	mn._on_act("daily_go", Daily.today())
 	await get_tree().process_frame
