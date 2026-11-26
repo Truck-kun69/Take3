@@ -356,7 +356,7 @@ static func show_furnace(s: Screens) -> void:
 	s.parent_page = "camp"
 	var d: Dictionary = Save.data
 	_header(s, v, "kiln", "")
-	v.add_child(purse(s, d, [["Divine Orb", int(d.currency.get("divine", 0)), Camp.part_col("divine")]]))
+	v.add_child(purse(s, d, [[String(Content.CURRENCY.divine.name), int(d.currency.get("divine", 0)), Camp.part_col("divine")]]))
 	var tabs := s._grid(2, 8)
 	for k in 2:
 		var tb := UIKit.tile(["Gear", "Weapons"][k], ["Three items become one, a rarity higher", "Kindle a pair to fuse sooner, and harder"][k],
@@ -420,7 +420,7 @@ static func _furnace_gear(s: Screens, v: VBoxContainer, d: Dictionary) -> void:
 				_say("The furnace gives up %s." % Items.name_of(out), true)
 			show_furnace(s))
 		v.add_child(_row(left, right, rc2))
-	_note(v, "Rare into Legendary also takes a Divine Orb. Lock an item in Gear to keep it out of the fire.", UIKit.DIM)
+	_note(v, "Rare into Legendary also takes a Divine Shard. Lock an item in Gear to keep it out of the fire.", UIKit.DIM)
 
 static func _furnace_weapons(s: Screens, v: VBoxContainer, d: Dictionary) -> void:
 	var pl := Camp.pool(d)
@@ -535,7 +535,7 @@ const HOW_TO := [
 	["The goal", "Survive until the clock at the top reads 0:00. Then the act's boss comes: beat it to clear the act and open the next."],
 	["Move", "Drag anywhere on the left half of the screen; the stick follows your thumb. (WASD or arrows on a keyboard.)"],
 	["Fight", "Your weapons fire on their own at the nearest foe. Options › Game sets what they aim at."],
-	["Grow", "Foes drop blue shards. Gather them to level up, then pick one of the cards: a new weapon (up to four), a weapon level, a perk or a support gem."],
+	["Grow", "Foes drop blue crystals. Gather them to level up, then pick one of the cards: a new weapon (up to four), a weapon level, a perk or a support gem."],
 	["Evolve and fuse", "A weapon at level 5 evolves with the perk its card names (the Codex's Arsenal lists every pair). Two evolved weapons can fuse into a hybrid. A pair kindled at Mother Kiln's furnace fuses at level 5, evolved or not."],
 	["Survive", "ROLL dashes through attacks (Space); rolling just before a hit is a perfect dodge. JUMP clears rocks, walls and gaps (F). Flasks 1 and 2 heal and buff, and refill as you kill."],
 	["Ultimate", "ULT charges as you fight. When its ring glows, tap it (R)."],

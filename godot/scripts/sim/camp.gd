@@ -178,7 +178,7 @@ static func salvage_all(d: Dictionary, rarity: int) -> Dictionary:
 
 # ================================================================= Mother Kiln, the Fusion Furnace
 ## Gear: FUSE_N unlocked stash items of one slot and rarity become one new item of that slot a rarity higher,
-## at the highest item level of the three. Rare into Legendary also takes a Divine Orb.
+## at the highest item level of the three. Rare into Legendary also takes a Divine Shard.
 const FUSE_N := 3
 const FUSE_COST := [{"gold": 150, "scrap": 4}, {"gold": 500, "scrap": 10}, {"gold": 1600, "scrap": 24, "divine": 1}]
 

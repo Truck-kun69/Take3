@@ -1,6 +1,6 @@
 class_name Contagion
 extends RefCounted
-## The Emberwitch's contagion (0.10.0): her Shock Pulse becomes Incineration, and fire spreads through a pack.
+## The Emberwitch's contagion (0.10.0): her Flame Pulse becomes Incineration, and fire spreads through a pack.
 ##
 ## Stage 1, Incineration: each cast lands on the densest cluster within CAST_RANGE. It detonates for
 ##   DETONATE_K x the spell power and +2 Burn on everything in ZONE_R, then the ground burns for ZONE_TIME,

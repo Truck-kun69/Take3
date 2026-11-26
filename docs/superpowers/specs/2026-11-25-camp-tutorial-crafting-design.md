@@ -63,7 +63,7 @@ NPCs and stations (`scripts/sim/camp.gd` holds the rules as static functions, te
 - **Nim, Salvager** (salvage bench): salvage every unlocked item of a rarity at once (Normal, Magic, Rare;
   never Legendary, never equipped or locked), with the yield shown first. Items can be locked in the stash.
 - **Mother Kiln, Fusion Furnace**: Gear: three unlocked items of one slot and rarity become one new item of
-  that slot a rarity higher (Rare to Legendary also takes a Divine Orb), item level the highest of the three.
+  that slot a rarity higher (Rare to Legendary also takes a Divine Shard), item level the highest of the three.
   Weapons: kindle a pair (any two unlocked weapons) for gold and ore; in a run that pair may fuse at level 5
   without evolving, and a kindled fusion deals 35% more damage instead of 25%.
 - **Sella Coinwright, Trader**: four items a day (seeded by the date and the profile's progress) and

@@ -13,7 +13,7 @@ const STEPS := {
 	"move": {"touch": "Drag anywhere on the left half of the screen to move.", "keys": "Move with WASD or the arrow keys.", "ring": "stick"},
 	"fight": {"touch": "Your weapons fire on their own. Keep moving and let them work.", "keys": "Your weapons fire on their own. Keep moving and let them work.", "ring": ""},
 	"goal": {"touch": "Survive until the clock reads 0:00, then beat the boss to clear the act.", "keys": "Survive until the clock reads 0:00, then beat the boss to clear the act.", "ring": ""},
-	"shards": {"touch": "Foes drop blue shards. Walk over them to gain experience.", "keys": "Foes drop blue shards. Walk over them to gain experience.", "ring": ""},
+	"shards": {"touch": "Foes drop blue crystals. Walk over them to gain experience.", "keys": "Foes drop blue crystals. Walk over them to gain experience.", "ring": ""},
 	"roll": {"touch": "Tap ROLL to dash through danger. Rolling just before a hit is a perfect dodge.", "keys": "Press Space to roll through danger. Rolling just before a hit is a perfect dodge.", "ring": "roll"},
 	"flask": {"touch": "Hurt? Tap flask 1 to heal. Kills refill it.", "keys": "Hurt? Press 1 to drink your life flask. Kills refill it.", "ring": "f0"},
 	"jump": {"touch": "Tap JUMP to leap over rocks, walls and gaps.", "keys": "Press F to leap over rocks, walls and gaps.", "ring": "jump"},
@@ -21,6 +21,7 @@ const STEPS := {
 	"loot": {"touch": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "keys": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "ring": ""},
 	"gate": {"touch": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "keys": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "ring": ""},
 }
+const LOOT_AUTO := "Better gear equips itself. See every find in Pause > Gear & Crafting."
 const ORDER := ["move", "fight", "goal", "shards", "roll", "flask", "jump", "ult", "loot", "gate"]
 const CONTEXT := ["flask", "gate", "ult", "loot"]  # these wait for their moment, and take the stage when it comes
 const LEVELUP := "levelup"                         # taught on the level-up page (Screens.show_levelup; main's "pick")
@@ -214,8 +215,14 @@ func _start(id: String) -> void:
 	_ulted = false
 	_bank0 = int(w.metrics.get("banked", 0))
 	if id == "move": _moved = 0.0
+	_show_panel(prompt(id, _touch_ui()))
+
+## A step's words: for touch or for keys. With "Auto-equip upgrades" on (the default), a find that is an upgrade is
+## already worn when the loot step speaks, so it says so instead of "Equip it" (the review found the two disagreeing).
+static func prompt(id: String, touch_ui: bool) -> String:
+	if id == "loot" and bool(Save.opt("auto_equip")): return LOOT_AUTO
 	var S: Dictionary = STEPS[id]
-	_show_panel(String(S.touch) if _touch_ui() else String(S.keys))
+	return String(S.touch) if touch_ui else String(S.keys)
 
 func _touch_ui() -> bool:
 	return touch != null and touch.shows_buttons()

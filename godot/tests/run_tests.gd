@@ -3411,10 +3411,10 @@ func _camp_tests() -> void:
 	var rr: Array = []
 	for k in 3: rr.append(_camp_item(df, "amulet", 2, 20, rng))
 	df.currency.divine = 0
-	ok(typeof(Camp.fuse_items(df, rr, rng)) == TYPE_STRING, "Rare into Legendary needs a Divine Orb")
+	ok(typeof(Camp.fuse_items(df, rr, rng)) == TYPE_STRING, "Rare into Legendary needs a Divine Shard")
 	df.currency.divine = 1
 	var lg = Camp.fuse_items(df, rr, rng)
-	ok(typeof(lg) == TYPE_DICTIONARY and int(lg.rarity) == 3 and String(lg.leg) != "" and int(df.currency.divine) == 0, "three Rares and a Divine Orb make a Legendary")
+	ok(typeof(lg) == TYPE_DICTIONARY and int(lg.rarity) == 3 and String(lg.leg) != "" and int(df.currency.divine) == 0, "three Rares and a Divine Shard make a Legendary")
 	var dp: Dictionary = Save.defaults()
 	_camp_item(dp, "ring", 1, 10, rng); _camp_item(dp, "ring", 1, 11, rng); _camp_item(dp, "boots", 2, 12, rng)
 	var lk := _camp_item(dp, "amulet", 1, 12, rng)
@@ -3694,6 +3694,14 @@ func _coach_tests() -> void:
 	c._on_item({}, false)
 	c.tick(0.1)
 	ok(c.active == "loot", "a find teaches the loot")
+	var ae0 := bool(Save.opt("auto_equip"))
+	Save.set_opt("auto_equip", true)
+	var p_on := Coach.prompt("loot", true)
+	Save.set_opt("auto_equip", false)
+	var p_off := Coach.prompt("loot", true)
+	Save.set_opt("auto_equip", ae0)
+	ok(p_on == Coach.LOOT_AUTO and p_on.begins_with("Better gear equips itself") and p_off.begins_with("Gear found. Equip it"),
+		"with Auto-equip on (the default) the loot prompt says better gear equips itself; off, it says to equip it (%s | %s)" % [p_on, p_off])
 	var banners: Array = []
 	w.banner.connect(func(t, _s, _c): banners.append(t))
 	c.tick(Coach.INFO_T + 0.1)
@@ -4195,6 +4203,7 @@ func _look_feel_tests() -> void:
 	sv.data = keep
 	await _frame_fit_tests()
 	_evolve_pair_tests()
+	_words_tests()
 
 ## The frames whose text does not fit: every Button holding an anchored content box (UIKit.tile, the Camp's NPC cards,
 ## the level-up cards) whose box needs more room than the frame leaves it inside its insets. The 18-unit text floor
@@ -4315,6 +4324,27 @@ func _frame_fit_tests() -> void:
 	mn.queue_free()
 	await get_tree().process_frame
 	sv.data = keep
+
+## One word for one thing (the review's "words disagree"): Shock Pulse was a Fire weapon while Shock is lightning's
+## ailment; fire's ailment was "burn" on one card and "ignite" on another; the experience pickups were "blue shards"
+## (shard also names the crafting currency, Shard Scrap and the Shard Web) and their perk "Gem Pull" (gem names the
+## support gems); one currency was a Divine Orb at the furnace and a Divine Shard everywhere else; a prophecy paid
+## "Exalted Shards", the Star Shard's old name. Ids stay (saves keep them); no script says the old words.
+func _words_tests() -> void:
+	var old := ["Shock Pulse", "shock pulse", "Gem Pull", "Divine Orb", "blue shards", "Hits also ignite", "Exalted Shard"]
+	var files: Array = []
+	_collect_sources("res://scripts", files)
+	var hits: Array = []
+	for p in files:
+		var txt := FileAccess.get_file_as_string(p)
+		for o in old:
+			if txt.contains(o): hits.append("%s: %s" % [String(p).get_file(), o])
+	ok(files.size() > 40 and hits.is_empty(), "no script says the old words (%s)%s" % [", ".join(old), ("" if hits.is_empty() else ": " + str(hits))])
+	ok(Content.WEAPONS.nova.name == "Flame Pulse" and Content.WEAPONS.nova.elem == Content.El.FIRE and String(Content.FUSIONS["nova+storm"].d).contains("flame pulse"),
+		"the Emberwitch's fire weapon is the Flame Pulse, and Thunderclap detonates a flame pulse")
+	ok(String(Content.GEMS.inf_fire.d).begins_with("Hits also %s." % Content.EL_STATUS[Content.El.FIRE]) and Content.PERKS.magnet.name == "Crystal Pull",
+		"Fire Infusion applies Burn, the fire ailment's one name; the pickup perk is Crystal Pull")
+	ok(String(Coach.STEPS.shards.touch).contains("crystals") and CampPages.HOW_TO.any(func(e): return e[0] == "Grow" and String(e[1]).contains("blue crystals")), "Brask calls the experience pickups crystals, on a run and in How to play")
 
 ## The evolution recipe on the cards: a weapon's card names the perk it evolves with at level 5, a perk's card names the
 ## carried weapons it would evolve, and the Codex's Arsenal lists every pair. The pair (Content.WEAPONS[id].pair) was read

@@ -334,11 +334,11 @@ other's element (so fused weapons trigger the reaction engine), and gain the pai
 
 | Fusion | Weapons | Behaviour |
 |---|---|---|
-| Glacial Nova | Rime Bolt + Shock Pulse | each pulse also fires a ring of 8 frost bolts |
+| Glacial Nova | Rime Bolt + Flame Pulse | each pulse also fires a ring of 8 frost bolts |
 | Frost Halo | Rime Bolt + Spin Blades | the blades shed frost bolts outward |
 | Hailstorm | Rime Bolt + Skyfall | each strike bursts into 4 shards |
-| Solar Wheel | Shock Pulse + Spin Blades | each pulse flings the blades wide, and they burn |
-| Thunderclap | Shock Pulse + Skyfall | each strike detonates a small pulse where it lands |
+| Solar Wheel | Flame Pulse + Spin Blades | each pulse flings the blades wide, and they burn |
+| Thunderclap | Flame Pulse + Skyfall | each strike detonates a small pulse where it lands |
 | Tempest Blades | Spin Blades + Skyfall | blades call lightning on foes they cut, at most once per 0.4 s |
 
 **Surfaces** (`Terrain.surf`, `World._surface_react`). Pools that the fight itself pours onto land
@@ -410,7 +410,7 @@ from Main Menu > Replay Intro. The run's own 3D view, its camera sweeping down o
 Rift Shard streaks through the torn Veil and strikes; four narrator beats, each its line + 0.5 s; then a glide
 to black and the title stage. Tap/Next and Skip stop the narrator (`VoiceBank.stop_all`) and mark it seen.
 
-**The Emberwitch's contagion** (`scripts/sim/contagion.gd`). Her Shock Pulse becomes Incineration: it lands
+**The Emberwitch's contagion** (`scripts/sim/contagion.gd`). Her Flame Pulse becomes Incineration: it lands
 on the densest pack within 420 units, detonates for 0.6x spell power and +2 Burn, and leaves the ground
 burning for 1.6 s (+1 Burn every 0.25 s). Burn stacks to 5 and lasts 4 s after the latest stack; every 0.25 s
 a burning foe takes burn dps x stacks x (1 + 0.18 x (stacks - 1)) x 0.25 (a stack's burn dps is 0.12x the
