@@ -16,11 +16,11 @@ The files are attached to the workflow run as the `shardfall-android` artifact f
 
 ## The version
 
-One setting holds it: `application/config/version` in `godot/project.godot` (0.11.3-alpha). The title
+One setting holds it: `application/config/version` in `godot/project.godot` (0.11.4-alpha). The title
 screen, Options and every copied report show it (`Diag.version()`), and the APK's versionName follows it
 because the preset's `version/name` is left empty. The gate fails if the built APK says anything else.
 
-`version/code` in `godot/export_presets.cfg` (22 from 0.11.3) is the number Android compares: it must go
+`version/code` in `godot/export_presets.cfg` (23 from 0.11.4) is the number Android compares: it must go
 up for every build testers install over the last one, or the phone refuses the update.
 
 ## Moving a save to a new install
@@ -40,6 +40,7 @@ not to a copied text).
 
 ## APK size
 
+0.11.4: 140.95 MB (140,945,328 bytes): script, shader and constant changes only (no new assets).
 0.11.3: 140.94 MB (140,937,136 bytes): script only.
 
 0.11.2: 140.93 MB (140,932,877 bytes): script only.
