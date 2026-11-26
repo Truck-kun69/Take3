@@ -71,7 +71,7 @@ const HEROES := {
 		"mechanic": "Contagion", "mechanic_d": "Incineration lands on the densest pack and leaves the ground burning. Burn stacks to five and ramps; burning foes pass the fire on, the dying go up in conflagrations, and trees catch like beacons."},
 	"storm": {"title": "The Weather's Debt",
 		"bio": "Forty years the Stormwright measured the sky from his tower, until a shard fell through its roof. Now the tempest takes his dictation, and he has never once let it forget who is speaking.",
-		"mechanic": "Conduction", "mechanic_d": "Skyfall striking shallow water or near a rift crystal spreads: twice the radius, and arcs branch to the foes just outside the blast."},
+		"mechanic": "Conduction", "mechanic_d": "Skyfall striking shallow water or near a rift spire spreads: twice the radius, and arcs branch to the foes just outside the blast."},
 }
 
 ## What an exile mutters on touching a Rift Echo, before the narrator reads the fragment (two each, alternating).
