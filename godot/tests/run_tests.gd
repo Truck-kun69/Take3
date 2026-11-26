@@ -56,12 +56,14 @@ func _ready() -> void:
 		_coach_tests()
 		await _camp_ui_tests()
 		await _look_feel_tests()
+		_look_render_tests()
 	elif "camp" in args:
 		_camp_tests()
 		_coach_tests()
 		await _camp_ui_tests()
 	elif "look" in args:
 		await _look_feel_tests()
+		_look_render_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -4169,6 +4171,48 @@ func _labels_under(root: Node, floor_size: int) -> Array:
 		var fs := (l as Label).get_theme_font_size("font_size")
 		if fs < floor_size: out.append("%s (%d)" % [String(l.text).left(24), fs])
 	return out
+
+## Tech-art review (0.11.4): the lighting and shader constants that regress silently.
+func _look_render_tests() -> void:
+	print("== 0.11.4 look: light, rims, crust, albedo floor")
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 64})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	for k in 3: w.step(1.0 / 60.0)
+	v._process(1.0 / 60.0)
+	for k in 400: v._lighting(1.0 / 60.0)
+	ok(is_equal_approx(v.sky_mat.energy_multiplier, WorldView3D.SKY_ENERGY) and WorldView3D.SKY_ENERGY >= 1.5 and v.env.ambient_light_sky_contribution == 1.0,
+		"the sky's energy is the ambient (%.1f): at full sky contribution ambient_light_energy is ignored" % v.sky_mat.energy_multiplier)
+	ok(absf(v.env.fog_density - WorldView3D.FOG_DENSITY) < 0.00002 and WorldView3D.FOG_DENSITY <= 0.0004 and WorldView3D.FOG_GLOOM <= 0.001
+		and is_equal_approx(v.sun.shadow_opacity, 0.65), "fog %.5f (gloom %.4f), sun shadows at 0.65 opacity" % [v.env.fog_density, WorldView3D.FOG_GLOOM])
+	var mp_ok := true
+	var mp_n := 0
+	for k in Models.FOE_KINDS.size():
+		var mh: float = v._foe_h[k]
+		var sc: float = v.foe_mats[k].get_shader_parameter("mp_scale")
+		mp_ok = mp_ok and is_equal_approx(sc, WorldView3D.mp_scale(mh)) and (mh <= 10.0 or sc * mh < 5.0)
+		if mh > 10.0: mp_n += 1
+	ok(mp_ok and mp_n >= 4, "foe noise scaled per mesh (%d textured kinds): no foe tiles it more than ~2x, so the ember crust stays cracks" % mp_n)
+	ok(v.hero.rim_col == Content.col(String(Content.HEROES[w.hero].col)) and v.hero.rim_col != v.foe_mats[0].get_shader_parameter("rim_col")
+		and WorldView3D.RIM_FOE >= 0.6, "the hero's rim is the hero's colour, not the foes' rim (foe rim %.2f)" % WorldView3D.RIM_FOE)
+	var lifted := false
+	for mi in v.hero.find_children("*", "MeshInstance3D", true, false):
+		var om := (mi as MeshInstance3D).get_surface_override_material(0)
+		if om is BaseMaterial3D and (om as BaseMaterial3D).albedo_texture != null:
+			lifted = (om as BaseMaterial3D).albedo_color.is_equal_approx(Models.albedo_gain_color(v.hero.hero_id))
+			break
+	var kept := true
+	for id in ["grunt", "runner", "brute", "spitter", "charger", "tyrant", "tyrant_4", "herald", "guardian"]: kept = kept and not Models.ALBEDO_GAIN.has(id)
+	ok(lifted and Models.albedo_gain_color("tree").r > 1.0 and kept, "generated heroes and props lifted to the albedo floor (foes and bosses kept: status, flash and telegraph contrast)")
+	var gc: PackedColorArray = Models.prop_mesh("grass").surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+	var gmax := 0.0
+	for c in gc: gmax = maxf(gmax, maxf(c.r, maxf(c.g, c.b)))
+	ok(gc.size() > 0 and gmax <= 0.25, "grass clumps no brighter than the ground (vertex colour max %.2f)" % gmax)
+	v.w = null                                        # the view stops drawing the freed world
+	v.queue_free()
 
 func _look_feel_tests() -> void:
 	print("== 0.11.4 look and feel")
