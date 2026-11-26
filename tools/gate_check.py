@@ -242,7 +242,8 @@ def main(build_apk=True):
     out = r.stdout + r.stderr
     lines = out.splitlines()
     for grp in ("== 0.9.9 remediation", "== 0.10.0 voice", "== 0.10.0 alpha", "== 0.10.1 report and save transfer", "== 0.10.3 voice pack", "== 0.10.4 performance", "== 0.10.4 streaming", "== 0.10.4 voice pacing",
-                "== the Camp", "== the coach", "== the Camp pages", "== 0.11.4 look and feel"):
+                "== the Camp", "== the coach", "== the Camp pages", "== 0.11.4 look and feel",
+                "== 0.11.4 look: light, rims, crust, albedo floor"):
         if grp in lines:
             i = lines.index(grp)
             for l in lines[i:]:

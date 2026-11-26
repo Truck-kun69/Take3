@@ -5,6 +5,12 @@ extends RefCounted
 ## covers it), and it can be reread from Captain Brask's page. Newest first; keep each version to a few lines.
 
 const NOTES := {
+	"0.11.4": [
+		["Colours you can tell apart", "New element, rarity and currency colours, checked for colour blindness; statuses glow in their real colours."],
+		["A brighter fight", "Lighter scenes, no more white blob on burning foes, and your hero and the foes stand out from the ground."],
+		["A gentler start", "One tip at a time, the goal stated, Rift Gates and flask 2 explained, and Next: Act II after a win."],
+		["Easier to use", "Bigger buttons, text that fits, subtitles you can read, two taps for what cannot be undone."],
+	],
 	"0.11.3": [
 		["What's new", "This page: after an update, what changed since you last played. Captain Brask can show it again."],
 		["The smith's numbers", "Doran shows each weapon's level-1 hit now and after the next temper."],
