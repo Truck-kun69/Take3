@@ -36,7 +36,7 @@
    length (removed again before the APK is built); the clips present add up to at most 2.5 MB
 7. combat render smoke (when xvfb-run is installed; Godot uses Vulkan where the driver has it and says when it
    falls back to OpenGL): tests/combat_shot.tscn, a real run through main.tscn with the Emberwitch's fire
-   burning through a pack: >= 20 foes on screen, and the central playfield's luma standard deviation >= 38.0
+   burning through a pack: >= 20 foes on screen, and the central playfield's luma standard deviation >= 32.0
    with a median >= 0.08
 8. the single Android APK, the only build: export_presets.cfg holds one preset, Android
    (com.shardfall.riftsurvivors: no Web, no Lite); no web build tools
@@ -72,7 +72,10 @@ import gen_voices  # noqa: E402
 
 EXPECTED_SPEND = 18.904
 HERO_RANGE = {"cast": (0.65, 1.10), "roll": (0.45, 0.80), "jump": (0.55, 1.00)}
-SMOKE_STD = 38.0
+# 32 from 0.11.4 (was 38): the floor catches a flat or blank frame (std ~0-10). The tech-art pass removed the burning
+# pack's blown cream crust (10-14% of its pixels above 245) and lifted crushed blacks, so a correct frame's spread fell
+# to ~38 while its median rose; the floor is not a contrast target (the look group guards the constants behind it).
+SMOKE_STD = 32.0
 SMOKE_MEDIAN = 0.08
 SMOKE_FOES = 20
 FAILS = []
