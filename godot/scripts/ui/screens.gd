@@ -275,7 +275,7 @@ func _purse(d: Dictionary) -> CenterContainer:
 ## A square step button (previous / next, minus / plus) with a glyph large enough to read and hit.
 func _step_btn(txt: String, cb: Callable, h: int) -> Button:
 	var b := UIKit.button(txt, cb, h)
-	b.custom_minimum_size.x = 54
+	b.custom_minimum_size.x = UIKit.MIN_TOUCH        # 40 dp on an S22 (54 was 35 dp wide)
 	b.add_theme_font_size_override("font_size", 30)
 	return b
 
@@ -763,7 +763,8 @@ func show_web() -> void:
 	view.taken = taken
 	view.selected = _sel_passive
 	# held sideways the page is 720 units: the graph gets what the title, the subtitle band and the pinned row leave
-	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(700, clampi(int(get_viewport_rect().size.y) - 410, 300, 480))
+	# (the pinned row is UIKit.FOOT_H tall: 417 = 410 + the 7 units FOOT_H grew from 56 to 63)
+	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(700, clampi(int(get_viewport_rect().size.y) - 417, 300, 480))
 	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	view.picked.connect(func(id: String): _sel_passive = id; show_web())
 	body.add_child(view)

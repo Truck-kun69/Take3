@@ -83,7 +83,7 @@ func _ready() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
 	var sk := UIKit.button("Skip", skip, 48)
-	sk.custom_minimum_size = Vector2(120, 48)
+	sk.custom_minimum_size = Vector2(120, UIKit.MIN_TOUCH)
 	add_child(sk)
 	sk.position = Vector2(vs.x - m.z - 24.0 - 120.0, m.y + 20.0)
 	_black = ColorRect.new()

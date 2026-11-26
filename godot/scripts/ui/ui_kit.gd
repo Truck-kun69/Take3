@@ -167,14 +167,17 @@ static func section(txt: String) -> Label:
 	return label(txt.to_upper(), 16, DIM, false, "label")
 
 ## The smallest touch target, in units of the 1280 x 720 design base (the canvas stretch keeps it at least this
-## tall on any screen): every button and tile is clamped to it, whatever its caller asked for.
-const MIN_TOUCH := 48
+## tall on any screen): every button and tile is clamped to it, tall and wide, whatever its caller asked for.
+## 63 units are 40.3 dp on a Galaxy S22 held sideways at its own scale (main.phone_ui_scale x1.125: 1.688 px a unit,
+## 2.64 px a dp), 43 dp upright; 62 measured 39.8 dp. At 48 (30.8 dp) 178 of the 291 buttons the UI and Camp tours
+## showed were under 40 dp.
+const MIN_TOUCH := 63
 static func button(txt: String, cb: Callable, min_h: int = 56) -> Button:
 	var b := Button.new()
 	b.text = txt
 	if txt.contains(" "):                                   # a long label wraps between words instead of widening its row off a
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD          # phone held upright; one word never wraps (the pause button's "II" split)
-	b.custom_minimum_size = Vector2(0, maxi(min_h, MIN_TOUCH))
+	b.custom_minimum_size = Vector2(MIN_TOUCH, maxi(min_h, MIN_TOUCH))
 	b.pressed.connect(func(): Sfx.play("click"); cb.call())
 	press_fx(b)
 	return b
@@ -306,8 +309,9 @@ static func sheet(parent: Control, max_w: int = 980) -> VBoxContainer:
 ## screen's main actions: on a phone held sideways the UI is 720 units tall, and a long sheet would scroll them
 ## out of sight).
 ## Every button in the foot is at least FOOT_H tall: Back and a page's main actions are the targets a thumb aims at most,
-## and at 48-52 units (31-33 dp on an S22 at its x1.13 scale; Android asks 48 dp) they were among the smallest.
-const FOOT_H := 56
+## and at 48-52 units (31-33 dp on an S22 at its x1.13 scale; Android asks 48 dp) they were among the smallest; at 56
+## they were 36 dp. 63 units are 40 dp there (MIN_TOUCH).
+const FOOT_H := 63
 static func foot(v: VBoxContainer) -> VBoxContainer:
 	var ft: VBoxContainer = v.get_parent().get_parent().get_node("Foot")
 	ft.visible = true
