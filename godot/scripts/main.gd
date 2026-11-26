@@ -165,12 +165,28 @@ func _crowd_setup() -> void:
 
 ## Portrait phones: the 1280x720 design base shrinks the UI to ~0.56x; scale the 2D canvas back up.
 ## (content_scale_factor only affects 2D, the 3D camera handles portrait framing itself.)
+## The factor stops where the canvas would get smaller than the pages are laid out for (max_ui_scale): Options'
+## Largest (x1.3) on an S22's own x1.125 left a 490-unit-tall canvas held sideways (the exile's name over PLAY, the
+## bottom row cut off) and a 459-wide one upright (Options' values and its Diagnostics tab off the right edge).
+## UIKit.ui_scale_applied is the share of Options' scale the screen gave (the UI scale row shows it).
 func _ui_scale() -> void:
 	var vs := get_window().size                 # the root window: the screen on a phone, and settable in the tests
 	var f := 1.0
 	if vs.y > vs.x: f = clampf(float(vs.y) / float(vs.x), 1.0, 1.9)
 	if OS.has_feature("mobile"): f *= phone_ui_scale(Vector2(vs), DisplayServer.screen_get_dpi())
-	get_window().content_scale_factor = f * float(Save.opt("ui_scale"))
+	var want := f * float(Save.opt("ui_scale"))
+	var csf := minf(want, maxf(1.0, max_ui_scale(Vector2(vs))))
+	UIKit.ui_scale_applied = csf / f
+	get_window().content_scale_factor = csf
+
+## The smallest canvas, in design units, the pages fit: held sideways UI_MIN_TALL tall, upright UI_MIN_WIDE wide.
+const UI_MIN_TALL := 600.0
+const UI_MIN_WIDE := 560.0
+## The largest content scale at which a window keeps that canvas (the stretch is canvas_items / expand on 1280x720).
+static func max_ui_scale(win: Vector2) -> float:
+	if win.x <= 0.0 or win.y <= 0.0: return 1.0e6
+	var base := minf(win.x / 1280.0, win.y / 720.0)
+	return win.y / (base * UI_MIN_TALL) if win.x >= win.y else win.x / (base * UI_MIN_WIDE)
 
 ## On a dense phone the 1280x720 design units are physically small: an S22 held sideways (2340x1080, 422 ppi) gives
 ## 1.5 px a unit, 0.57 sp. Scale the UI so a unit is at least UNIT_SP_MIN sp (UIKit.MIN_TEXT then reaches 11.5 sp),

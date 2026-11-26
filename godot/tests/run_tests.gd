@@ -48,6 +48,7 @@ func _ready() -> void:
 		await _alpha10_tests()
 		_ops_tests()
 		await _fit_tests()
+		await _largest_scale_tests()
 		_perf_tests()
 		await _perf_view_tests()
 		await _stream_tests()
@@ -72,6 +73,7 @@ func _ready() -> void:
 	elif "ops" in args:
 		_ops_tests()
 		await _fit_tests()
+		await _largest_scale_tests()
 	elif "voicesim" in args:
 		_pacing_tests()
 		_voice_sim()
@@ -1823,6 +1825,132 @@ func _fit_tests() -> void:
 	ok(named == 8 and web_bad.is_empty(), "the Shard Web's 8 notable and keystone names never overlap and stay inside the view%s" % (("  (" + "; ".join(web_bad) + ")") if not web_bad.is_empty() else ""))
 	mn.queue_free()
 	sv.data = keep
+
+## Options > UI scale at Largest (x1.3) on an S22 at its own x1.125 (on a phone main applies that itself; here the
+## option stands in for both), held sideways and upright. main._ui_scale clamps the canvas to UI_MIN_TALL /
+## UI_MIN_WIDE, the UI scale row says what was applied, and on every page every button and label stays inside the
+## screen side to side (and top to bottom outside a scroll area), with no label lying over a button it is not part
+## of. Unclamped (x1.46) the canvas was 490 units tall sideways (the exile's name over PLAY, the bottom row cut off)
+## and 459 wide upright (Options' values and its Diagnostics tab off the right edge).
+func _largest_scale_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.stats.runs = 1
+	sv.data.seen_version = Diag.version()
+	sv.data.cleared = [true, false, false, false, false]
+	for i in Content.HEROES.size():                  # the exile with the longest ultimate text: the title's plate at its tallest
+		if String(Content.HEROES[i].ult_d).length() > String(Content.HEROES[int(sv.data.hero)].ult_d).length(): sv.data.hero = i
+	var rng := RandomNumberGenerator.new(); rng.seed = 12
+	for k in 6: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, rng))
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	var s22: float = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	sv.data.options.ui_scale = Screens.UI_SCALES[Screens.UI_SCALES.size() - 1]
+	for orient: Vector2i in [Vector2i(2340, 1080), Vector2i(1080, 2340)]:
+		var side := orient.x > orient.y
+		var tag := "sideways" if side else "upright"
+		win.size = orient
+		sv.data.options.ui_scale = Screens.UI_SCALES[Screens.UI_SCALES.size() - 1] * s22
+		mn._ui_scale()
+		await get_tree().process_frame
+		var vs: Vector2 = mn.screens.get_viewport_rect().size
+		ok((vs.y >= main_script().UI_MIN_TALL - 0.5) if side else (vs.x >= main_script().UI_MIN_WIDE - 0.5),
+			"%s on an S22 at Largest the canvas keeps %s (%dx%d, x%.3f of the asked x%.3f)" % [tag, ("%d units tall" % int(main_script().UI_MIN_TALL)) if side else ("%d wide" % int(main_script().UI_MIN_WIDE)), vs.x, vs.y, UIKit.ui_scale_applied, sv.data.options.ui_scale])
+		var bad: Array = []
+		mn._menu()
+		bad.append_array(await _fits_screen(mn.screens, "title"))
+		mn._on_act("heroes", null)
+		bad.append_array(await _fits_screen(mn.screens, "heroes"))
+		for tab in 4:
+			mn.screens._opt_tab = tab
+			mn.screens.show_options("menu")
+			bad.append_array(await _fits_screen(mn.screens, "options %d" % tab))
+		mn.screens._opt_tab = 0
+		mn.screens._sel_item = 0
+		mn.screens.show_stash(false)
+		bad.append_array(await _fits_screen(mn.screens, "gear"))
+		for page in ["camp", "smith", "kiln", "nim", "sella", "brask"]:
+			CampPages.show(mn.screens, page)
+			bad.append_array(await _fits_screen(mn.screens, page))
+		for pg in ["codex", "upgrades", "endgame", "daily", "web"]:
+			mn._on_act(pg, null)
+			bad.append_array(await _fits_screen(mn.screens, pg))
+		mn._on_act("campaign", 0)
+		await get_tree().process_frame
+		mn.world.pending = 1
+		mn._on_level()
+		for k in 6: await get_tree().process_frame
+		bad.append_array(await _fits_screen(mn.screens, "level-up"))
+		mn._on_act("pick", mn.world.make_choices()[0])
+		mn._pause()
+		bad.append_array(await _fits_screen(mn.screens, "pause"))
+		mn.screens.show_build(mn.world)
+		bad.append_array(await _fits_screen(mn.screens, "build"))
+		mn._resume()
+		mn.world.end_run(false, true)
+		mn.screens.show_end(mn.world)
+		bad.append_array(await _fits_screen(mn.screens, "end"))
+		mn._menu()
+		ok(bad.is_empty(), "%s on an S22 at Largest, the title, Heroes, Options (4 tabs), Gear, the Camp and its stations, Codex, Upgrades, Modes, the Daily Rift, the Shard Web, level-up, pause, Build & Stats and the end of a run keep every button and label on screen, none over another's button%s" % [tag, ("" if bad.is_empty() else ": " + str(bad.slice(0, 6)) + (" (+%d)" % (bad.size() - 6) if bad.size() > 6 else ""))])
+	sv.data.options.ui_scale = Screens.UI_SCALES[Screens.UI_SCALES.size() - 1]      # Largest itself, upright: x1.9 x 1.3 > the clamp
+	mn._ui_scale()
+	await get_tree().process_frame
+	mn.screens._opt_tab = 1
+	mn.screens.show_options("menu")
+	ok(UIKit.ui_scale_applied < 1.29 and _label_starting(mn.screens, "Largest asks for 130%") != null and _btn(mn.screens, "Largest (%d%%)" % roundi(UIKit.ui_scale_applied * 100.0)) != null,
+		"the UI scale row shows the scale the screen applied (x%.2f) and says Largest was limited" % UIKit.ui_scale_applied)
+	mn.screens._opt_tab = 0
+	sv.data.options.ui_scale = 1.0
+	win.size = size0
+	mn._ui_scale()
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
+
+func _label_starting(root: Node, start: String) -> Label:
+	for l in root.find_children("*", "Label", true, false):
+		if String(l.text).begins_with(start) and (l as Control).is_visible_in_tree() and _live(l): return l
+	return null
+
+## What on a page leaves the screen: a button or label past either side (anywhere) or past the top or bottom (outside a
+## scroll area), or a label lying over a button it is not part of (both as far as their scroll areas show them).
+## Each as "<page>: <text> <why>".
+func _fits_screen(root: Control, tag: String) -> Array:
+	await get_tree().create_timer(0.35).timeout          # the sheet's 0.22 s settle
+	var vr := root.get_viewport_rect().grow(0.5)
+	var out: Array = []
+	var shown: Array = []                                # [control, the part its scroll areas leave in view]
+	for c in root.find_children("*", "Control", true, false):
+		if not (c is Button or c is Label) or not (c as Control).is_visible_in_tree() or not _live(c): continue
+		var r := (c as Control).get_global_rect()
+		if r.size.x < 1.0 or r.size.y < 1.0: continue
+		var txt := String(c.text) if c is Button else String((c as Label).text)
+		if c is Label and txt.strip_edges() == "": continue
+		var scrolled := false
+		var seen := r
+		var n := c.get_parent()
+		while n != null:
+			if n is ScrollContainer:
+				scrolled = true
+				seen = seen.intersection((n as Control).get_global_rect())
+			n = n.get_parent()
+		if r.position.x < vr.position.x or r.end.x > vr.end.x: out.append("%s: %s off the side %s" % [tag, txt.left(24), str(r)])
+		elif not scrolled and (r.position.y < vr.position.y or r.end.y > vr.end.y): out.append("%s: %s off the top or bottom %s" % [tag, txt.left(24), str(r)])
+		if seen.get_area() > 1.0: shown.append([c, seen])
+	for e in shown:
+		if not (e[0] is Label): continue
+		var lr: Rect2 = e[1]
+		for f in shown:
+			if not (f[0] is Button) or (f[0] as Node).is_ancestor_of(e[0]): continue
+			var ov := lr.intersection(f[1])
+			if ov.get_area() > 0.2 * lr.get_area(): out.append("%s: label %s over button %s" % [tag, String((e[0] as Label).text).left(20), String((f[0] as Button).text).left(16)])
+	return out
 
 ## "" when the Shard Web's graph is drawn whole: inside the screen and every scroll area around it.
 func _graph_shown(root: Control) -> String:

@@ -97,6 +97,7 @@ func _ready() -> void:
 	banner_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner_t = UIKit.label("", 46, Color.WHITE, false, "display_heavy")
 	banner_t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner_t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART     # upright a long act title (DROWNED CATHEDRAL) is wider than the canvas
 	banner_box.add_child(banner_t)
 	var dv := UIKit.divider()
 	dv.custom_minimum_size = Vector2(520, 22)

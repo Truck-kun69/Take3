@@ -441,6 +441,14 @@ func _hero_plate(h: Dictionary, x0: float, x1: float, bottom: float) -> void:
 	ud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	plate.add_child(ud)
 	for c in plate.get_children(): (c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# taller than 150 (a two-line ultimate on a 600-unit canvas): grow upward, its foot stays on `bottom` (it grew down
+	# past the screen's edge: the Emberwitch's "ground." cut off at the Largest UI scale)
+	var fit := func():
+		var ph := maxf(150.0, plate.get_combined_minimum_size().y)
+		plate.position.y = bottom - ph
+		plate.size.y = ph
+	plate.minimum_size_changed.connect(fit)
+	fit.call_deferred()
 
 func _column(pos: Vector2, sz: Vector2) -> VBoxContainer:
 	var sc := ScrollContainer.new()
@@ -956,7 +964,8 @@ const UI_SCALES := [0.85, 1.0, 1.15, 1.3]
 func show_options(back: String = "menu") -> void:
 	var v := _open(900)
 	_title(v, "Options", "Shardfall " + Diag.version())
-	var tabs := _grid(OPT_TABS.size(), 8)
+	# upright the four tabs take two rows: on one row they needed ~600 units, wider than an S22's 598-unit canvas
+	var tabs := _grid(2 if get_viewport_rect().size.x < 820.0 else OPT_TABS.size(), 8)
 	for i in OPT_TABS.size():
 		var tb := UIKit.button(OPT_TABS[i], func(): _opt_tab = i; show_options(back), 48)
 		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1043,16 +1052,21 @@ func show_options(back: String = "menu") -> void:
 			v.add_child(info)
 	UIKit.foot(v).add_child(UIKit.button("Back", func(): Save.flush(); _opt_tab = 0; act.emit(back, null), 52))
 
-## Graphics > UI scale: the canvas scale on top of the automatic one (main._ui_scale), in four steps.
+## Graphics > UI scale: the canvas scale on top of the automatic one (main._ui_scale), in four steps. The value is
+## the scale this screen applies (main clamps it where the pages would no longer fit), with a note when it is less.
 func _ui_scale_row(v: VBoxContainer, back: String) -> void:
 	var cur := float(Save.opt("ui_scale"))
 	var k := 1
 	for i in UI_SCALES.size():
 		if absf(UI_SCALES[i] - cur) < 0.01: k = i
-	_opt_row(v, "UI scale", ["Small", "Normal", "Large", "Largest"][k] + " (%d%%)" % roundi(UI_SCALES[k] * 100.0), func():
+	var applied := roundi(UIKit.ui_scale_applied * 100.0)
+	_opt_row(v, "UI scale", ["Small", "Normal", "Large", "Largest"][k] + " (%d%%)" % applied, func():
 		Save.set_opt("ui_scale", UI_SCALES[(k + 1) % UI_SCALES.size()])
 		act.emit("options_changed", null)
 		show_options(back))
+	if applied < roundi(UI_SCALES[k] * 100.0):
+		var nt := UIKit.label("%s asks for %d%%: this screen fits %d%% before the pages would run off it." % [["Small", "Normal", "Large", "Largest"][k], roundi(UI_SCALES[k] * 100.0), applied], 16, UIKit.DIM, true, "italic")
+		v.add_child(nt)
 
 ## Options > Graphics > Renderer: Vulkan (the Mobile renderer) or OpenGL Safe Mode (Compatibility). The
 ## engine picks its driver before any script runs, so a change applies on the next launch (Quality.set_api).
@@ -1308,8 +1322,9 @@ func show_paste_done(err: String, back: String) -> void:
 ## One option row: name on the left in Garamond, its value as a bronze button on the right.
 func _opt_row(v: VBoxContainer, label: String, value: String, cb: Callable, on: bool = true) -> void:
 	var h := UIKit.hbox(12)
-	var l := UIKit.label(label, 19, UIKit.TEXT)
+	var l := UIKit.label(label, 19, UIKit.TEXT, true)        # wraps: unwrapped, a long label pushed the value off a narrow screen
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	h.add_child(l)
 	var b := UIKit.button(value, cb, 48)
 	b.custom_minimum_size.x = 230

@@ -14,6 +14,7 @@ const GOLD := Color("e8b54e")        # forged gold, the one accent
 const BLOOD := Color("b3242c")
 const RIFT := Color("8fd8ff")
 
+static var ui_scale_applied := 1.0   # the share of Options' UI scale this screen gives (main._ui_scale clamps it)
 static var touch_mode := -1        # -1: ask the device, 0: force desktop layout (tests), 1: force touch layout
 
 ## True when the touch layout (on-screen buttons, no action bar) should be used.

@@ -261,6 +261,9 @@ static func show_smith(s: Screens) -> void:
 	var pl := Camp.pool(d)
 	var grid := s._grid(1 if s.get_viewport_rect().size.x < 1250.0 else 2, 8)
 	v.add_child(grid)
+	# narrow (upright at a large UI scale: a 560-unit canvas) the rank goes under the name: on one line with the
+	# Temper column the row was 647 units wide and ran off the right edge
+	var narrow := s.get_viewport_rect().size.x < 820.0
 	for id in Content.WEAPON_IDS:
 		var W: Dictionary = Content.WEAPONS[id]
 		var col := Color(String(W.col))
@@ -269,8 +272,10 @@ static func show_smith(s: Screens) -> void:
 		var top := UIKit.hbox(12)
 		top.add_child(UIKit.label(String(W.name), 21, col.lightened(0.15) if pl.has(id) else UIKit.DIM, false, "display"))
 		top.add_child(_pips(r, Camp.TEMPER_MAX, UIKit.GOLD))
-		top.add_child(UIKit.label(Camp.RANK_NAME[r], 15, Color("c8a46a"), false, "label"))
+		var rank := UIKit.label(Camp.RANK_NAME[r], 15, Color("c8a46a"), false, "label")
+		if not narrow: top.add_child(rank)
 		left.add_child(top)
+		if narrow: left.add_child(rank)
 		var right: Control = null
 		if not pl.has(id):
 			var need := ""
