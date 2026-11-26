@@ -3938,7 +3938,44 @@ func _camp_ui_tests() -> void:
 	small = _small_buttons(mn.screens, "forge")
 	var left: bool = _press(mn.screens, "Leave") and mn.state == "play"
 	ok(on_page and honed and left and small.is_empty(), "the forge opens its page, Hone hones, Leave resumes (%s %s %s %s)" % [on_page, honed, left, str(small)])
+	# Android Back on the run's NPC pages leaves them (it did nothing): the forge and the merchant resume the run, the
+	# Whisperer's bargain is refused
+	var fe2: Dictionary = fw.director.start("forge")
+	fe2.pos = fw.pp
+	fw.director._step_forge(fe2, 0.1)
+	await get_tree().process_frame
+	var fb_on: bool = mn.state == "forge"
+	mn.back()
+	var fb: bool = fb_on and mn.state == "play"
+	fw.merchant_open.emit()
+	var mb_on: bool = mn.state == "merchant"
+	mn.back()
+	var mb: bool = mb_on and mn.state == "play"
+	fw.whisper_offer = ["blood_price", "long_night"]
+	fw.whisper_open.emit()
+	var wb_on: bool = mn.state == "whisper"
+	mn.back()
+	var wb: bool = wb_on and mn.state == "play" and fw.bargains.is_empty()
+	ok(fb and mb and wb, "Android Back leaves the Wayside Forge and the Merchant and refuses the Whisperer's bargain (%s %s %s)" % [fb, mb, wb])
 	mn._on_act("leave", null)
+	# the Daily Rift's Back returns to the page that opened it: the title, or Modes
+	sv.data.cleared[0] = true
+	mn._menu()
+	var dt1 := _tile(mn.screens, "Daily Rift")
+	if dt1 != null: dt1.pressed.emit()
+	var on_daily := _btn(mn.screens, "Enter today's rift") != null
+	_press(mn.screens, "Back")
+	var to_title: bool = mn.screens.page == "menu"
+	mn._on_act("endgame", null)
+	var dt2 := _tile(mn.screens, "Daily Rift")
+	if dt2 != null: dt2.pressed.emit()
+	var on_daily2 := _btn(mn.screens, "Enter today's rift") != null
+	_press(mn.screens, "Copy code")                       # a redraw of the page keeps where Back goes
+	_press(mn.screens, "Back")
+	var to_modes: bool = _tile(mn.screens, "Atlas of Falls") != null and mn.screens.page != "menu"
+	sv.data.cleared[0] = false
+	mn._menu()
+	ok(on_daily and to_title and on_daily2 and to_modes, "the Daily Rift's Back returns to the title when opened there, and to Modes from Modes (%s %s %s %s)" % [on_daily, to_title, on_daily2, to_modes])
 	# the coach rides a fresh profile's campaign run, teaches the level-up page there, and stays out of the Daily Rift
 	sv.data.tutorial = {"on": true, "done": []}
 	VoiceBank.stop_all()

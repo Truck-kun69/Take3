@@ -187,7 +187,7 @@ func _menu_entries(d: Dictionary) -> GridContainer:
 	if int(d.stats.get("runs", 0)) > 0:
 		entries.append(["Replay Act I", String(Story.act(0).title), func(): act.emit("new_campaign", null), Content.col(Content.STAGES[0].acc)])
 	entries.append(["Daily Rift", ("Clear Act I to unlock" if not daily_open else (("%s \u00b7 best %d" % [td.code, best]) if best >= 0 else "Today: %s" % td.code)),
-		func(): act.emit("daily", null), Color("7fd8ff")])
+		func(): act.emit("daily", "menu"), Color("7fd8ff")])
 	entries.append_array([
 		["Heroes", "%s \u00b7 %s" % [h.name, Story.hero(String(h.id)).mechanic], func(): act.emit("heroes", null), Content.col(h.col)],
 		["Codex & Story", "Acts, exiles, bestiary", func(): act.emit("codex", "menu"), Color("e8dcc0")],
@@ -381,7 +381,7 @@ func show_endgame() -> void:
 	var th := 62
 	var eg := _grid(1 if portrait else 2, 8)
 	var act_p: Dictionary = d.prophecy.active
-	var dt := UIKit.tile("Daily Rift", "The same seeded rift for everyone today" if daily_unlocked(d) else "Clear Mossglen Hollow to unlock", func(): act.emit("daily", null), Color("ffd27a"), false, th)
+	var dt := UIKit.tile("Daily Rift", "The same seeded rift for everyone today" if daily_unlocked(d) else "Clear Mossglen Hollow to unlock", func(): act.emit("daily", "endgame"), Color("ffd27a"), false, th)
 	_lock(dt, not daily_unlocked(d))
 	eg.add_child(dt)
 	var pr := UIKit.tile("Prophecy" + (" \u2605" if not act_p.is_empty() else ""), (String(Content.PROPHECIES[act_p.id].d)) if not act_p.is_empty() else "Take a contract before a run, for a reward you choose", func(): act.emit("prophecy", null), Color("e8b54e"), not act_p.is_empty(), th)
@@ -1069,7 +1069,11 @@ func _renderer_row(v: VBoxContainer, back: String) -> void:
 
 ## The Daily Rift: today's seeded run (act, exile, two modifiers), its share code, your best scores,
 ## and a field to enter a friend's code.
-func show_daily(msg: String = "") -> void:
+## `back`: the page its Back returns to (the title's tile: "menu"; Modes' tile: "endgame"), kept across its own
+## redraws. It always went to Modes, even opened from the title, a page the player had never seen.
+var _daily_back := "endgame"
+func show_daily(msg: String = "", back: String = "") -> void:
+	if back != "": _daily_back = back
 	var v := _open(900)
 	var D: Dictionary = Save.data.daily
 	var td := Daily.today()
@@ -1121,7 +1125,7 @@ func show_daily(msg: String = "") -> void:
 		var hv := UIKit.label(hl.strip_edges(), 16, UIKit.DIM, true, "body")
 		hv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(hv)
-	UIKit.foot(v).add_child(UIKit.button("Back", func(): act.emit("endgame", null), 50))
+	UIKit.foot(v).add_child(UIKit.button("Back", func(): act.emit(_daily_back, null), 50))
 
 ## Prophecies: three offers, each with three rewards to choose from; the active one can be abandoned.
 func show_prophecies() -> void:

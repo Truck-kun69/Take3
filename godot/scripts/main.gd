@@ -425,8 +425,9 @@ func _restart_run() -> void:
 
 ## Android Back (and its desktop twin, Esc outside a run). Never quits (project setting quit_on_go_back is off):
 ## in a run it toggles the pause menu (from a page opened inside the pause menu: back to the pause menu); in the
-## title's pages it returns to the main menu; on the title itself it does nothing; a level-up, merchant or
-## bargain waits for its choice.
+## title's pages it returns to the main menu; on the title itself it does nothing; a level-up waits for its choice;
+## the Wayside Forge and the Wandering Merchant leave (their Leave), the Whisperer's bargain is refused (Refuse and
+## walk on): Back did nothing there, so a player pressing it to get out stayed stuck on the page.
 func back() -> void:
 	if intro != null:
 		intro.skip()
@@ -440,7 +441,9 @@ func back() -> void:
 			if screens.page != "menu":
 				if screens.parent_page == "camp": CampPages.show_camp(screens)    # a Camp station: back to the Camp
 				else: _menu()
-		"levelup", "merchant", "whisper", "forge": pass
+		"merchant", "forge": _resume()
+		"whisper": _on_act("bargain", "")
+		"levelup": pass
 		_: _menu()
 
 ## World-side first-occurrence breadcrumbs (see Diag.first).
@@ -738,7 +741,7 @@ func _on_act(what: String, arg) -> void:
 		"codex": screens.show_codex(String(arg) if arg != null else "upgrades")
 		"web": screens.show_web()
 		"prophecy": screens.show_prophecies()
-		"daily": screens.show_daily()
+		"daily": screens.show_daily("", String(arg) if arg != null else "endgame")     # arg: where its Back returns
 		"daily_go": start(arg)
 		"options": screens.show_options("menu")
 		"bench": start_bench()
