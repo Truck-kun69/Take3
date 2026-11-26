@@ -448,7 +448,9 @@ func _hero_plate(h: Dictionary, x0: float, x1: float, bottom: float) -> void:
 		plate.position.y = bottom - ph
 		plate.size.y = ph
 	plate.minimum_size_changed.connect(fit)
-	fit.call_deferred()
+	# now, not deferred: the menu can be rebuilt (and this plate freed) before a deferred call runs, and a lambda
+	# whose capture was freed logs an error; later size changes arrive through the plate's own signal
+	fit.call()
 
 func _column(pos: Vector2, sz: Vector2) -> VBoxContainer:
 	var sc := ScrollContainer.new()
