@@ -232,7 +232,7 @@ func _play_block(d: Dictionary) -> VBoxContainer:
 	b.add_child(play)
 	return b
 
-## The Camp (its NPCs, and Gear & Stash), Upgrades (Shard Web and powers) and Modes (the endgame) in one compact row.
+## The Camp (its NPCs, and Gear), Upgrades (Shard Web and powers) and Modes (the endgame) in one compact row.
 func _menu_bar(d: Dictionary) -> HBoxContainer:
 	var row := UIKit.hbox(6)
 	var unspent := int(d.get("echoes", 0)) > 0
@@ -628,7 +628,7 @@ func show_stash(in_run: bool = false) -> void:
 		_disarm()
 	else:                                    # a redraw (a tap on this page) keeps the page where the thumb left it
 		_keep_scroll(_body_sc, _prev_scroll)
-	_title(v, "Gear, Crafting & Cube", "Select an item, then apply a shard. Legendary items dissolve in the Cube and keep their power in the Codex forever.")
+	_title(v, "Gear", "Select an item, then apply a shard. Extract a legendary item's power and the Codex keeps it forever.")
 	v.add_child(_resources(Save.data))                     # the crafting shards you hold
 	var list := _gear_list()
 	var portrait := get_viewport_rect().size.x < 820.0
@@ -720,7 +720,7 @@ func show_stash(in_run: bool = false) -> void:
 			foot_acts.append(UIKit.button("Unlock" if locked else "Lock", func(): _disarm(); Camp.toggle_lock(Save.data, it); Save.mark_dirty(); show_stash(in_run), 50))
 			if String(it.leg) != "":
 				var armed_x := _is_armed("extract", uid)
-				var xb := UIKit.button("Power known" if known else ("Tap to confirm" if armed_x else "Cube: extract"), func():
+				var xb := UIKit.button("Power known" if known else ("Tap to confirm" if armed_x else "Extract power"), func():
 					if not armed_x:
 						_arm("extract", uid)
 					else:
@@ -968,10 +968,10 @@ func _story_page() -> VBoxContainer:
 		for k in 2:
 			var e: Dictionary = a.echoes[k]
 			if found.has(Story.echo_key(i, k)):
-				b.add_child(UIKit.label("Rift Echo: %s. %s" % [e.title, e.text], 15, Color("c9b3ff"), true, "body"))
+				b.add_child(UIKit.label("Rift Memory: %s. %s" % [e.title, e.text], 15, Color("c9b3ff"), true, "body"))
 			else:
 				# 6.3:1 on the panel (it was 4.28 nominal and rendered 3.09 as thin italic): a hint is worth reading
-				b.add_child(UIKit.label("Rift Echo: not yet heard (it waits beside an arch in this act)", 15, Color("9d8fbf"), true, "italic"))
+				b.add_child(UIKit.label("Rift Memory: not yet heard (it waits beside an arch in this act)", 15, Color("9d8fbf"), true, "italic"))
 		b.add_child(UIKit.divider())
 	return b
 
@@ -1516,7 +1516,7 @@ func _choice_card(w: World, c: Dictionary, idx: int, portrait: bool, side_w: flo
 	for n in v.get_children(): (n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b
 
-## Pause (the HUD's pause button, Back or Esc): Resume, Build & Stats, Gear & Crafting, Settings, Restart
+## Pause (the HUD's pause button, Back or Esc): Resume, Build & Stats, Gear, Options, Restart
 ## Run and Main Menu (both confirmed first). Back from any page opened here returns here (main.back()).
 func show_pause(w: World) -> void:
 	var v := _open(700)
@@ -1524,7 +1524,7 @@ func show_pause(w: World) -> void:
 	_title(v, "Paused", "%s - %s" % [Content.HEROES[w.hero].name, (Story.act(w.stage).title if w.mode == "campaign" else w.mode.capitalize())])
 	v.add_child(UIKit.button("Resume", func(): act.emit("resume", null)))
 	var row := _grid(3, 8)                           # the three pages on one row, Restart and Main Menu under them
-	for e in [["Build & Stats", func(): show_build(w)], ["Gear & Crafting", func(): show_stash(true)], ["Settings", func(): show_options("resume_pause")]]:
+	for e in [["Build & Stats", func(): show_build(w)], ["Gear", func(): show_stash(true)], ["Options", func(): show_options("resume_pause")]]:
 		var b := UIKit.button(e[0], e[1], 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(b)
@@ -1565,7 +1565,7 @@ func show_build(w: World) -> void:
 		"Damage dealt %d  \u00b7  taken %d  \u00b7  %d reactions" % [int(m.get("dmg_dealt", 0.0)), int(m.get("dmg_taken", 0.0)), int(m.get("reactions", 0))]]
 	var syn := {"warden": ["warden_vaults", "vault slams"], "spark": ["spark_ricochets", "ricochets"], "storm": ["storm_conducts", "conductions"]}
 	if syn.has(w.hero_id): lines.append("%d %s" % [int(m.get(syn[w.hero_id][0], 0)), syn[w.hero_id][1]])
-	if int(m.get("echoes", 0)) > 0: lines.append("%d Rift Echo%s heard" % [int(m.echoes), "" if int(m.echoes) == 1 else "es"])
+	if int(m.get("echoes", 0)) > 0: lines.append("%d Rift Memor%s heard" % [int(m.echoes), "y" if int(m.echoes) == 1 else "ies"])
 	var cl := contagion_line(w)
 	if cl != "": lines.append(cl)
 	for ln in lines:

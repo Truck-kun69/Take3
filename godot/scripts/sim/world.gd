@@ -344,7 +344,7 @@ func _step_echoes() -> void:
 		e.taken = true
 		buffs.add("rift_surge")
 		var frag: Dictionary = Story.echo(stage, int(e.k))
-		banner.emit("Rift Echo", String(frag.title), Color("c48aff"))
+		banner.emit("Rift Memory", String(frag.title), Color("c48aff"))
 		var key := Story.echo_key(stage, int(e.k))
 		var found: Array = Save.data.get("rift_echoes", [])
 		if not found.has(key):

@@ -1798,13 +1798,13 @@ func _fit_tests() -> void:
 	var gl: Array = mn.screens._gear_list()               # the page's own order (rarest first)
 	for k in gl.size():
 		if String(gl[k].it.get("leg", "")) != "": leg = k
-	var stash_want := ["Equip", "Salvage", "Back"] + (["Cube: extract"] if leg >= 0 else [])
+	var stash_want := ["Equip", "Salvage", "Back"] + (["Extract power"] if leg >= 0 else [])
 	mn.screens._sel_item = leg if leg >= 0 else 2
 	mn.screens.show_stash(false)
 	var stash_r := await _off_screen(mn.screens, stash_want)
-	var pause_want := ["Resume", "Build & Stats", "Gear & Crafting", "Settings", "Restart Run", "Main Menu"]
+	var pause_want := ["Resume", "Build & Stats", "Gear", "Options", "Restart Run", "Main Menu"]
 	mn.screens.show_pause(w)
-	var pause_r := await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear & Crafting", "Settings"])
+	var pause_r := await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear", "Options"])
 	mn.screens._sel_passive = "a6"
 	mn.screens.show_web()
 	var web_want := ["Not yet reachable", "Reset web  (refund all)", "Back"]      # a6 from a fresh profile: not reachable yet
@@ -1838,7 +1838,7 @@ func _fit_tests() -> void:
 	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again, Camp and Main menu on screen%s" % [vs.x, vs.y, end_r])
 	ok(crash_r == "" and opt_r == "" and bench_r == "", "and so do the crash report's Copy report and Continue, Options' Back and the benchmark's buttons%s%s%s" % [crash_r, opt_r, bench_r])
 	ok(stash_r == "", "the stash keeps the selected item's %s on screen with Back%s" % [" / ".join(stash_want.slice(0, stash_want.size())), stash_r])
-	ok(pause_r == "" and web_r == "", "the pause menu: Build & Stats, Gear & Crafting and Settings on one row, every button on screen; the Shard Web's whole graph, Take, Reset and Back on screen%s%s" % [pause_r, web_r])
+	ok(pause_r == "" and web_r == "", "the pause menu: Build & Stats, Gear and Options on one row, every button on screen; the Shard Web's whole graph, Take, Reset and Back on screen%s%s" % [pause_r, web_r])
 	# held upright: the S22's 1080x2340, which main._ui_scale answers by scaling the UI up 1.9x
 	win.size = Vector2i(1080, 2340)
 	await get_tree().process_frame
@@ -1851,7 +1851,7 @@ func _fit_tests() -> void:
 	mn.screens.show_stash(false)
 	up_r += await _off_screen(mn.screens, stash_want)
 	mn.screens.show_pause(w)
-	up_r += await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear & Crafting", "Settings"])
+	up_r += await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear", "Options"])
 	mn.screens.show_web()
 	up_r += await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
 	win.size = size0
@@ -4253,7 +4253,7 @@ func _camp_ui_tests() -> void:
 	var s2: bool = _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(rare)
 	mn.screens._sel_item = at.call(leg)
 	mn.screens.show_stash(false)
-	var x1: bool = _press(mn.screens, "Cube: extract") and (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).is_empty()
+	var x1: bool = _press(mn.screens, "Extract power") and (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).is_empty()
 	var x2: bool = _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).has(String(leg.leg))
 	var dup := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
 	dup.leg = leg.leg
@@ -4261,7 +4261,7 @@ func _camp_ui_tests() -> void:
 	mn.screens._sel_item = at.call(dup)
 	mn.screens.show_stash(false)
 	var pk := _btn(mn.screens, "Power known")
-	var known_ok: bool = pk != null and pk.disabled and _btn(mn.screens, "Cube: extract") == null
+	var known_ok: bool = pk != null and pk.disabled and _btn(mn.screens, "Extract power") == null
 	mn.screens._sel_item = at.call(rare2)
 	mn.screens.show_stash(false)
 	var aff0 := JSON.stringify(rare2.affixes)
@@ -4283,7 +4283,7 @@ func _camp_ui_tests() -> void:
 	# a Magic (or Normal) item takes two taps too: Salvage sits 6 dp from Equip, and one stray tap lost the item
 	var m1: bool = _press(mn.screens, "Salvage") and (sv.data.stash as Array).has(magic) and _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(magic)
 	ok(s1 and s2 and x1 and x2 and known_ok and c1 and told and c2 and m1 and kept,
-		"Gear: one tap on Salvage (any rarity), Cube: extract or a shard leaves the stash unchanged and the second applies it; a shard's first tap shows its effect, the page staying where it was (scrolled %d); a known power cannot be extracted (%s %s %s %s %s %s %s %s %s %s)" % [at_sv, s1, s2, x1, x2, known_ok, c1, told, c2, m1, kept])
+		"Gear: one tap on Salvage (any rarity), Extract power or a shard leaves the stash unchanged and the second applies it; a shard's first tap shows its effect, the page staying where it was (scrolled %d); a known power cannot be extracted (%s %s %s %s %s %s %s %s %s %s)" % [at_sv, s1, s2, x1, x2, known_ok, c1, told, c2, m1, kept])
 	# "What's new": due once after an update to a profile that has played; never for a new one
 	var dw: Dictionary = Save.defaults()
 	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "a new profile never gets What's new")
@@ -4696,7 +4696,8 @@ func _frame_fit_tests() -> void:
 ## support gems); one currency was a Divine Orb at the furnace and a Divine Shard everywhere else; a prophecy paid
 ## "Exalted Shards", the Star Shard's old name. Ids stay (saves keep them); no script says the old words.
 func _words_tests() -> void:
-	var old := ["Shock Pulse", "shock pulse", "Gem Pull", "Divine Orb", "blue shards", "Hits also ignite", "Exalted Shard"]
+	var old := ["Shock Pulse", "shock pulse", "Gem Pull", "Divine Orb", "blue shards", "Hits also ignite", "Exalted Shard",
+		"Gear & Crafting", "Gear & Stash", "Gear, Crafting", "Cube: extract", "in the Cube"]      # the Gear page had three names
 	var files: Array = []
 	_collect_sources("res://scripts", files)
 	var hits: Array = []
@@ -4705,6 +4706,12 @@ func _words_tests() -> void:
 		for o in old:
 			if txt.contains(o): hits.append("%s: %s" % [String(p).get_file(), o])
 	ok(files.size() > 40 and hits.is_empty(), "no script says the old words (%s)%s" % [", ".join(old), ("" if hits.is_empty() else ": " + str(hits))])
+	# the lore fragments are Rift Memories on screen (the currency is Echoes): no string a player reads says "Rift Echo"
+	var lit := RegEx.create_from_string("\"[^\"\\n]*Rift Echo[^\"\\n]*\"")
+	var echo_hits: Array = []
+	for p in files:
+		for m in lit.search_all(FileAccess.get_file_as_string(p)): echo_hits.append("%s: %s" % [String(p).get_file(), m.get_string().left(40)])
+	ok(echo_hits.is_empty() and String(CampPages._status(Save.data, "chronicler")).contains("Rift Memories"), "the lore fragments are Rift Memories wherever a player reads them, apart from the Echoes they spend%s" % ("" if echo_hits.is_empty() else ": " + str(echo_hits)))
 	ok(Content.WEAPONS.nova.name == "Flame Pulse" and Content.WEAPONS.nova.elem == Content.El.FIRE and String(Content.FUSIONS["nova+storm"].d).contains("flame pulse"),
 		"the Emberwitch's fire weapon is the Flame Pulse, and Thunderclap detonates a flame pulse")
 	ok(String(Content.GEMS.inf_fire.d).begins_with("Hits also %s." % Content.EL_STATUS[Content.El.FIRE]) and Content.PERKS.magnet.name == "Crystal Pull",

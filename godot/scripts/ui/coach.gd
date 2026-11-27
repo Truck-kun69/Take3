@@ -20,10 +20,10 @@ const STEPS := {
 	"flask2": {"touch": "Flask 2 holds %s: %s. Tap 2 to drink it.", "keys": "Flask 2 holds %s: %s. Press 2 to drink it.", "ring": "f1"},
 	"jump": {"touch": "Tap JUMP to leap over rocks, walls and gaps.", "keys": "Press F to leap over rocks, walls and gaps.", "ring": "jump"},
 	"ult": {"touch": "Your ultimate is charged: tap ULT.", "keys": "Your ultimate is charged: press R.", "ring": "ult"},
-	"loot": {"touch": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "keys": "Gear found. Equip it from the pause menu (Gear & Crafting), or at the Camp after the run.", "ring": ""},
+	"loot": {"touch": "Gear found. Equip it from the pause menu (Gear), or at the Camp after the run.", "keys": "Gear found. Equip it from the pause menu (Gear), or at the Camp after the run.", "ring": ""},
 	"gate": {"touch": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "keys": "Step into the Rift Gate to bank your hoard. Fall first and it is lost.", "ring": ""},
 }
-const LOOT_AUTO := "Better gear equips itself. See every find in Pause > Gear & Crafting."
+const LOOT_AUTO := "Better gear equips itself. See every find in Pause > Gear."
 const ORDER := ["move", "fight", "goal", "shards", "roll", "flask", "flask2", "jump", "ult", "loot", "gate"]
 const CONTEXT := ["flask", "gate", "ult", "flask2", "loot"]  # these wait for their moment, and take the stage when it comes
 const LEVELUP := "levelup"                         # taught on the level-up page (Screens.show_levelup; main's "pick")

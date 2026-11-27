@@ -20,7 +20,7 @@ const NPCS := {
 	"brask": {"name": "Captain Brask", "role": "Drillmaster", "col": "a1cc70", "glyph": "B",
 		"lines": ["Keep moving. A still exile is a dead exile.", "Roll through them, not away from them.", "Forget something out there? Ask, and I will drill it again."]},
 	"chronicler": {"name": "The Chronicler", "role": "Codex & Story", "col": "e0d7ca", "glyph": "C",
-		"lines": ["Every Echo you carry back, I write down.", "The acts, the exiles, the things that hunt them: all here.", "Ink lasts longer than any of us."]},
+		"lines": ["Every Rift Memory you carry back, I write down.", "The acts, the exiles, the things that hunt them: all here.", "Ink lasts longer than any of us."]},
 	"cartographer": {"name": "Wend", "role": "Cartographer", "col": "7aa2ff", "glyph": "W",
 		"lines": ["The Atlas grows with every map you clear.", "Today's rift is the same for everyone. Beat them all.", "Prophecies, fragments, deeper rifts: pick your road."]},
 }
@@ -74,7 +74,7 @@ static func show_camp(s: Screens) -> void:
 	var g := s._grid(1 if vw < 820.0 else (3 if vw >= 1250.0 else 2), 10)
 	var n_stash := (d.stash as Array).size()
 	var n_new := (d.get("new_items", []) as Array).size()
-	var gear := UIKit.tile("Gear & Stash", ("%d / %d in the stash" % [n_stash, World.STASH_CAP]) + (("  ·  %d new" % n_new) if n_new > 0 else "  ·  equip, craft, lock"),
+	var gear := UIKit.tile("Gear", ("%d / %d in the stash" % [n_stash, World.STASH_CAP]) + (("  ·  %d new" % n_new) if n_new > 0 else "  ·  equip, craft, lock"),
 		func(): s.parent_page = "camp"; s.show_stash(false), Color("e8b54e"), false, CARD_H)
 	g.add_child(gear)
 	for id in NPC_ORDER:
@@ -121,7 +121,7 @@ static func _status(d: Dictionary, id: String) -> String:
 		"brask":
 			return "How to play  ·  tips %s" % ("on" if bool(d.tutorial.on) else "off")
 		"chronicler":
-			return "%d lore pages  ·  %d Rift Echoes" % [(d.lore as Array).size(), (d.get("rift_echoes", []) as Array).size()]
+			return "%d lore pages  ·  %d Rift Memories" % [(d.lore as Array).size(), (d.get("rift_echoes", []) as Array).size()]
 		"cartographer":
 			return "Daily Rift, Atlas, prophecies"
 	return ""
@@ -378,9 +378,9 @@ static func show_bench(s: Screens) -> void:
 	var locked := 0
 	for it in d.stash:
 		if Camp.is_locked(d, it): locked += 1
-	_note(v, "%d locked in the stash. Legendary items are never salvaged here: extract their power in the Cube, or salvage one at a time in Gear." % locked, UIKit.DIM)
+	_note(v, "%d locked in the stash. Legendary items are never salvaged here: extract their power in Gear, or salvage one at a time there." % locked, UIKit.DIM)
 	var row := s._grid(2, 10)
-	var gear := UIKit.button("Gear & Stash", func(): s.parent_page = "camp"; s.show_stash(false), 50)
+	var gear := UIKit.button("Gear", func(): s.parent_page = "camp"; s.show_stash(false), 50)
 	var back := UIKit.button("Back", func(): show_camp(s), 50)
 	for b in [gear, back]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -578,7 +578,7 @@ const HOW_TO := [
 	["Ultimate", "ULT charges as you fight. When its ring glows, tap it (R)."],
 	["The dark", "The light fades as a run goes on and kills relight it. In the dark you are Engulfed: foes hit harder and drop richer loot."],
 	["Rift Gates", "Kills fill your hoard. Step into a Rift Gate to bank it: gold, Echoes and rare items. Walk past one and the hoard grows, but if you fall first it is lost."],
-	["Loot and the Camp", "Champions and bosses drop gear. Equip and craft it in Gear & Stash. At the Camp: temper weapons, fuse and salvage gear, and trade."],
+	["Loot and the Camp", "Champions and bosses drop gear. Equip and craft it in Gear. At the Camp: temper weapons, fuse and salvage gear, and trade."],
 ]
 
 static func show_drill(s: Screens) -> void:
