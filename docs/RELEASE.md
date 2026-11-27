@@ -40,6 +40,7 @@ not to a copied text).
 
 ## APK size
 
+0.11.5: 140.96 MB (140,957,857 bytes): scripts, three new shaders and constants (no new assets).
 0.11.4: 140.95 MB (140,945,328 bytes): script, shader and constant changes only (no new assets).
 0.11.3: 140.94 MB (140,937,136 bytes): script only.
 
