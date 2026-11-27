@@ -37,7 +37,6 @@ func _ready() -> void:
 	e.background_color = Color(0.02, 0.018, 0.03)
 	# ambient from the sky as in the run (WorldView3D): a cool sky over a dark warm ground
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	e.ambient_light_energy = 0.25
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
 	# the run's glow: only what is brighter than 1.25 (flames, the crystal, the rift), screen-blended, no bloom
 	e.glow_enabled = true
@@ -85,7 +84,10 @@ func _ready() -> void:
 			["rock", Vector3(90, 0, 40), 1.2, 0.5], ["rock", Vector3(-150, 0, 30), 1.0, 2.2], ["crystal", Vector3(110, 0, -60), 1.0, 0.4], ["bones", Vector3(-40, 0, 60), 1.0, 1.0]]:
 		var mi := MeshInstance3D.new()
 		mi.mesh = Models.prop_mesh(spec[0])
-		mi.material_override = prop_mat
+		# imported PBR props keep their own maps, as in the run (WorldView3D._build_cell): the pillar, rock and bones
+		# meshes carry no vertex colour, so the prop shader drew them white x tint, pale lilac at L* 31 (L*90 55)
+		# around an exile at L* 8
+		if not Models.has_pbr(mi.mesh): mi.material_override = prop_mat
 		mi.position = spec[1]
 		mi.scale = Vector3.ONE * float(spec[2])
 		mi.rotation.y = spec[3]

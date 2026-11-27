@@ -5120,6 +5120,16 @@ func _look_art2_tests() -> void:
 	Models.tint_props(-1, Color(1, 1, 1))
 	ok(tinted.r > tinted.b * 1.5 and tree_kept and rmat.albedo_color.is_equal_approx(Models.albedo_gain_color("rock")),
 		"Act II's rocks take its ground's hue (%s), the trees keep their bark, the title resets them" % str(tinted))
+	var ms := MenuStage3D.new()
+	add_child(ms)
+	var pbr := 0
+	var over := 0
+	for c in ms.get_children():
+		if c is MeshInstance3D and Models.has_pbr((c as MeshInstance3D).mesh):
+			pbr += 1
+			if (c as MeshInstance3D).material_override != null: over += 1
+	ms.queue_free()
+	ok(pbr >= 3 and over == 0, "the title's imported props keep their maps (%d, %d overridden): the prop shader drew them white x tint, lilac at L* 31 round an exile at L* 8" % [pbr, over])
 	# (art review 2 guards end)
 
 func _look_vfx_tests() -> void:
