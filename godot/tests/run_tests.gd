@@ -5130,6 +5130,22 @@ func _look_art2_tests() -> void:
 			if (c as MeshInstance3D).material_override != null: over += 1
 	ms.queue_free()
 	ok(pbr >= 3 and over == 0, "the title's imported props keep their maps (%d, %d overridden): the prop shader drew them white x tint, lilac at L* 31 round an exile at L* 8" % [pbr, over])
+	var lk: Array = WorldView3D.STAGE_LOOK
+	var sky0: Color = lk[0].sky
+	var sun4: Color = lk[4].sun
+	var sun_y := 0.2126 * sun4.r + 0.7152 * sun4.g + 0.0722 * sun4.b
+	ok(sky0.b / sky0.r <= 1.4 and sun4.r >= sun4.b * 1.5 and absf(sun_y - 0.748) < 0.03,
+		"Act I's sky B/R %.2f (at 1.85 its blue pixels rose to 50%%); Act V's sun candle-warm at the old luma %.3f (Act V drew Act I's colours)" % [sky0.b / sky0.r, sun_y])
+	ok(float(lk[1].get("sat", WorldView3D.SAT)) < WorldView3D.SAT and float(lk[3].get("sat", WorldView3D.SAT)) < WorldView3D.SAT and float(lk[0].get("sat", WorldView3D.SAT)) == WorldView3D.SAT
+		and float(lk[4].get("rim_k", WorldView3D.RIM_FOE)) <= 0.35 and float(lk[0].get("rim_k", WorldView3D.RIM_FOE)) >= 0.6,
+		"saturation below the default in Acts II and IV (C* 45; 76%% blue), Act V's foe rim 0.35 (its foes drew 15 L* above the hero)")
+	var w5 := _world({"mode": "campaign", "stage": 4, "hero": 0, "seed": 64})
+	var v5 := WorldView3D.new()
+	add_child(v5)
+	v5.bind(w5)
+	ok(is_equal_approx(float(v5.foe_mats[0].get_shader_parameter("rim_k")), 0.35) and v5.sun.light_color.is_equal_approx(sun4)
+		and is_equal_approx(v5.env.adjustment_saturation, WorldView3D.SAT), "Act V binds its foe rim, its sun and the default saturation")
+	v5.queue_free()
 	# (art review 2 guards end)
 
 func _look_vfx_tests() -> void:

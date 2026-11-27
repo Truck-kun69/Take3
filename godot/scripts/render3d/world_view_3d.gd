@@ -13,20 +13,24 @@ extends Node3D
 ## "sky" / "gnd": the hemisphere the ambient light comes from (ProceduralSkyMaterial, AMBIENT_SOURCE_SKY):
 ## a cool sky above, a dark warm ground below, so tops of things read cool and undersides warm and dim.
 const STAGE_LOOK := [
-	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3),
+	{"sky": Color(0.314, 0.364, 0.429), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3),
 		"rim": Color(0.6, 0.7, 1.0)},                     # I: moonlight, bluer than Chill's ice (dE00 6.4 -> 10.5)
 	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2),
-		"rim": Color(0.85, 0.85, 0.85), "clutter": Color(2.6, 0.58, 0.45)},     # II: neutral (molten-amber sat on Burn's hue and the red ground)
+		"rim": Color(0.85, 0.85, 0.85), "clutter": Color(2.6, 0.58, 0.45), "sat": 0.75},     # II: neutral (molten-amber sat on Burn's hue and the red ground)
 	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85),
 		"rim": Color(0.74, 1.0, 0.98)},                   # III: frost-cyan
 	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85),
-		"rim": Color(0.85, 0.85, 0.85)},                  # IV: neutral (rift-violet foes sank 14 luma under the blue ground)
-	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.62, 0.78, 0.8), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85),
-		"rim": Color(0.2, 1.0, 0.8)}                      # V: bioluminescent-teal
+		"rim": Color(0.85, 0.85, 0.85), "sat": 0.75},      # IV: neutral (rift-violet foes sank 14 luma under the blue ground)
+	{"sky": Color(0.22, 0.33, 0.38), "gnd": Color(0.09, 0.075, 0.05), "sun": Color(0.9, 0.74, 0.5), "amb": Color(0.2, 0.3, 0.32), "fog": Color(0.07, 0.12, 0.13), "bg": Color(0.02, 0.04, 0.05), "eye": Color(0.6, 1.0, 0.85),
+		"rim": Color(0.2, 1.0, 0.8), "rim_k": 0.35}                      # V: bioluminescent-teal; a candle-warm sun (same luma as the
+		                                                  # old 0.62, 0.78, 0.8): Act I's cool light gave V Act I's colours
 ]
 ## The act's Fresnel rim (STAGE_LOOK.rim) on foes (foe.gdshader rim_col) and rogue exiles (HeroRig.set_rim). 0.6 on
 ## foes: at 0.45 a foe without a status sat within 3 luma of the ground beside it in Acts I, II and IV.
 const RIM_FOE := 0.6
+## Saturation: 0.95 by default, 0.75 in Acts II and IV (sat). The tone curve (tone_curve) raises chroma 12-22%, so
+## these keep each act's chroma where it was before the curve, and still lower II's and IV's.
+const SAT := 0.95
 const RIM_HERO := 0.35
 ## The hero's own rim, in the hero's colour (the ring's): in the act's rim the hero wore the foes' outline.
 const RIM_OWN := 0.6
@@ -145,7 +149,7 @@ func _ready() -> void:
 	env.ssao_intensity = 1.6
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.08
-	env.adjustment_saturation = 1.08
+	env.adjustment_saturation = SAT
 	we.environment = env
 	add_child(we)
 	sun = DirectionalLight3D.new()
@@ -364,12 +368,13 @@ func bind(world: World) -> void:
 		fm.set_shader_parameter("glow_col", Content.col(s.acc))
 		fm.set_shader_parameter("status_cols", Content.status_cols(w.colorblind))
 		fm.set_shader_parameter("rim_col", _look.rim)
-		fm.set_shader_parameter("rim_k", RIM_FOE)
+		fm.set_shader_parameter("rim_k", float(_look.get("rim_k", RIM_FOE)))     # Act V: its foes drew above the hero
 	prop_mat.set_shader_parameter("glow_col", Content.col(s.acc))
 	prop_mat.set_shader_parameter("tint", Color(0.96, 0.95, 0.93))      # neutral: props keep their own colours
 	env.background_color = _look.bg
-	env.ambient_light_color = _look.amb
 	env.fog_light_color = _look.fog
+	# saturation per act (SAT unless the act says): Act II's ground drew at C* 45, Act IV's 76% blue at C* 29
+	env.adjustment_saturation = float(_look.get("sat", SAT))
 	sun.light_color = _look.sun
 	var hq := Quality.tier() >= 1
 	sun.shadow_enabled = hq
