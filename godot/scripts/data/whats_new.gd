@@ -5,6 +5,12 @@ extends RefCounted
 ## covers it), and it can be reread from Captain Brask's page. Newest first; keep each version to a few lines.
 
 const NOTES := {
+	"0.11.5": [
+		["Cards you can compare", "Weapon cards show their numbers, a weapon to level is in every deal, and evolving comes about level 11."],
+		["A clearer camp", "Stations say what you can afford, wins name what they unlock, and the Shard Web lists what you can take."],
+		["Danger you can see", "Enemy shots and danger zones draw over your own fire and the bodies in them; foes squash when hit."],
+		["A truer world", "Trees, rocks and bushes are no longer black holes, each act has its own light, and contrast is back."],
+	],
 	"0.11.4": [
 		["Colours you can tell apart", "New element, rarity and currency colours, checked for colour blindness; statuses glow in their real colours."],
 		["A brighter fight", "Lighter scenes, no more white blob on burning foes, and your hero and the foes stand out from the ground."],
