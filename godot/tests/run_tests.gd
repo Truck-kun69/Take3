@@ -1809,6 +1809,32 @@ func _fit_tests() -> void:
 	mn.screens.show_web()
 	var web_want := ["Not yet reachable", "Reset web  (refund all)", "Back"]      # a6 from a fresh profile: not reachable yet
 	var web_r := await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
+	# with Echoes to spend the web opens on a node within reach (it opened on the taken start node: Take disabled), and
+	# lists the nodes within reach as tiles at least MIN_TOUCH (40 dp) a side: the graph's nodes are 9.5-14 dp targets;
+	# at an S22's own x1.125 the whole graph stays on screen (at the old 300 floor its bottom arm sat under the foot)
+	sv.data.echoes = 3
+	mn.screens._sel_passive = "start"
+	mn.screens.show_web()
+	await get_tree().create_timer(0.35).timeout          # the sheet's settle, as _off_screen waits
+	var tk := _btn(mn.screens, "Take  \u00b7  1 Echo")
+	var tk_ok: bool = tk != null and not tk.disabled           # read now: the page is rebuilt below
+	var rtiles: Array = []
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("passive"): rtiles.append(b)
+	var rsmall := rtiles.filter(func(b): return (b as Control).size.y < UIKit.MIN_TOUCH or (b as Control).size.x < UIKit.MIN_TOUCH)
+	var pre := String(mn.screens._sel_passive)
+	sv.data.options.ui_scale = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	mn._ui_scale()
+	await get_tree().process_frame
+	mn.screens.show_web()
+	var g22 := await _off_screen(mn.screens, ["Take  \u00b7  1 Echo", "Back"]) + _graph_shown(mn.screens)
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	await get_tree().process_frame
+	sv.data.echoes = 0
+	mn.screens._sel_passive = "a6"
+	ok(tk_ok and Content.passive_can_take(pre, ["start"]) and rtiles.size() == 4 and rsmall.is_empty() and g22 == "",
+		"with Echoes to spend the Shard Web opens on a node within reach (%s), lists the %d nodes within reach as tiles of 63 units or more, and at an S22's x1.125 keeps its whole graph on screen (Take %s, small %d)%s" % [pre, rtiles.size(), "on" if tk_ok else "missing or off", rsmall.size(), g22])
 	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again, Camp and Main menu on screen%s" % [vs.x, vs.y, end_r])
 	ok(crash_r == "" and opt_r == "" and bench_r == "", "and so do the crash report's Copy report and Continue, Options' Back and the benchmark's buttons%s%s%s" % [crash_r, opt_r, bench_r])
 	ok(stash_r == "", "the stash keeps the selected item's %s on screen with Back%s" % [" / ".join(stash_want.slice(0, stash_want.size())), stash_r])
@@ -1835,7 +1861,7 @@ func _fit_tests() -> void:
 	var wv := Screens.WebView.new()
 	var web_bad: Array = []
 	var named := 0
-	for sz in [Vector2(560, 420), Vector2(600, 420), Vector2(700, 310), Vector2(830, 310), Vector2(830, 390), Vector2(1000, 480)]:
+	for sz in [Vector2(560, 420), Vector2(600, 420), Vector2(660, Screens.WEB_MIN_H), Vector2(700, 310), Vector2(830, 310), Vector2(830, 390), Vector2(1000, 480)]:
 		wv.size = sz
 		var lay: Dictionary = wv.label_layout()
 		named = lay.size()

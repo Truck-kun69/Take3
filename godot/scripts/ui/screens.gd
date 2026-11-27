@@ -774,11 +774,20 @@ func show_stash(in_run: bool = false) -> void:
 # ================================================================= the Shard Web (passive tree)
 var _sel_passive := "start"
 
-func show_web() -> void:
+## The Shard Web. `entering` (the page opened, a node taken or the web reset): with Echoes to spend and the selection
+## not takeable, the first node within reach is selected, so the page's main button reads Take (it opened on the taken
+## start node, Take disabled). The nodes within reach are listed beside the graph as tiles: the graph's own nodes are
+## 9.5-14 dp targets on an S22, too small to hit.
+func show_web(entering: bool = true) -> void:
 	var v := _open(1180)
 	var d: Dictionary = Save.data
 	var taken: Array = d.passives
 	var portrait := get_viewport_rect().size.x < 820.0
+	var reach: Array = []
+	for id in Content.PASSIVES:
+		if Content.passive_can_take(id, taken): reach.append(id)
+	if entering and int(d.echoes) > 0 and not Content.passive_can_take(_sel_passive, taken) and not reach.is_empty():
+		_sel_passive = String(reach[0])
 	_title(v, "The Shard Web", "Echoes from every run buy permanent passives. Take a node that touches one you own.")
 	var body: BoxContainer = UIKit.vbox(10) if portrait else UIKit.hbox(18)
 	v.add_child(body)
@@ -786,33 +795,53 @@ func show_web() -> void:
 	view.taken = taken
 	view.selected = _sel_passive
 	# held sideways the page is 720 units: the graph gets what the title, the subtitle band and the pinned row leave
-	# (the pinned row is UIKit.FOOT_H tall: 417 = 410 + the 7 units FOOT_H grew from 56 to 63)
-	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(700, clampi(int(get_viewport_rect().size.y) - 417, 300, 480))
+	# (the pinned row is UIKit.FOOT_H tall: 417 = 410 + the 7 units FOOT_H grew from 56 to 63); at least 220, which an
+	# S22 at its x1.125 leaves (640 - 417 = 223: at the old 300 floor the bottom arm sat under the pinned row)
+	var view_h := clampi(int(get_viewport_rect().size.y) - 417, WEB_MIN_H, 480)
+	view.custom_minimum_size = Vector2(0, 420) if portrait else Vector2(660, view_h)
 	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	view.picked.connect(func(id: String): _sel_passive = id; show_web())
+	view.picked.connect(func(id: String): _sel_passive = id; show_web(false))
 	body.add_child(view)
-	# side column (landscape): echoes, the selected node, actions
-	var side := UIKit.vbox(10)
-	side.custom_minimum_size.x = 0 if portrait else 300
-	side.alignment = BoxContainer.ALIGNMENT_CENTER
-	body.add_child(side)
+	# side column (landscape): echoes, the nodes within reach, the selected node; scrolled within the graph's height
+	var side := UIKit.vbox(8)
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if portrait:
+		body.add_child(side)
+	else:
+		var ssc := ScrollContainer.new()
+		ssc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		ssc.custom_minimum_size = Vector2(340, view_h)
+		ssc.add_child(side)
+		body.add_child(ssc)
 	var info := UIKit.hbox(10)
 	info.alignment = BoxContainer.ALIGNMENT_CENTER
 	info.add_child(UIKit.label("%d" % int(d.echoes), 34, UIKit.GOLD, false, "num_heavy"))
 	var il := UIKit.label("Echoes to spend\n%d of %d taken" % [taken.size() - 1, Content.PASSIVES.size() - 1], 16, UIKit.DIM, false, "italic")
 	info.add_child(il)
 	side.add_child(info)
-	side.add_child(UIKit.divider())
-	var P: Dictionary = Content.PASSIVES[_sel_passive]
-	var nm := UIKit.label(String(P.name).to_upper(), 22, WebView.branch_col(_sel_passive) if _sel_passive != "start" else UIKit.GOLD, true, "display")
-	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	side.add_child(nm)
-	var kd := UIKit.label(String(P.kind).capitalize() + ("  \u00b7  taken" if taken.has(_sel_passive) else ""), 14, UIKit.DIM, false, "label")
-	kd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	side.add_child(kd)
-	var ds := UIKit.label(P.d, 18, UIKit.TEXT, true, "body")
-	ds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	side.add_child(ds)
+	var rg := _grid(2 if portrait else 1, 6)
+	for id in reach:
+		var R: Dictionary = Content.PASSIVES[id]
+		var rt := UIKit.tile(String(R.name), String(R.d), func(): _sel_passive = String(id); show_web(false), WebView.branch_col(id), id == _sel_passive, UIKit.MIN_TOUCH)
+		rt.set_meta("passive", id)
+		rg.add_child(rt)
+	if not reach.is_empty():
+		side.add_child(_section("Within reach"))
+		side.add_child(rg)
+	else:
+		rg.free()
+	if not reach.has(_sel_passive):                    # a tile already says what a node within reach does
+		side.add_child(UIKit.divider())
+		var P: Dictionary = Content.PASSIVES[_sel_passive]
+		var nm := UIKit.label(String(P.name).to_upper(), 22, WebView.branch_col(_sel_passive) if _sel_passive != "start" else UIKit.GOLD, true, "display")
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		side.add_child(nm)
+		var kd := UIKit.label(String(P.kind).capitalize() + ("  \u00b7  taken" if taken.has(_sel_passive) else ""), 14, UIKit.DIM, false, "label")
+		kd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		side.add_child(kd)
+		var ds := UIKit.label(P.d, 18, UIKit.TEXT, true, "body")
+		ds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		side.add_child(ds)
 	var can := Content.passive_can_take(_sel_passive, taken) and int(d.echoes) > 0
 	var take := UIKit.button("Taken" if taken.has(_sel_passive) else ("Take  \u00b7  1 Echo" if Content.passive_can_take(_sel_passive, taken) else "Not yet reachable"), func():
 		if Content.passive_can_take(_sel_passive, Save.data.passives) and int(Save.data.echoes) > 0:
@@ -838,6 +867,7 @@ func show_web() -> void:
 	fr.add_child(reset)
 	fr.add_child(back)
 	ft.add_child(fr)
+const WEB_MIN_H := 220
 
 ## Codex & Story: the acts (Story: what each one is, its boss, and the Rift Echoes found in it), the exiles'
 ## bios, then the bestiary, lore pages, extracted powers, records and the arsenal. From the main menu (back:
@@ -1875,7 +1905,7 @@ class WebView extends Control:
 			draw_string_outline(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS, 4, Color(0, 0, 0, 0.9))
 			draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS, branch_col(id).lightened(0.3) if taken.has(id) else Color(0.7, 0.66, 0.6))
 
-	const LABEL_FS := 13
+	const LABEL_FS := 18
 	static func _radius(kind: String) -> float:
 		return {"start": 15.0, "minor": 9.0, "notable": 15.0, "keystone": 20.0}.get(kind, 9.0)
 
