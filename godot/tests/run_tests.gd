@@ -59,6 +59,7 @@ func _ready() -> void:
 		await _look_feel_tests()
 		_look_render_tests()
 		_look_vfx_tests()
+		_look_art2_tests()
 	elif "camp" in args:
 		_camp_tests()
 		_coach_tests()
@@ -67,6 +68,7 @@ func _ready() -> void:
 		await _look_feel_tests()
 		_look_render_tests()
 		_look_vfx_tests()
+		_look_art2_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -5096,6 +5098,29 @@ func _bench() -> void:
 	print(fl)
 	report["bench"] = out
 	ok(true, "bench ran")
+
+## Art review 2: the value bands, the acts' colour scripts, the title stage, the tone curve and the act accents. The
+## numbers in the messages come from frozen combat frames (scratchpad ev2/art2: probe_art.gd, meas_an.py).
+func _look_art2_tests() -> void:
+	print("== art review 2: clutter, acts, title, tone curve, accents")
+	# clutter: the trees' gain is a warm bark (their map is blue, median linear B/R 2.06) at 3x the 0.05 floor
+	var tg: Color = Models.ALBEDO_GAIN["tree"]
+	var bark := Vector3(0.0086 * tg.r, 0.0116 * tg.g, 0.0176 * tg.b)          # the tree map's median, linear
+	var bark_y := 0.2126 * bark.x + 0.7152 * bark.y + 0.0722 * bark.z
+	ok(bark.z / bark.x <= 0.8 and bark_y >= 0.13 and Models.ALBEDO_GAIN["tree_dead"] is Color and float(Models.ALBEDO_GAIN["rock"]) >= 5.0
+		and float(Models.ALBEDO_GAIN["wall"]) >= 10.0 and float(Models.ALBEDO_GAIN["bush"]) >= 2.0,
+		"clutter off black: tree bark Y %.3f B/R %.2f, rock x%.1f, wall x%.1f, bush x%.1f (trees and rocks drew at L* 2-6, 81-93%% of them under L* 15)"
+		% [bark_y, bark.z / bark.x, float(Models.ALBEDO_GAIN["rock"]), float(Models.ALBEDO_GAIN["wall"]), float(Models.ALBEDO_GAIN["bush"])])
+	# Act II tints its rocks and bushes toward its ground; the trees keep their bark; the title puts the shared materials back
+	Models.tint_props(1, WorldView3D.STAGE_LOOK[1].get("clutter", Color(1, 1, 1)))
+	var rmat := Models.prop_mesh("rock", 1).surface_get_material(0) as BaseMaterial3D
+	var tmat := Models.prop_mesh("tree", 1).surface_get_material(0) as BaseMaterial3D
+	var tinted := rmat.albedo_color
+	var tree_kept := tmat.albedo_color.is_equal_approx(Models.albedo_gain_color("tree"))
+	Models.tint_props(-1, Color(1, 1, 1))
+	ok(tinted.r > tinted.b * 1.5 and tree_kept and rmat.albedo_color.is_equal_approx(Models.albedo_gain_color("rock")),
+		"Act II's rocks take its ground's hue (%s), the trees keep their bark, the title resets them" % str(tinted))
+	# (art review 2 guards end)
 
 func _look_vfx_tests() -> void:
 	print("== 0.11.5 look: enemy shots, effect colours, telegraphs, hit squash, pooled shots")

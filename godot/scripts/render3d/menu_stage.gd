@@ -228,6 +228,7 @@ func _frame() -> void:
 
 func show_stage(hero_index: int) -> void:
 	visible = true
+	Models.tint_props(-1, Color(1, 1, 1))                 # a run in Act II leaves the shared prop materials tinted
 	_frame()
 	cam.make_current()
 	var h: Dictionary = Content.HEROES[hero_index]

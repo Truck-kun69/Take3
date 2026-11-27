@@ -43,13 +43,45 @@ static var _cache := {}
 ## cut-outs and heroes as dark blobs. The linear gain lifts each map's median to 0.05 (x4 at most), the rule
 ## tools/blender/process_fal_assets.py lift_albedo applies to the bush; set as the material's albedo colour at load.
 ## Computed from the maps by the tech-art review's albedo_table.py. Foes and bosses keep theirs (status contrast).
-const ALBEDO_GAIN := {"tree": 4.0, "tree_dead": 4.0, "wall": 4.0, "bones": 2.98, "rock": 1.77,
-	"warden": 2.85, "spark": 2.1, "ember": 3.31, "storm": 4.0}
+## Clutter (art review 2): at the 0.05 floor the trees, rocks and walls still drew at L* 2-6 (81-93% of their pixels under
+## L* 15) on a ground of 26-36, holes rather than the bottom value band, through the ACES toe; the bush (gain 1) at 6-15.
+## Per channel (linear r, g, b) for the trees: their map is blue (median B/R 2.06), and under the cool sky they drew at
+## B/R 6.7-170; the gains land a warm bark (1.25 : 1 : 0.78) at 3x the floor.
+const ALBEDO_GAIN := {"tree": Color(21.0, 12.5, 6.4), "tree_dead": Color(22.6, 14.0, 7.1), "wall": 12.0, "bones": 2.98,
+	"rock": 5.3, "bush": 2.0, "warden": 2.85, "spark": 2.1, "ember": 3.31, "storm": 4.0}
+
+## The imported props' shared materials, re-tinted for the act being drawn: each one's gain (ALBEDO_GAIN) times
+## `tint` (linear). Act II (STAGE_LOOK clutter): its grey-green bushes and blue-grey rocks on the terracotta ground stood
+## out 1.27x as much as its foes; three quarters of the way to the ground's hue, at the same luminance, 0.66x. The title stage and the
+## other acts set white, since a material is shared by every act that draws the mesh.
+static func tint_props(_stage: int, tint: Color) -> void:
+	_tint = tint
+	# only the meshes already loaded (cached): a prop loaded later takes _tint in _prop_mesh, so the title's reset
+	# loads nothing and an act's props streamed in after bind are tinted too
+	for key in _cache:
+		var m = _cache[key]
+		if not (m is Mesh) or not (m as Mesh).has_meta("albedo_id"): continue
+		var id := String((m as Mesh).get_meta("albedo_id"))
+		for i in (m as Mesh).get_surface_count():
+			var mat := (m as Mesh).surface_get_material(i)
+			if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null:
+				(mat as BaseMaterial3D).albedo_color = _tinted(id)
+
+## The act's prop tint (linear; white outside Act II), set by tint_props.
+static var _tint := Color(1, 1, 1)
+
+## A prop's albedo colour: its gain (ALBEDO_GAIN), times the act's tint unless its gain is already a colour (the trees'
+## warm bark).
+static func _tinted(id: String) -> Color:
+	var t := Color(1, 1, 1) if ALBEDO_GAIN.get(id, 1.0) is Color else _tint
+	var base := albedo_gain_color(id).srgb_to_linear()
+	return Color(base.r * t.r, base.g * t.g, base.b * t.b).linear_to_srgb()
 
 ## The albedo colour that multiplies a map's linear values by the model's gain (1 when it has none).
 static func albedo_gain_color(id: String) -> Color:
-	var g: float = ALBEDO_GAIN.get(id, 1.0)
-	return Color(g, g, g).linear_to_srgb()
+	var g = ALBEDO_GAIN.get(id, 1.0)
+	if g is Color: return (g as Color).linear_to_srgb()
+	return Color(float(g), float(g), float(g)).linear_to_srgb()
 
 static func find_asset(dir: String, id: String) -> String:
 	for ext in ["tscn", "glb", "gltf", "tres", "res"]:
@@ -180,11 +212,12 @@ static func _prop_mesh(kind: String, stage: int) -> Mesh:
 	var p := find_asset("props_hi" if hi else "props", kind)
 	var m: Mesh = mesh_from_asset(p) if p != "" else _build_prop(kind)
 	var id := p.get_file().get_basename()
-	if m != null and ALBEDO_GAIN.has(id):                # the imported material is shared: set once, not multiplied
+	if m != null: m.set_meta("albedo_id", id)              # tint_props looks its gain up again
+	if m != null and (ALBEDO_GAIN.has(id) or _tint != Color(1, 1, 1)):   # shared imported material: set, not multiplied
 		for i in m.get_surface_count():
 			var mat := m.surface_get_material(i)
 			if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null:
-				(mat as BaseMaterial3D).albedo_color = albedo_gain_color(id)
+				(mat as BaseMaterial3D).albedo_color = _tinted(id)
 	_cache[key] = m
 	return m
 

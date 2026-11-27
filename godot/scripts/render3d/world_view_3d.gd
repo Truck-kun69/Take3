@@ -16,7 +16,7 @@ const STAGE_LOOK := [
 	{"sky": Color(0.27, 0.37, 0.5), "gnd": Color(0.09, 0.065, 0.04), "sun": Color(0.75, 0.85, 1.0), "amb": Color(0.25, 0.34, 0.45), "fog": Color(0.1, 0.16, 0.18), "bg": Color(0.03, 0.06, 0.05), "eye": Color(1.0, 0.85, 0.3),
 		"rim": Color(0.6, 0.7, 1.0)},                     # I: moonlight, bluer than Chill's ice (dE00 6.4 -> 10.5)
 	{"sky": Color(0.34, 0.3, 0.44), "gnd": Color(0.13, 0.055, 0.03), "sun": Color(1.0, 0.62, 0.4), "amb": Color(0.45, 0.25, 0.18), "fog": Color(0.22, 0.08, 0.05), "bg": Color(0.08, 0.03, 0.02), "eye": Color(1.0, 0.6, 0.2),
-		"rim": Color(0.85, 0.85, 0.85)},                  # II: neutral (molten-amber sat on Burn's hue and the red ground)
+		"rim": Color(0.85, 0.85, 0.85), "clutter": Color(2.6, 0.58, 0.45)},     # II: neutral (molten-amber sat on Burn's hue and the red ground)
 	{"sky": Color(0.3, 0.32, 0.5), "gnd": Color(0.09, 0.065, 0.06), "sun": Color(0.7, 0.75, 1.0), "amb": Color(0.3, 0.3, 0.45), "fog": Color(0.1, 0.09, 0.16), "bg": Color(0.03, 0.03, 0.06), "eye": Color(0.5, 1.0, 0.85),
 		"rim": Color(0.74, 1.0, 0.98)},                   # III: frost-cyan
 	{"sky": Color(0.17, 0.32, 0.54), "gnd": Color(0.08, 0.055, 0.05), "sun": Color(0.6, 0.85, 1.0), "amb": Color(0.15, 0.3, 0.5), "fog": Color(0.03, 0.08, 0.16), "bg": Color(0.01, 0.03, 0.07), "eye": Color(1.0, 0.3, 0.85),
@@ -358,6 +358,7 @@ func bind(world: World) -> void:
 	terrain_mat.set_shader_parameter("c2", Content.col(s.g2))
 	terrain_mat.set_shader_parameter("acc", Content.col(s.acc))
 	apply_ground(terrain_mat, w.stage)
+	Models.tint_props(w.stage, _look.get("clutter", Color(1, 1, 1)))
 	for fm in foe_mats:
 		fm.set_shader_parameter("eye_col", _look.eye)
 		fm.set_shader_parameter("glow_col", Content.col(s.acc))
