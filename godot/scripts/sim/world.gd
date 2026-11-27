@@ -1975,6 +1975,8 @@ func _new_proj() -> Proj:
 	p.el = 0
 	p.wid = ""
 	p.kind = 0; p.age = 0.0; p.aux = 0.0; p.tick = 0.0
+	p.prev = Vector2.INF                     # fired this tick: a pooled shot kept its last life's prev, and was drawn
+	                                          # between that old position and its new one until the next tick
 	return p
 
 func _step_projs(dt: float) -> void:
