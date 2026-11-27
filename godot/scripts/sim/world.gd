@@ -2596,13 +2596,21 @@ func _step_feed(dt: float) -> void:
 		k -= 1
 
 # ================================================================= level-up choices
+## Keystones that take away a control the coach teaches (the roll, flask healing) or all life regeneration: not dealt
+## to a profile with fewer than KEYSTONE_NEW_RUNS runs.
+const KEYSTONE_NOT_NEW := ["bloodmagic", "ironreflex", "vaal"]
+const KEYSTONE_NEW_RUNS := 3
 func make_choices() -> Array:
 	if lvl in Content.KEYSTONE_LEVELS and keystones.size() < Content.KEYSTONE_LEVELS.find(lvl) + 1:
+		# a keystone level dealt three keystones and nothing else: at level 8 of a first run 24% of the deals held only
+		# hard drawbacks and 58% offered one that takes away the roll or flask healing the coach had just taught. Until a
+		# profile has three runs those three are not dealt, and Second Wind is always there to skip the keystone.
+		var newcomer := int((Save.data.get("stats", {}) as Dictionary).get("runs", 0)) < KEYSTONE_NEW_RUNS
 		var ks: Array = []
 		for id in Content.KEYSTONE_IDS:
-			if not keystones.has(id): ks.append({"kind": "key", "id": id})
+			if not keystones.has(id) and not (newcomer and KEYSTONE_NOT_NEW.has(id)): ks.append({"kind": "key", "id": id})
 		ks.shuffle()
-		return ks.slice(0, 3)
+		return ks.slice(0, 3) + [{"kind": "heal", "id": "skip"}]
 	var pool: Array = []
 	var evos: Array = []
 	var fresh: Array = []                                   # weapons not held yet: at most two offered per level-up
@@ -2703,6 +2711,7 @@ func choice_text(c: Dictionary) -> Dictionary:
 			return {"tag": tag, "name": Content.PERKS[c.id].name, "d": Content.PERKS[c.id].d, "col": "ece8dd"}
 		"g": return {"tag": "Support gem -> " + Content.WEAPONS[c.w].name, "name": Content.GEMS[c.id].name, "d": Content.GEMS[c.id].d, "col": "8ad6a0"}
 		"key": return {"tag": "Keystone", "name": Content.KEYSTONES[c.id].name, "d": Content.KEYSTONES[c.id].d, "col": "ff6bd6"}
+	if String(c.get("id", "")) == "skip": return {"tag": "Skip the keystone", "name": "Second Wind", "d": "Heal 30% of your life instead.", "col": "5dff6b"}
 	return {"tag": "Fully upgraded", "name": "Second Wind", "d": "Heal 30% of your life.", "col": "5dff6b"}
 
 func apply_choice(c: Dictionary) -> void:

@@ -4476,6 +4476,7 @@ func _look_feel_tests() -> void:
 	sv.data = keep
 	await _frame_fit_tests()
 	_evolve_pair_tests()
+	_keystone_deal_tests()
 	_words_tests()
 
 ## The frames whose text does not fit: every Button holding an anchored content box (UIKit.tile, the Camp's NPC cards,
@@ -4622,6 +4623,28 @@ func _words_tests() -> void:
 ## The evolution recipe on the cards: a weapon's card names the perk it evolves with at level 5, a perk's card names the
 ## carried weapons it would evolve, and the Codex's Arsenal lists every pair. The pair (Content.WEAPONS[id].pair) was read
 ## only by the simulation; Brask's tip spoke of "its paired perk" and no screen said which.
+## Keystone levels (Content.KEYSTONE_LEVELS) deal keystones and Second Wind to skip them; a profile with fewer than three
+## runs is not dealt the keystones that take away the roll, flask healing or regeneration (World.KEYSTONE_NOT_NEW). At
+## level 8 of a first run 58% of the deals had offered Iron Reflexes or Blood Magic, and none could be skipped.
+func _keystone_deal_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var runs0 := int(sv.data.stats.get("runs", 0))
+	var res := {}
+	for runs in [0, World.KEYSTONE_NEW_RUNS]:
+		sv.data.stats.runs = runs
+		var hard := 0
+		var skip := 0
+		for k in 200:
+			var w := _world({"mode": "campaign", "stage": 0, "hero": k % 4, "seed": 500 + k})
+			w.lvl = Content.KEYSTONE_LEVELS[0]
+			var ch: Array = w.make_choices()
+			if ch.any(func(c): return c.kind == "key" and World.KEYSTONE_NOT_NEW.has(String(c.id))): hard += 1
+			if ch.any(func(c): return c.kind == "heal" and String(w.choice_text(c).tag) == "Skip the keystone"): skip += 1
+		res[runs] = [hard, skip]
+	sv.data.stats.runs = runs0
+	ok(res[0][0] == 0 and res[0][1] == 200, "a first run's keystone deal holds no roll-, flask- or regen-taking keystone and can be skipped (%d of 200 held one, %d had Second Wind)" % res[0])
+	ok(res[World.KEYSTONE_NEW_RUNS][0] > 0 and res[World.KEYSTONE_NEW_RUNS][1] == 200, "from the third run they are dealt again, still with the skip (%d of 200, %d)" % res[World.KEYSTONE_NEW_RUNS])
+
 func _evolve_pair_tests() -> void:
 	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 81})
 	var bad: Array = []
