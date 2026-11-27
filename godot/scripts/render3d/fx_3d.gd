@@ -52,6 +52,7 @@ var bolts: MeshInstance3D
 var bolt_mesh: ImmediateMesh
 var bolt_mat: ShaderMaterial
 var decal_mat: ShaderMaterial
+var decal_top_mat: ShaderMaterial      # hostile zones: decal_top.gdshader, over bodies and props
 var decals: Array[MeshInstance3D] = []
 var _decal_used := 0
 var marks_mm: MultiMeshInstance3D
@@ -158,6 +159,7 @@ void fragment() {
 	bolt_mat = _shader("res://shaders/3d/bolt.gdshader")
 	add_child(bolts)
 	decal_mat = _shader("res://shaders/3d/decal.gdshader")
+	decal_top_mat = _shader("res://shaders/3d/decal_top.gdshader")
 	# 9 x 9 quads: the shaders drape every vertex onto the terrain (16-unit height cells), so a telegraph or
 	# a crater bends over a hill instead of cutting through it between its four corners
 	var plane := PlaneMesh.new()
@@ -215,6 +217,7 @@ func step(dt: float) -> void:
 	time += dt
 	(beam_mm.material_override as ShaderMaterial).set_shader_parameter("time", time)
 	decal_mat.set_shader_parameter("time", time)
+	decal_top_mat.set_shader_parameter("time", time)
 	var prof := view != null and view.profile
 	var t := Time.get_ticks_usec()
 	_consume_feed()
@@ -795,13 +798,15 @@ func _lightning() -> void:
 	bolt_mesh.surface_end()
 
 # ================================================================= ground decals
-func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: float, inner: float = 0.0, hatch: bool = false, y: float = 0.6) -> void:
+## top: a hostile zone, drawn over the bodies and props standing in it (decal_top_mat), not under them.
+func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: float, inner: float = 0.0, hatch: bool = false, y: float = 0.6, top: bool = false) -> void:
 	if _decal_used >= DECAL_POOL: return
 	var d := decals[_decal_used]
 	_decal_used += 1
 	Diag.first("decal kind %d" % int(kind))
 	d.visible = true
 	d.transform = Transform3D(xform_basis, Vector3(pos.x, y, pos.y))
+	d.material_override = decal_top_mat if top else decal_mat
 	if _headless: return                 # the dummy renderer keeps no materials: setting their instance uniforms only logs errors
 	d.set_instance_shader_parameter("col", col)
 	d.set_instance_shader_parameter("kind", kind)
@@ -809,8 +814,8 @@ func _decal(pos: Vector2, xform_basis: Basis, kind: float, col: Color, prog: flo
 	d.set_instance_shader_parameter("inner", inner)
 	d.set_instance_shader_parameter("hatch", 1.0 if hatch else 0.0)
 
-func _circle(pos: Vector2, r: float, kind: float, col: Color, prog: float, inner: float = 0.0, hatch: bool = false) -> void:
-	_decal(pos, Basis().scaled(Vector3(r, 1, r)), kind, col, prog, inner, hatch)
+func _circle(pos: Vector2, r: float, kind: float, col: Color, prog: float, inner: float = 0.0, hatch: bool = false, top: bool = false) -> void:
+	_decal(pos, Basis().scaled(Vector3(r, 1, r)), kind, col, prog, inner, hatch, 0.6, top)
 
 ## The hero's ring: in a pack of sixty foes (tests/combat_shot.tscn, Act I) the hero could not be told from the swarm,
 ## and the x-ray silhouette only shows where props hide them. A ring in the hero's colour and a faint pool under it.
@@ -834,19 +839,19 @@ func _decals() -> void:
 			0:
 				# hatched for everyone, not only in the colour-blind mode: a hostile zone and your own ground can share a
 				# hue (a Volatile foe's blast and your Sulphur flask's fire were the very same orange); stripes tell them apart
-				if z.hostile: _circle(z.pos, z.r, 0, c, prog, 0.0, true)
+				if z.hostile: _circle(z.pos, z.r, 0, c, prog, 0.0, true, true)
 				else:                                          # your own consecrated / burning ground
 					_circle(z.pos, z.r, 5, Color(c.r, c.g, c.b, 0.22), 1.0)
 					_circle(z.pos, z.r, 1, Color(c.r, c.g, c.b, 0.5), 1.0, 0.97)
-			1: _circle(z.pos, z.r, 1, c, prog, z.r2 / z.r)
+			1: _circle(z.pos, z.r, 1, c, prog, z.r2 / z.r, false, z.hostile)
 			2:
 				var d := Vector3(z.dir.x, 0, z.dir.y)
 				var half := z.length * 0.5
 				var bb := Basis(d * half, Vector3.UP, d.cross(Vector3.UP) * z.width * 0.5)
-				_decal(z.pos + z.dir * half, bb, 2, c, prog)
+				_decal(z.pos + z.dir * half, bb, 2, c, prog, 0.0, false, 0.6, z.hostile)
 			3:
 				var d2 := Vector3(z.dir.x, 0, z.dir.y)
-				_decal(z.pos, Basis(d2 * z.r, Vector3.UP, d2.cross(Vector3.UP) * z.r), 3, c, prog, z.ang)
+				_decal(z.pos, Basis(d2 * z.r, Vector3.UP, d2.cross(Vector3.UP) * z.r), 3, c, prog, z.ang, false, 0.6, z.hostile)
 	var rings := 0
 	for f in w.fx:
 		if f.k == "ring": rings += 1
