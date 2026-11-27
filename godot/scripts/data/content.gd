@@ -255,9 +255,9 @@ const STAGES := [
 	{"name": "Gravebound Crypt", "blurb": "Bones that refuse to stay down.", "boss": "The Pale Regent", "boss_col": "e6e0ff",
 		"g0": "15131f", "g1": "2c2942", "g2": "3a3658", "acc": "cfc9ee", "hp": 2.2, "dmg": 1.4, "spd": 1.1, "gold": 1.7},
 	{"name": "Neon Rift", "blurb": "A torn seam in the grid.", "boss": "Overclock Prime", "boss_col": "ff4fd8",
-		"g0": "081426", "g1": "12365c", "g2": "164070", "acc": "25e0ff", "hp": 3.0, "dmg": 1.7, "spd": 1.15, "gold": 2.2},
+		"g0": "081426", "g1": "12365c", "g2": "164070", "acc": "7a3cff", "hp": 3.0, "dmg": 1.7, "spd": 1.15, "gold": 2.2},
 	{"name": "Drowned Cathedral", "blurb": "The tide is rising, and the bells still ring.", "boss": "The Tide Bishop", "boss_col": "7fe0c0",
-		"g0": "10171a", "g1": "26353a", "g2": "3d5052", "acc": "f2c66d", "hp": 4.0, "dmg": 2.0, "spd": 1.2, "gold": 2.8},
+		"g0": "10171a", "g1": "26353a", "g2": "3d5052", "acc": "c9a46a", "hp": 4.0, "dmg": 2.0, "spd": 1.2, "gold": 2.8},
 ]
 ## Terrain per stage (scripts/sim/terrain.gd). Heights in world units (a hero is ~50 tall).
 ##   amp: hill height; scale: hill wavelength; terraces: plateau steps (0 = rolling); cliff: max walkable

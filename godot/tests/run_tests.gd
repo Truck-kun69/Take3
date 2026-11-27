@@ -5159,6 +5159,22 @@ func _look_art2_tests() -> void:
 	vc.queue_free()
 	ok(on and mono and absf(tc.gradient.sample(0.05).r - 0.05) < 0.005 and tc.gradient.sample(0.12).r < 0.115 and tc.gradient.sample(0.46).r > 0.5,
 		"the tone curve: toe kept, low mids pressed, upper mids opened (Act I's p5-p95 span had fallen 17%%, 85%% of the frame in the mid band)")
+	var lab := func(c: Color) -> Vector3:
+		var l := c.srgb_to_linear()
+		var f := func(t: float) -> float: return pow(t, 1.0 / 3.0) if t > 216.0 / 24389.0 else (24389.0 / 27.0 * t + 16.0) / 116.0
+		var fx: float = f.call((0.4124 * l.r + 0.3576 * l.g + 0.1805 * l.b) / 0.95047)
+		var fy: float = f.call(0.2126 * l.r + 0.7152 * l.g + 0.0722 * l.b)
+		var fz: float = f.call((0.0193 * l.r + 0.1192 * l.g + 0.9505 * l.b) / 1.08883)
+		return Vector3(116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+	var d76 := func(a: Color, b: Color) -> float: return (lab.call(a) - lab.call(b)).length()
+	var acc4 := Content.col(String(Content.STAGES[3].acc))
+	var acc5 := Content.col(String(Content.STAGES[4].acc))
+	var dg: float = d76.call(acc4, Color("6be8ff"))
+	var dc: float = d76.call(acc4, Content.col(Content.EL_COL[2]))
+	var dgold: float = d76.call(acc5, UIKit.GOLD)
+	var dbig: float = d76.call(acc5, Color("ffd84a"))
+	ok(dg >= 40.0 and dc >= 40.0 and dgold >= 20.0 and dbig >= 20.0,
+		"act accents off the loot: Act IV vs the XP gem %.0f and Cold %.0f (were 8 and 12), Act V vs GOLD %.0f and the big gem %.0f (were 10 and 23)" % [dg, dc, dgold, dbig])
 	# (art review 2 guards end)
 
 func _look_vfx_tests() -> void:
