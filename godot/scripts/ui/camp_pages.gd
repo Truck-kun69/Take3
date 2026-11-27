@@ -105,8 +105,12 @@ static func _status(d: Dictionary, id: String) -> String:
 				if not c.is_empty() and Camp.can_pay(d, c): ready = true
 			return "%d of %d tempered%s" % [n, pl.size(), "  ·  one is ready" if ready else ""]
 		"kiln":
+			# "ready" only when the purse pays for it: after a first run (404 gold, no scrap) the hub said "1 fusion ready"
+			# for a fusion that costs 500 Gold and 10 Scrap
 			var gr := Camp.fuse_groups(d)
-			return "%d fusion%s ready  ·  %d pair%s kindled" % [gr.size(), "" if gr.size() == 1 else "s", (d.kindled as Array).size(), "" if (d.kindled as Array).size() == 1 else "s"]
+			var paid := gr.filter(func(g): return Camp.can_pay(d, Camp.fuse_cost(int(g.rarity))))
+			if paid.is_empty() and not gr.is_empty(): return "Needs " + Camp.cost_text(Camp.fuse_cost(int(gr[0].rarity)), true)
+			return "%d fusion%s ready  ·  %d pair%s kindled" % [paid.size(), "" if paid.size() == 1 else "s", (d.kindled as Array).size(), "" if (d.kindled as Array).size() == 1 else "s"]
 		"nim":
 			var junk := Camp.bulk_list(d, 0).size() + Camp.bulk_list(d, 1).size()
 			return ("%d Normal and Magic to salvage" % junk) if junk > 0 else "Nothing to salvage yet"
@@ -121,6 +125,19 @@ static func _status(d: Dictionary, id: String) -> String:
 		"cartographer":
 			return "Daily Rift, Atlas, prophecies"
 	return ""
+
+## The first station with something a player can do now, and Brask's line for it (the end of a new exile's run names it:
+## it named Doran, whose six Temper buttons were all disabled after a first run of 404 gold and no scrap).
+static func next_station(d: Dictionary) -> Array:
+	for id in Camp.pool(d):
+		var c := Camp.temper_cost(d, id)
+		if not c.is_empty() and Camp.can_pay(d, c): return ["smith", "Bring that gold and ore to the Camp. Doran can temper a weapon now."]
+	var junk := Camp.bulk_list(d, 0) + Camp.bulk_list(d, 1)
+	if not junk.is_empty(): return ["nim", "At the Camp, see Nim first: salvage the gear you will not wear. Doran needs its scrap."]
+	for g in Camp.fuse_groups(d):
+		if Camp.can_pay(d, Camp.fuse_cost(int(g.rarity))): return ["kiln", "At the Camp, Mother Kiln can fuse three of your finds into one."]
+	if int(d.get("gold", 0)) >= int(Camp.SHARD_PRICES.transmute): return ["sella", "At the Camp, Sella sells crafting shards for that gold."]
+	return ["", "Bring your finds to the Camp. Each of us there does one thing."]
 
 ## An NPC's card on the hub: their medallion, name and role, what they hold for you, and one line of theirs.
 static func _card(id: String, status: String, cb: Callable) -> Button:
@@ -259,6 +276,21 @@ static func show_smith(s: Screens) -> void:
 	v.add_child(purse(s, d))
 	_flash(v)
 	var pl := Camp.pool(d)
+	# nothing to temper and too little scrap: say where scrap comes from (after a first run all six buttons were disabled)
+	var any_ok := false
+	for id in pl:
+		var c0 := Camp.temper_cost(d, id)
+		if not c0.is_empty() and Camp.can_pay(d, c0): any_ok = true
+	if not any_ok and Camp.mat(d, "scrap") < int(Camp.TEMPER_COST[0].scrap):
+		var junk := Camp.bulk_list(d, 0) + Camp.bulk_list(d, 1)
+		var nl := UIKit.vbox(2)
+		nl.add_child(UIKit.label("Short of Shard Scrap?", 20, Color("e8dcc0"), false, "display"))
+		nl.add_child(UIKit.label(("Scrap comes from Nim: your %d Normal and Magic items give %d." % [junk.size(), int(Camp.bulk_yield(junk).get("scrap", 0))]) if not junk.is_empty()
+			else "Scrap comes from salvage at Nim's bench: bring back gear you will not wear.", 15, UIKit.TEXT, true, "italic"))
+		var nb := UIKit.button("Nim's bench", func(): show_bench(s), 50)
+		nb.custom_minimum_size.x = 200
+		nb.set_meta("nim_note", true)
+		v.add_child(_row(nl, nb, Color(String(NPCS.nim.col))))
 	var grid := s._grid(1 if s.get_viewport_rect().size.x < 1250.0 else 2, 8)
 	v.add_child(grid)
 	# narrow (upright at a large UI scale: a 560-unit canvas) the rank goes under the name: on one line with the

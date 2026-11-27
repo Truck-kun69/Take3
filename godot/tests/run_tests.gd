@@ -4310,6 +4310,33 @@ func _camp_ui_tests() -> void:
 	mn.world.end_run(false, true)
 	mn.screens.show_end(mn.world)
 	ok(_press(mn.screens, "Camp") and mn.world == null and mn.state == "menu" and _npc_card(mn.screens, "kiln") != null, "the end of a run's Camp button frees the run and opens the Camp")
+	# after a first run (the review's tour: 404 gold, 1 ore, no scrap, three Magic finds of one slot) the hub said "1 fusion
+	# ready" for a 500 Gold + 10 Scrap fusion, the end tip sent the exile to Doran, and his six Temper buttons were disabled
+	var d0: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.gold = 404
+	sv.data.materials = {"scrap": 0, "ore": 1}
+	var rng2 := RandomNumberGenerator.new(); rng2.seed = 4
+	for k in 3: sv.data.stash.append(Items.make("ring", Content.Rarity.MAGIC, 8, rng2))
+	var kiln0 := CampPages._status(sv.data, "kiln")
+	var next0: Array = CampPages.next_station(sv.data)
+	CampPages.show_smith(mn.screens)
+	await get_tree().process_frame
+	var note0 := false
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("nim_note"): note0 = true
+	sv.data.gold = 900
+	sv.data.materials = {"scrap": 12, "ore": 1}
+	var kiln1 := CampPages._status(sv.data, "kiln")
+	var next1: Array = CampPages.next_station(sv.data)
+	CampPages.show_smith(mn.screens)
+	await get_tree().process_frame
+	var note1 := false
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("nim_note"): note1 = true
+	sv.data = d0
+	ok(not kiln0.contains("ready") and kiln0.begins_with("Needs") and next0[0] == "nim" and note0 and kiln1.begins_with("1 fusion ready") and next1[0] == "smith" and not note1,
+		"the Camp says only what the purse can do: a fusion is ready when it is paid for, the end tip names Nim while there is no scrap, and the smith points to Nim's bench (%s | %s | %s %s; then %s | %s %s)" % [kiln0, next0[0], note0, next0[1], kiln1, next1[0], note1])
 	win.size = size0
 	await get_tree().process_frame
 	mn.queue_free()
@@ -4451,7 +4478,7 @@ func _look_feel_tests() -> void:
 	short.append_array(_short_foot(mn.screens, "end"))
 	off += await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
 	ok(short.is_empty(), "every page's foot buttons (Back and its main actions) are %d tall or more%s" % [UIKit.FOOT_H, ("" if short.is_empty() else ": " + str(short.slice(0, 6)))])
-	var hid := _labels_out_of_view(mn.screens, ["GOLD", "ECHOES", "RIFT ORE", "ITEMS", "Captain Brask: \u201cBring that gold"])
+	var hid := _labels_out_of_view(mn.screens, ["GOLD", "ECHOES", "RIFT ORE", "ITEMS", "Captain Brask: \u201c"])
 	ok(hid.is_empty(), "held sideways at an S22's scale, the end of a run shows what it brought home and Brask's tip without scrolling%s" % ("" if hid.is_empty() else ": hidden " + str(hid)))
 	ok(small.is_empty(), "every label on the title, the Camp, Gear, Options, What's new, level-up, pause and the end of a run is %d units or more%s" % [UIKit.MIN_TEXT, ("" if small.is_empty() else ": " + str(small.slice(0, 6)))])
 	ok(off == "", "with the UI scaled x1.15 on an S22 held sideways, every page keeps its main buttons and Back on screen%s" % off)
