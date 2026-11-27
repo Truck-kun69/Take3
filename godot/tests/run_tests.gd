@@ -4337,6 +4337,44 @@ func _camp_ui_tests() -> void:
 	sv.data = d0
 	ok(not kiln0.contains("ready") and kiln0.begins_with("Needs") and next0[0] == "nim" and note0 and kiln1.begins_with("1 fusion ready") and next1[0] == "smith" and not note1,
 		"the Camp says only what the purse can do: a fusion is ready when it is paid for, the end tip names Nim while there is no scrap, and the smith points to Nim's bench (%s | %s | %s %s; then %s | %s %s)" % [kiln0, next0[0], note0, next0[1], kiln1, next1[0], note1])
+	# a first clear of Act I opens Act II, the Daily Rift, the Atlas, Greater Rifts and Torment I: the end screen named only
+	# the new weapons, below the fold at an S22's scale; Modes was lit only for a prophecy; its Torment tile's tap did
+	# nothing; the season, the sky and the fragments came first and pushed 4 of its 6 rows below the fold
+	var d1: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.seen_version = Diag.version()
+	sv.data.stats.runs = 1
+	sv.data.options.ui_scale = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	mn._ui_scale()
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(true)
+	var opened: Array = mn.world.opened
+	mn.screens.show_end(mn.world)
+	await get_tree().process_frame
+	var ul_txt := ""
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and l.has_meta("unlocked"): ul_txt = String(l.text)
+	var ul_hid := _labels_out_of_view(mn.screens, ["Unlocked: "])
+	mn._menu()
+	var lit0 := _gold_actions(mn.screens).has("Modes")
+	mn._on_act("endgame", null)
+	await get_tree().process_frame
+	var modes_hid := _labels_out_of_view(mn.screens, ["Daily Rift", "Atlas of Falls", "Greater Rift", "Normal"])
+	var tt := _tile(mn.screens, "Normal")
+	if tt != null: tt.pressed.emit()
+	var tm1 := int(sv.data.torment)
+	mn._menu()
+	var lit1 := _gold_actions(mn.screens).has("Modes")
+	sv.data = d1
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	ok(opened.has("Daily Rift") and opened.has("Torment I") and ul_txt.contains("Torment I") and ul_txt.contains("Greater Rifts") and ul_hid.is_empty(),
+		"a first clear of Act I names what it opened under the end screen's subtitle, in view at an S22's scale (%s; hidden %s)" % [ul_txt, str(ul_hid)])
+	ok(lit0 and not lit1 and modes_hid.is_empty() and tm1 == 1,
+		"Modes is lit until visited after Act I falls; its Daily Rift, Atlas, Greater Rift and Torment rows are in view at an S22's scale; tapping the Torment tile steps the tier (%s %s hidden %s torment %d)" % [lit0, lit1, str(modes_hid), tm1])
 	win.size = size0
 	await get_tree().process_frame
 	mn.queue_free()

@@ -934,6 +934,7 @@ func _spawn(dt: float) -> void:
 ## Rift Champions: a mid-boss at each third of an act. A giant twin-affix elite with an escort; it
 ## pays out a burst of experience, pulls every crystal in, and counts toward the unlock track.
 var new_unlocks: Array = []        # weapon ids earned by this run (shown on the end screen)
+var opened: Array = []             # what else this run opened, by name: the next act, the endgame modes, a Torment tier
 var champions_met := 0
 var champions_slain := 0
 var champ_uids: Array[int] = []
@@ -2791,6 +2792,9 @@ func end_run(win: bool, quiet: bool = false) -> void:
 		_daily_end(d)
 	elif win and mode == "campaign":
 		while d.cleared.size() <= stage: d.cleared.append(false)
+		if not bool(d.cleared[stage]):               # a first clear: the end screen lists what it opened (it named weapons only)
+			if stage + 1 < Content.STAGES.size(): opened.append(String(Content.STAGES[stage + 1].name))
+			if stage == 0: opened.append_array(["Daily Rift", "Atlas", "Greater Rifts"])
 		d.cleared[stage] = true
 	new_unlocks = Save.check_unlocks()
 	# Echoes for the Shard Web: a share of kills, a win bonus, rift depth and the torment tier
@@ -2802,6 +2806,7 @@ func end_run(win: bool, quiet: bool = false) -> void:
 	Camp.add_mat(d, "ore", ore_run)
 	if win and not daily and mode != "rift" and torment >= int(d.get("torment_max", 0)) and torment < Content.TORMENT.size() - 1:
 		d.torment_max = torment + 1                  # beating a tier opens the next
+		opened.append(String(Content.TORMENT[torment + 1].name))
 	Save.mark_dirty()
 	if not headless:
 		Save.flush()

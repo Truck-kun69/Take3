@@ -237,13 +237,14 @@ func _menu_bar(d: Dictionary) -> HBoxContainer:
 	var row := UIKit.hbox(6)
 	var unspent := int(d.get("echoes", 0)) > 0
 	var prophecy := not (d.prophecy.active as Dictionary).is_empty()
+	var modes_new := bool(d.cleared[0]) and not bool(d.get("modes_seen", false))     # Act I opened the endgame: lit until visited
 	# lit only once a run is played: before it, nothing there is affordable, and the end of the first run points to it
 	var camp := int(d.stats.get("runs", 0)) > 0 and (Camp.has_news(d) or not bool(d.get("camp_seen", false)))
 	for e in [["Camp", "camp"], ["Upgrades", "upgrades"], ["Modes", "endgame"]]:
 		var b := UIKit.button(e[0], func(): act.emit(e[1], null), 50)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 19)
-		if (e[1] == "upgrades" and unspent) or (e[1] == "endgame" and prophecy) or (e[1] == "camp" and camp):
+		if (e[1] == "upgrades" and unspent) or (e[1] == "endgame" and (prophecy or modes_new)) or (e[1] == "camp" and camp):
 			b.add_theme_color_override("font_color", Color("ffd27a"))        # something waits in there
 		row.add_child(b)
 	return row
@@ -362,22 +363,9 @@ func show_endgame() -> void:
 	var portrait := get_viewport_rect().size.x < 820.0
 	var unlocked := bool(d.cleared[0])
 	_title(v, "Modes", "Prophecies are always open. The Daily Rift and the rest of the endgame open when Mossglen Hollow falls." if not unlocked else "")
-	var sea := Save.season()
-	var sh := UIKit.hbox(8)
-	sh.alignment = BoxContainer.ALIGNMENT_CENTER
-	sh.add_child(UIKit.label(String(sea.name).to_upper(), 15, Color("c9a2ff"), false, "label"))
-	var sd := UIKit.label(String(sea.d), 16, Color("a99bc4"), true, "italic")
-	sd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sh.add_child(sd)
-	v.add_child(sh)
-	v.add_child(_sky_row())
-	if Save.has_nemesis():
-		# the nemesis drops a Legendary when slain (Bosses), so it wears Legendary's orange, as its name does in a run
-		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, Content.col(Content.RARITY_COL[Content.Rarity.LEGENDARY]), true, "italic")
-		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(nl)
-	v.add_child(_resources(d, [["Rupture", int(d.fragments.rupture), Color("ff6a4a")], ["Greed", int(d.fragments.greed), Color("ffd24a")],
-		["Dread", int(d.fragments.dread), Color("b890ff")], ["Rift key", int(d.gr_key), Color("c48aff")]]))
+	if unlocked and not bool(d.get("modes_seen", false)):
+		d.modes_seen = true
+		Save.mark_dirty()
 	var th := 62
 	var eg := _grid(1 if portrait else 2, 8)
 	var act_p: Dictionary = d.prophecy.active
@@ -403,7 +391,10 @@ func show_endgame() -> void:
 	var inc := _step_btn("+", func(): Save.data.gr_sel = mini(int(Save.data.gr_key), int(Save.data.get("gr_sel", Save.data.gr_key)) + 1); show_endgame(), th)
 	inc.disabled = not unlocked or grs >= int(d.gr_key)
 	for c in [dec, grt, inc]: grow.add_child(c)
-	v.add_child(grow)
+	var rows := _grid(1 if portrait else 2, 8)           # held sideways Greater Rift and Torment share a row: on two the Torment row sat below the fold at an S22's scale
+	grow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_child(grow)
+	v.add_child(rows)
 	# torment: the optional difficulty of the campaign, the atlas and the herald (PLAY shows it when on)
 	var tm := int(d.get("torment", 0))
 	var tmax := int(d.get("torment_max", 0))
@@ -412,11 +403,32 @@ func show_endgame() -> void:
 	tdec.disabled = tm <= 0
 	var T: Dictionary = Content.TORMENT[tm]
 	var tsub := ("+%d%% loot  \u00b7  foes x%.1f life" % [int(float(T.loot) * 100), float(T.hp)]) if tm > 0 else ("Win a run to unlock Torment I" if tmax == 0 else "Foes and loot as intended")
-	var tt := UIKit.tile(String(T.name), tsub, func(): pass, Color("b3242c") if tm > 0 else Color(0.7, 0.68, 0.66), tm > 0, th)
+	var tt := UIKit.tile(String(T.name), tsub, func():         # the tile steps the tier (its tap did nothing; + and - only)
+		Save.data.torment = (int(Save.data.torment) + 1) if int(Save.data.torment) < int(Save.data.torment_max) else 0
+		Save.mark_dirty()
+		show_endgame(), Color("b3242c") if tm > 0 else Color(0.7, 0.68, 0.66), tm > 0, th)
 	var tinc := _step_btn("+", func(): Save.data.torment = mini(int(Save.data.torment_max), int(Save.data.torment) + 1); Save.mark_dirty(); show_endgame(), th)
 	tinc.disabled = tm >= tmax
 	for c in [tdec, tt, tinc]: trow.add_child(c)
-	v.add_child(trow)
+	trow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_child(trow)
+	# the season, tonight's sky and the fragments after the modes: above them they pushed 4 of the 6 rows below the fold
+	var sea := Save.season()
+	var sh := UIKit.hbox(8)
+	sh.alignment = BoxContainer.ALIGNMENT_CENTER
+	sh.add_child(UIKit.label(String(sea.name).to_upper(), 15, Color("c9a2ff"), false, "label"))
+	var sd := UIKit.label(String(sea.d), 16, Color("a99bc4"), true, "italic")
+	sd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.add_child(sd)
+	v.add_child(sh)
+	v.add_child(_sky_row())
+	if Save.has_nemesis():
+		# the nemesis drops a Legendary when slain (Bosses), so it wears Legendary's orange, as its name does in a run
+		var nl := UIKit.label("Your nemesis %s awaits  (level %d)" % [d.nemesis.name, int(d.nemesis.level) + 1], 17, Content.col(Content.RARITY_COL[Content.Rarity.LEGENDARY]), true, "italic")
+		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(nl)
+	v.add_child(_resources(d, [["Rupture", int(d.fragments.rupture), Color("ff6a4a")], ["Greed", int(d.fragments.greed), Color("ffd24a")],
+		["Dread", int(d.fragments.dread), Color("b890ff")], ["Rift key", int(d.gr_key), Color("c48aff")]]))
 	_back(v)
 
 ## Hero name, kit, ultimate and element, centred under the hero between the column and the PLAY block.
@@ -1646,6 +1658,16 @@ func show_end(w: World) -> void:
 	var sl := UIKit.label(sub, 19, UIKit.DIM, true, "italic")
 	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(sl)
+	# what the run opened, under the subtitle: the new weapons sat below the fold at an S22's scale, and a first clear of
+	# Act I (Act II, the Daily Rift, the Atlas, Greater Rifts, Torment I) was not named at all
+	var opened: Array = w.new_unlocks.map(func(x): return String(Content.WEAPONS[x].name))
+	if not opened.is_empty(): opened[opened.size() - 1] = String(opened[opened.size() - 1]) + " (at level-ups)"
+	for o in w.opened: opened.append(String(o) + (" (Modes)" if String(o).begins_with("Torment") else ""))
+	if not opened.is_empty():
+		var ul := UIKit.label("Unlocked: " + ", ".join(opened), 18, UIKit.GOLD, true, "display")
+		ul.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ul.set_meta("unlocked", true)
+		v.add_child(ul)
 	if not bool(Save.data.get("camp_seen", false)) and not w.daily:      # a new exile: point them to the Camp
 		var tip := UIKit.label("Captain Brask: \u201c%s\u201d" % String(CampPages.next_station(Save.data)[1]), 17, Color("cfe8c0"), true, "italic")
 		tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1689,11 +1711,6 @@ func show_end(w: World) -> void:
 		var wl := UIKit.label(", ".join(w.bargains.map(func(x): return Content.WHISPERS[x].name)), 18, Color("c9a2ff"), true, "display")
 		wl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(wl)
-	if not w.new_unlocks.is_empty():
-		v.add_child(_section("New weapon unlocked"))
-		var ul := UIKit.label(", ".join(w.new_unlocks.map(func(x): return Content.WEAPONS[x].name)) + "  \u00b7  now offered at level-ups", 20, UIKit.GOLD, true, "display")
-		ul.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(ul)
 	var ev := ""
 	for e in w.director.history: ev += Content.EVENTS[e[1]].name + ", "
 	if ev != "":

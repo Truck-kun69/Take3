@@ -50,7 +50,7 @@ func defaults() -> Dictionary:
 		# the trader's stock of the day, and the first-run coach (scripts/ui/coach.gd)
 		"materials": {"scrap": 0, "ore": 0}, "temper": {}, "kindled": [], "locked": [],
 		"trader": {"day": "", "rolls": 0, "stock": []},
-		"tutorial": {"on": true, "done": []}, "camp_seen": false,
+		"tutorial": {"on": true, "done": []}, "camp_seen": false, "modes_seen": false,
 		"new_items": [],                                 # uids of stash finds not yet seen on the Gear page (World.stash_add)
 		"seen_version": "",                              # the last version whose "What's new" this profile saw (WhatsNew)
 	}
