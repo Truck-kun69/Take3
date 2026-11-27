@@ -4401,6 +4401,31 @@ func _camp_ui_tests() -> void:
 		"a first clear of Act I names what it opened under the end screen's subtitle, in view at an S22's scale (%s; hidden %s)" % [ul_txt, str(ul_hid)])
 	ok(lit0 and not lit1 and modes_hid.is_empty() and tm1 == 1,
 		"Modes is lit until visited after Act I falls; its Daily Rift, Atlas, Greater Rift and Torment rows are in view at an S22's scale; tapping the Torment tile steps the tier (%s %s hidden %s torment %d)" % [lit0, lit1, str(modes_hid), tm1])
+	# the end of a run's Echoes tile opens the Shard Web (five taps away: Main menu, Upgrades, Shard Web, a node, Take);
+	# Upgrades' Codex tile opens on the powers it names (tab 5 of 7, behind Story)
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	sv.data.echoes = 3
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	await get_tree().process_frame
+	var eb: Button = null
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("echoes_web"): eb = b
+	var eb_ok := eb != null and (eb as Control).size.y >= UIKit.MIN_TOUCH
+	if eb != null: eb.pressed.emit()
+	await get_tree().process_frame
+	var web_open := mn.world == null and _btn(mn.screens, "Reset web  (refund all)") != null
+	sv.data.echoes = 0
+	var tab_of := func(back: String) -> int:
+		mn.screens.show_codex(back)
+		for t in mn.screens.find_children("*", "TabContainer", true, false):
+			if _live(t): return (t as TabContainer).current_tab
+		return -1
+	var tab_up: int = tab_of.call("upgrades")
+	var tab_menu: int = tab_of.call("menu")
+	ok(eb_ok and web_open and tab_up == Screens.CODEX_POWERS_TAB and tab_menu == 0,
+		"the end of a run's Echoes tile (%s) opens the Shard Web and frees the run (%s); Upgrades' Codex opens on Powers (tab %d), the title's on Story (%d)" % [eb_ok, web_open, tab_up, tab_menu])
 	win.size = size0
 	await get_tree().process_frame
 	mn.queue_free()

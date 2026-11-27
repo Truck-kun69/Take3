@@ -756,7 +756,9 @@ func _on_act(what: String, arg) -> void:
 		"upgrades": screens.show_upgrades()
 		"endgame": screens.show_endgame()
 		"codex": screens.show_codex(String(arg) if arg != null else "upgrades")
-		"web": screens.show_web()
+		"web":                                       # the Shard Web (Upgrades, and the end of a run's Echoes tile, which frees the run)
+			if state != "menu": _menu()
+			screens.show_web()
 		"prophecy": screens.show_prophecies()
 		"daily": screens.show_daily("", String(arg) if arg != null else "endgame")     # arg: where its Back returns
 		"daily_go": start(arg)

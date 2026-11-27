@@ -873,6 +873,7 @@ const WEB_MIN_H := 220
 ## bios, then the bestiary, lore pages, extracted powers, records and the arsenal. From the main menu (back:
 ## "menu") and from Upgrades (back: "upgrades").
 var _codex_back := "upgrades"
+const CODEX_POWERS_TAB := 4                          # Story, Exiles, Bestiary, Lore, Powers, Records, Arsenal
 func show_codex(back: String = "upgrades") -> void:
 	_codex_back = back
 	var v := _open(1100)
@@ -945,6 +946,7 @@ func show_codex(back: String = "upgrades") -> void:
 		row.add_child(dl)
 		ar.add_child(row)
 	tabs.add_child(_scroll(ar, "Arsenal"))
+	if back == "upgrades": tabs.current_tab = CODEX_POWERS_TAB       # Upgrades' tile promises the powers: tab 5 of 7, behind Story
 	_back(v, back)
 
 ## The Codex's Story page: every act that is open (its title and place in the story, its lore, its boss and,
@@ -1724,9 +1726,27 @@ func show_end(w: World) -> void:
 		var val := UIKit.label(r[1], 30, Color("f4e2b8"), false, "num_heavy")
 		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		pv.add_child(val)
-		var key := UIKit.label(String(r[0]).to_upper(), 13, Color("b89a6a"), false, "label")
+		# the Echoes tile opens the Shard Web, where they are spent (from the end of a run that took five taps)
+		var spend: bool = r[0] == "Echoes" and int(Save.data.get("echoes", 0)) > 0
+		var key := UIKit.label(String(r[0]).to_upper() + ("  \u203a" if spend else ""), 13, Color("b89a6a"), false, "label")
 		key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		pv.add_child(key)
+		if spend:
+			var eb := Button.new()
+			eb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			eb.custom_minimum_size.y = UIKit.MIN_TOUCH
+			for st in ["normal", "hover", "pressed", "focus"]:
+				eb.add_theme_stylebox_override(st, UIKit.nine("tile", 24, Vector4(12, 10, 12, 10), Color("f2c76a") if st == "pressed" else Color(0.86, 0.74, 0.5)))
+			pv.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			pv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			for c in pv.get_children(): (c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+			eb.add_child(pv)
+			eb.custom_minimum_size.y = maxf(UIKit.MIN_TOUCH, pv.get_combined_minimum_size().y + 20.0)
+			eb.pressed.connect(func(): Sfx.play("click"); act.emit("web", null))
+			eb.set_meta("echoes_web", true)
+			UIKit.press_fx(eb)
+			g.add_child(eb)
+			continue
 		var pc := PanelContainer.new()
 		pc.add_theme_stylebox_override("panel", UIKit.nine("tile", 24, Vector4(12, 10, 12, 10), Color(0.7, 0.62, 0.52)))
 		pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
