@@ -4629,6 +4629,16 @@ func _evolve_pair_tests() -> void:
 		var pair := String(Content.PERKS[String(Content.WEAPONS[id].pair)].name)
 		if not String(w.choice_text({"kind": "w", "id": id}).d).contains("Evolves at Lv 5 with %s." % pair): bad.append(id)
 	ok(bad.is_empty(), "every weapon's card names the perk it evolves with at level 5%s" % ("" if bad.is_empty() else ": " + str(bad)))
+	# the numbers under the words: 27 of the 52 level lines had no number at all and none an amount ("More damage.")
+	var dig := RegEx.create_from_string("\\d")
+	var lines := 0
+	var numbered := 0
+	for id in Content.WEAPON_IDS:
+		for lv in range(1, 5):
+			lines += 1
+			if dig.search(World.level_delta(id, lv)) != null: numbered += 1
+	ok(lines == 52 and numbered == lines and World.level_delta("bolt", 1) == "2 bolts · every 0.9→0.8s" and World.level_delta("bolt", 2).begins_with("Damage 9→11"),
+		"every weapon level card says what changes in numbers: %d of %d (Rime Bolt Lv 2: \"%s\")" % [numbered, lines, World.level_delta("bolt", 1)])
 	var held: String = w.weapons.keys()[0]
 	var pk := String(Content.WEAPONS[held].pair)
 	var tag := String(w.choice_text({"kind": "p", "id": pk}).tag)

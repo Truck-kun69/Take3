@@ -2640,6 +2640,31 @@ func make_choices() -> Array:
 	if out.is_empty(): out.append({"kind": "heal", "id": "heal"})
 	return out
 
+## What a weapon's card adds, in numbers: lv is the weapon's level now (0: not carried). A new weapon gives its damage
+## and cooldown; a level gives what changes from Content.WEAPONS[id].lv[lv - 1] to lv[lv]: "Damage 9→11 · 2 bolts".
+const COUNT_NOUN := {"bolt": "bolts", "orbit": "blades", "storm": "strikes", "lance": "lances", "mine": "mines", "glaive": "glaives",
+	"wisp": "wisps", "arc": "foes chained", "meteor": "meteors", "totem": "totems"}
+static func level_delta(wid: String, lv: int) -> String:
+	var L: Array = Content.WEAPONS[wid].lv
+	var b: Dictionary = L[mini(lv, L.size() - 1)]
+	var g := func(v: float) -> String: return ("%d" % int(v)) if is_equal_approx(v, roundf(v)) else ("%.2f" % v).trim_suffix("0")
+	var out := PackedStringArray()
+	if lv <= 0:
+		out.append("Damage %s" % g.call(float(b.dmg)))
+		if b.has("n") and int(b.n) > 1: out.append("%d %s" % [int(b.n), String(COUNT_NOUN.get(wid, "hits"))])
+		if b.has("cd"): out.append("every %ss" % g.call(float(b.cd)))
+		return " · ".join(out)
+	var a: Dictionary = L[lv - 1]
+	if float(b.dmg) != float(a.dmg): out.append("Damage %s→%s" % [g.call(float(a.dmg)), g.call(float(b.dmg))])
+	if b.has("n") and int(b.n) != int(a.n): out.append("%d %s" % [int(b.n), String(COUNT_NOUN.get(wid, "hits"))])
+	if b.has("cd") and float(b.cd) != float(a.cd): out.append("every %s→%ss" % [g.call(float(a.cd)), g.call(float(b.cd))])
+	if b.has("rad") and float(b.rad) != float(a.rad): out.append("radius +%d%%" % roundi((float(b.rad) / float(a.rad) - 1.0) * 100.0))
+	if b.has("pierce") and int(b.pierce) != int(a.pierce): out.append("pierce %d" % int(b.pierce))
+	if b.has("spd") and float(b.spd) != float(a.spd): out.append("spin +%d%%" % roundi((float(b.spd) / float(a.spd) - 1.0) * 100.0))
+	if b.has("rate") and float(b.rate) != float(a.rate): out.append("fires every %s→%ss" % [g.call(float(a.rate)), g.call(float(b.rate))])
+	if b.has("dur") and float(b.dur) != float(a.dur): out.append("lasts %ss" % g.call(float(b.dur)))
+	return " · ".join(out)
+
 ## "Evolves at Lv 5 with <its paired perk>." for a weapon's card.
 static func evolve_hint(wid: String) -> String:
 	var pair := String(Content.WEAPONS[wid].get("pair", ""))
@@ -2661,7 +2686,8 @@ func choice_text(c: Dictionary) -> Dictionary:
 			var tag := "New weapon" if lv == 0 else "Weapon Lv %d -> %d" % [lv, lv + 1]
 			if rank > 0: tag += "  \u00b7  " + Camp.RANK_NAME[rank]          # tempered at the Camp's smith
 			# the evolution recipe on the card (Brask: "a weapon at level 5 with its paired perk"): the pair was nowhere in the UI
-			return {"tag": tag, "name": W.name, "d": W.d[lv] + "  [%s]  %s" % [Content.EL_NAME[W.elem], evolve_hint(String(c.id))], "col": W.col}
+			# the numbers under the words: 27 of the 52 level lines had no number and none an amount ("More damage.")
+			return {"tag": tag, "name": W.name, "d": W.d[lv] + "\n" + level_delta(String(c.id), lv) + "  [%s]  %s" % [Content.EL_NAME[W.elem], evolve_hint(String(c.id))], "col": W.col}
 		"e": return {"tag": "Evolution", "name": Content.WEAPONS[c.id].evo, "d": Content.WEAPONS[c.id].evo_d, "col": "f4c04e"}
 		"fuse":
 			var kin := _kindled(c.a, c.b)
