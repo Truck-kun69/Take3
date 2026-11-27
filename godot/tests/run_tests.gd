@@ -58,6 +58,7 @@ func _ready() -> void:
 		await _camp_ui_tests()
 		await _look_feel_tests()
 		_look_render_tests()
+		_look_vfx_tests()
 	elif "camp" in args:
 		_camp_tests()
 		_coach_tests()
@@ -65,6 +66,7 @@ func _ready() -> void:
 	elif "look" in args:
 		await _look_feel_tests()
 		_look_render_tests()
+		_look_vfx_tests()
 	elif "voice" in args:
 		_voice_tests()
 		_pack_tests()
@@ -3342,9 +3344,8 @@ func _height_tests() -> void:
 		if absf(fx._pb[k * 20 + 7] - (v.ground_y(w.projs[k].pos) + 16.0)) > 0.01: pbad += 1
 	ok(pn > 0 and pbad == 0, "hero shots fly 16 above the ground under them (%d shots)" % pn)
 	var ebad := 0
-	for j in w.eshots.size():                # glow sprites: 4 per hero shot (head + trail), then 3 per enemy shot, ring first
-		var go := (4 * pn + 3 * j) * 20
-		if absf(fx._gb[go + 7] - (v.ground_y(w.eshots[j].pos) + 14.0)) > 0.01: ebad += 1
+	for j in w.eshots.size():                # the shot layer (FX3D.esh_mm): one quad per enemy shot
+		if absf(fx._eb[j * 20 + 7] - (v.ground_y(w.eshots[j].pos) + 14.0)) > 0.01: ebad += 1
 	ok(w.eshots.size() > 0 and ebad == 0, "enemy shots fly 14 above the ground under them (%d shots)" % w.eshots.size())
 	var gbad := 0
 	var gn := 0
@@ -5095,3 +5096,48 @@ func _bench() -> void:
 	print(fl)
 	report["bench"] = out
 	ok(true, "bench ran")
+
+func _look_vfx_tests() -> void:
+	print("== 0.11.5 look: enemy shots, effect colours, telegraphs, hit squash, pooled shots")
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 65})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	var fx := v.fx
+	var em := fx.esh_mm.material_override as ShaderMaterial
+	ok(em.shader.code.contains("depth_test_disabled") and em.shader.code.contains("blend_mix") and em.render_priority >= 100,
+		"enemy shots: their own alpha layer, never depth-tested, drawn after the other effects (they hid in the additive glow)")
+	w.spawn_eshot(w.pp + Vector2(120, 0), Vector2(-170, 0), 5.0)
+	fx._projectiles(0)
+	ok(fx.esh_mm.multimesh.visible_instance_count == w.eshots.size() and w.eshots.size() > 0, "every enemy shot drawn in the shot layer (%d)" % w.eshots.size())
+	var lin := true
+	for m in [fx.glow_mm.material_override, fx.bolt_mat, fx.gem_mm.material_override, fx.pick_mm["disc"].material_override, fx.beam_mm.material_override]:
+		lin = lin and (m as ShaderMaterial).shader.code.contains("lin(COLOR.rgb)")
+	ok(lin and FX3D.GEM_EM <= 1.0 and FX3D.GEM_BIG != Color("ffd84a"),
+		"effect shaders linearise their sRGB instance colours; crystals at emission %.1f; the big crystal is not the coin's colour" % FX3D.GEM_EM)
+	w.teles.clear()
+	w.add_tele(0, w.pp + Vector2(80, 0), 60.0, 1.0, 0.0, 10.0, true, false, -1, Color(1, 0.25, 0.3, 0.55), "a slam")
+	var zl := w.add_tele(2, w.pp + Vector2(-200, 0), 0.0, 1.0, 0.0, 10.0, true, false, -1, Color(1, 0.3, 0.25, 0.5), "a dash-cleave")
+	zl.dir = Vector2.RIGHT; zl.length = 200.0; zl.width = 60.0
+	fx._decals()
+	var top := 0
+	var under := 0
+	for d in fx.decals:
+		if not d.visible: continue
+		if d.material_override == fx.decal_top_mat: top += 1
+		elif d.material_override == fx.decal_mat: under += 1
+	ok(top == 2 and under >= 2 and (fx.decal_top_mat.shader.code.contains("depth_test_disabled")) and not fx.decal_mat.shader.code.contains("depth_test_disabled"),
+		"hostile telegraphs drawn over the bodies standing in them (%d), the hero's own decals under them (%d)" % [top, under])
+	var fsh: String = (load("res://shaders/3d/foe.gdshader") as Shader).code
+	var vat_at := fsh.find("if (has_vat) {")
+	var proc_at := fsh.find("} else if (INSTANCE_CUSTOM.z < 6.5)")
+	var sq := fsh.find("VERTEX.xz *= 1.0 + hf")
+	ok(vat_at >= 0 and sq > vat_at and sq < proc_at and fsh.contains("fl * fl * 0.55;"), "animated foes squash on a hit; the hit pop eases in squares")
+	var p0 := w._new_proj()
+	p0.prev = Vector2(5, 5)
+	w._pool.append(p0)
+	var p1 := w._new_proj()
+	ok(p1 == p0 and p1.prev == Vector2.INF, "a pooled shot starts with no previous position (it was drawn from its last life's)")
+	v.w = null
+	v.queue_free()
