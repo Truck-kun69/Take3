@@ -4441,6 +4441,21 @@ func _camp_ui_tests() -> void:
 	var tab_menu: int = tab_of.call("menu")
 	ok(eb_ok and web_open and tab_up == Screens.CODEX_POWERS_TAB and tab_menu == 0,
 		"the end of a run's Echoes tile (%s) opens the Shard Web and frees the run (%s); Upgrades' Codex opens on Powers (tab %d), the title's on Story (%d)" % [eb_ok, web_open, tab_up, tab_menu])
+	# leaving a run loses its unbanked hoard (World.end_run): the confirm said only "You keep the gold and Echoes"
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.hoard = 120.0
+	mn.world.hoard_mult = 1.5
+	mn._pause()
+	_press(mn.screens, "Main Menu")
+	await get_tree().process_frame
+	var said := ""
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).begins_with("You keep the gold"): said = String(l.text)
+	mn.world.hoard = 0.0
+	var none := Screens.hoard_loss(mn.world)
+	mn._on_act("leave", null)
+	ok(said.ends_with("Your unbanked hoard (180) is lost.") and none == "", "leaving or restarting a run names the unbanked hoard it loses (%s)" % said)
 	win.size = size0
 	await get_tree().process_frame
 	mn.queue_free()

@@ -1532,8 +1532,9 @@ func show_pause(w: World) -> void:
 		row.add_child(b)
 	v.add_child(row)
 	var row2 := _grid(2, 8)
-	var rb := UIKit.button("Restart Run", func(): confirm("Restart this run?", "You keep the gold and Echoes it has earned so far, and start the same run again.", "Restart", "restart"), 54)
-	var mb := UIKit.button("Main Menu", func(): confirm("Leave this run?", "You keep the gold and Echoes it has earned so far. The run itself ends here.", "Leave", "leave"), 54)
+	# leaving or restarting ends the run unbanked (World.end_run): the hoard is lost, which "you keep the gold" hid
+	var rb := UIKit.button("Restart Run", func(): confirm("Restart this run?", "You keep the gold and Echoes it has earned so far, and start the same run again." + hoard_loss(w), "Restart", "restart"), 54)
+	var mb := UIKit.button("Main Menu", func(): confirm("Leave this run?", "You keep the gold and Echoes it has earned so far. The run itself ends here." + hoard_loss(w), "Leave", "leave"), 54)
 	for b2 in [rb, mb]:
 		b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row2.add_child(b2)
@@ -1543,6 +1544,11 @@ func show_pause(w: World) -> void:
 		var cl := UIKit.label(ctext, 16, Color("ffa15a"), true, "italic")
 		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(cl)
+
+## " Your unbanked hoard (N) is lost." while the run holds one; "" else.
+static func hoard_loss(w: World) -> String:
+	var v := int(w.hoard * w.hoard_mult)
+	return (" Your unbanked hoard (%d) is lost." % v) if v > 0 else ""
 
 ## Pause > Build & Stats: the weapons and their links, the perks, and how the run is going (and the
 ## Emberwitch's contagion, the Warden's vaults, the Sparkcaller's ricochets, the Stormwright's conductions).
