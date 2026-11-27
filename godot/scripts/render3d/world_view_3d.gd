@@ -28,6 +28,21 @@ const STAGE_LOOK := [
 ## The act's Fresnel rim (STAGE_LOOK.rim) on foes (foe.gdshader rim_col) and rogue exiles (HeroRig.set_rim). 0.6 on
 ## foes: at 0.45 a foe without a status sat within 3 luma of the ground beside it in Acts I, II and IV.
 const RIM_FOE := 0.6
+## A tone curve in the adjustment's colour correction (the tonemap pass itself, no new pass): the brighter 0.11.4 light
+## lifted the floor and kept the highlights, so Act I's p5-p95 span fell 17% and 85% of the frame sat in luma 40-110.
+## Input -> output in display space: the toe (under 0.05) kept, the low mids pressed, the upper mids opened.
+const TONE_IN := [0.0, 0.05, 0.12, 0.28, 0.46, 0.7, 1.0]
+const TONE_OUT := [0.0, 0.05, 0.10, 0.28, 0.52, 0.76, 1.0]
+static func tone_curve() -> GradientTexture1D:
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array(TONE_IN)
+	var cs := PackedColorArray()
+	for v in TONE_OUT: cs.append(Color(v, v, v))
+	g.colors = cs
+	var t := GradientTexture1D.new()
+	t.gradient = g
+	t.width = 256
+	return t
 ## Saturation: 0.95 by default, 0.75 in Acts II and IV (sat). The tone curve (tone_curve) raises chroma 12-22%, so
 ## these keep each act's chroma where it was before the curve, and still lower II's and IV's.
 const SAT := 0.95
@@ -149,6 +164,7 @@ func _ready() -> void:
 	env.ssao_intensity = 1.6
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.08
+	env.adjustment_color_correction = tone_curve()
 	env.adjustment_saturation = SAT
 	we.environment = env
 	add_child(we)

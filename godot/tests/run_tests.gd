@@ -5146,6 +5146,19 @@ func _look_art2_tests() -> void:
 	ok(is_equal_approx(float(v5.foe_mats[0].get_shader_parameter("rim_k")), 0.35) and v5.sun.light_color.is_equal_approx(sun4)
 		and is_equal_approx(v5.env.adjustment_saturation, WorldView3D.SAT), "Act V binds its foe rim, its sun and the default saturation")
 	v5.queue_free()
+	var tc := WorldView3D.tone_curve()
+	var mono := true
+	var prev := -1.0
+	for i in 101:
+		var y := tc.gradient.sample(i / 100.0).r
+		mono = mono and y >= prev
+		prev = y
+	var vc := WorldView3D.new()
+	add_child(vc)
+	var on := vc.env.adjustment_color_correction != null
+	vc.queue_free()
+	ok(on and mono and absf(tc.gradient.sample(0.05).r - 0.05) < 0.005 and tc.gradient.sample(0.12).r < 0.115 and tc.gradient.sample(0.46).r > 0.5,
+		"the tone curve: toe kept, low mids pressed, upper mids opened (Act I's p5-p95 span had fallen 17%%, 85%% of the frame in the mid band)")
 	# (art review 2 guards end)
 
 func _look_vfx_tests() -> void:
