@@ -3757,6 +3757,21 @@ func _camp_tests() -> void:
 	ok(sa.stash.has(weak_n2), "off: every find is kept")
 	sa.options.auto_equip = was_eq
 	Save.data = keep_s
+	# a new profile salvages Normal finds on the way (off, a won Act I's 57-85 finds filled the 80-slot stash); a profile
+	# saved before that default keeps what it had, and a saved choice stays
+	var keep_path: String = Save.path
+	var sal_got: Array = []
+	for opts in [{"sound": false}, {"sound": false, "auto_salvage": 2}]:
+		Save.path = "user://test_auto_salvage_profile.json"
+		var f := FileAccess.open(Save.path, FileAccess.WRITE)
+		f.store_string(JSON.stringify({"gold": 5, "options": opts}))
+		f.close()
+		Save.load_profile()
+		sal_got.append(int(Save.data.options.auto_salvage))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Save.path))
+	Save.path = keep_path
+	Save.data = keep_s
+	ok(int(Save.defaults().options.auto_salvage) == 1 and sal_got == [0, 2], "salvage on the way: Normal finds for a new profile; an older profile keeps off, a saved choice stays (%s)" % str(sal_got))
 	# ---- the run's ore
 	var wo := _world({"mode": "campaign", "hero": 0, "seed": 35})
 	wo.kills = 900; wo.champions_slain = 2
