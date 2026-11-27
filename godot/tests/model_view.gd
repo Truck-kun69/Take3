@@ -1,0 +1,200 @@
+extends Node3D
+## Model turntable for visual critique, lit like the game (dim ambient, low sun, warm torches).
+##   xvfb-run -a godot --path godot --rendering-method mobile res://tests/model_view.tscn -- <out.png> [heroes|foes|bosses]
+var t := 0.0
+var rigs: Array = []
+var mode := "heroes"
+var out := "user://models.png"
+var foe_mm: Array = []
+
+func _ready() -> void:
+	var a := OS.get_cmdline_user_args()
+	if a.size() > 0: out = a[0]
+	if a.size() > 1: mode = a[1]
+	var we := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.background_color = Color(0.05, 0.05, 0.07)
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color(0.35, 0.33, 0.4)
+	e.ambient_light_energy = 0.35
+	e.tonemap_mode = Environment.TONE_MAPPER_ACES
+	e.glow_enabled = true
+	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	var sm := ProceduralSkyMaterial.new()
+	var sky := Sky.new(); sky.sky_material = sm
+	e.sky = sky
+	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	we.environment = e
+	add_child(we)
+	var sun := DirectionalLight3D.new()
+	sun.rotation = Vector3(deg_to_rad(-48), deg_to_rad(-35), 0)
+	sun.light_energy = 0.7
+	sun.light_color = Color(0.85, 0.85, 1.0)
+	sun.shadow_enabled = true
+	add_child(sun)
+	var g := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(3000, 3000); g.mesh = pm
+	var gm := ShaderMaterial.new(); gm.shader = load("res://shaders/3d/terrain.gdshader")
+	gm.set_shader_parameter("c0", Color("2a1210")); gm.set_shader_parameter("c1", Color("4a2019")); gm.set_shader_parameter("c2", Color("6a2a18")); gm.set_shader_parameter("acc", Color("ff9a3c"))
+	WorldView3D.apply_ground(gm, 1)
+	g.material_override = gm
+	add_child(g)
+	var cam := Camera3D.new()
+	cam.fov = 34
+	add_child(cam)
+	for x in [40.0, 220.0]:
+		var l := OmniLight3D.new(); l.omni_range = 260; l.omni_attenuation = 0.5; l.light_energy = 14; l.light_color = Color(1, 0.8, 0.6)
+		l.position = Vector3(x, 70, 90); add_child(l)
+	match mode:
+		"heroes":
+			cam.position = Vector3(108, 105, 245); cam.look_at(Vector3(108, 30, 0))
+			var ids := ["warden", "spark", "ember", "storm"]
+			for i in 4:
+				var h := HeroRig.new(); add_child(h)
+				h.build(ids[i], Content.col(Content.HEROES[i].col)); h.scale = Vector3.ONE * 1.3
+				rigs.append([h, Vector2(i * 72.0, 0)])
+		"foes":
+			cam.position = Vector3(110, 80, 150); cam.look_at(Vector3(110, 12, -10))
+			var fm := ShaderMaterial.new(); fm.shader = load("res://shaders/3d/foe.gdshader")
+			fm.set_shader_parameter("glow_col", Color("ff9a3c")); fm.set_shader_parameter("eye_col", Color(1, 0.6, 0.2))
+			var kinds := ["grunt", "runner", "brute", "spitter", "splitter", "mini", "charger", "breach", "goblin"]
+			var base := Color("4a2019").lerp(Color(0.55, 0.5, 0.48), 0.5)
+			for k in kinds.size():
+				var mmi := MultiMeshInstance3D.new(); var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.use_custom_data = true
+				mm.mesh = Models.foe_mesh(kinds[k]); mm.instance_count = 2
+				var row := k / 5
+				var px := (k % 5) * 55.0 - 0.0
+				var pz := -row * 60.0
+				var s := 14.0 if kinds[k] != "brute" else 12.0
+				mm.set_instance_transform(0, Transform3D(Basis(Vector3.UP, -0.9).scaled(Vector3(s, s, s)), Vector3(px, 0, pz)))
+				mm.set_instance_color(0, base)
+				mm.set_instance_custom_data(0, Color(t, 0, 0, 1.0 if k == 2 else 0.0))
+				# second instance: the same foe as a crumbling corpse
+				mm.set_instance_transform(1, Transform3D(Basis(Vector3(1, 0, 0), PI / 2).rotated(Vector3.UP, -0.5).scaled(Vector3(s, s, s)), Vector3(px + 22, s * 0.42, pz + 26)))
+				mm.set_instance_color(1, base)
+				mm.set_instance_custom_data(1, Color(0, 0.25 + 0.1 * k, 7, 256.0 * k))
+				mmi.multimesh = mm; mmi.material_override = fm
+				add_child(mmi)
+				foe_mm.append(mmi)
+			var ex := HeroRig.new(); add_child(ex); ex.build("ember", Color("4a2a2a")); ex.scale = Vector3.ONE * 1.35
+			rigs.append([ex, Vector2(250, 0)])
+		"foe":
+			# imported swarm meshes with their baked clips. One row per kind, five columns: mid-walk, mid-attack,
+			# mid-flinch, end of death, mid-spawn (kinds without a .vat show the old shader animation).
+			var kinds2: PackedStringArray = (a[2] if a.size() > 2 else "grunt").split(",")
+			var rows := kinds2.size()
+			cam.position = Vector3(110, 60.0 + 26.0 * rows, 120.0 + 60.0 * rows); cam.look_at(Vector3(110, 10, -22.0 * (rows - 1)))
+			var fracs := [0.3, 0.45, 0.4, 1.0, 0.5]
+			if a.size() > 3: fracs = [float(a[3]), float(a[3]), float(a[3]), float(a[3]), float(a[3])]
+			for k in kinds2.size():
+				var fm2 := ShaderMaterial.new(); fm2.shader = load("res://shaders/3d/foe.gdshader")
+				fm2.set_shader_parameter("glow_col", Color("8fd8ff")); fm2.set_shader_parameter("eye_col", Color(1, 0.6, 0.2))
+				var vat := Models.foe_vat(kinds2[k])
+				var fmesh := Models.foe_mesh(kinds2[k])
+				var mh := fmesh.get_aabb().size.y
+				# bound as WorldView3D.bind does: the model's own maps, the animation texture and its box
+				var pbr := Models.pbr_maps(fmesh)
+				fm2.set_shader_parameter("has_albedo", pbr.has("albedo"))
+				# FOE_MAPS=albedo / =normal: compare the baked maps against fewer of them
+				var only := OS.get_environment("FOE_MAPS")
+				fm2.set_shader_parameter("has_normal", pbr.has("normal") and only != "albedo")
+				fm2.set_shader_parameter("has_orm", pbr.has("orm") and only != "albedo" and only != "normal")
+				for key in pbr: fm2.set_shader_parameter(key + "_tex", pbr[key])
+				fm2.set_shader_parameter("has_vat", not vat.is_empty())
+				if not vat.is_empty():
+					fm2.set_shader_parameter("vat_pos", vat.pos); fm2.set_shader_parameter("vat_nrm", vat.nrm)
+					fm2.set_shader_parameter("vat_min", vat.vmin); fm2.set_shader_parameter("vat_ext", vat.vext)
+				var mmi := MultiMeshInstance3D.new(); var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.use_custom_data = true
+				mm.mesh = fmesh; mm.instance_count = 5
+				for j in 5:
+					var s2 := 13.0 if mh < 10.0 else 1.0          # pack meshes ~2 units tall; generated ones at their height
+					mm.set_instance_transform(j, Transform3D(Basis(Vector3.UP, -0.9).scaled(Vector3(s2, s2, s2)), Vector3(j * 55.0, 0, -k * 44.0)))
+					mm.set_instance_color(j, Color(0.85, 0.8, 0.78, 0.3))
+					var fr := 1.2 + j
+					if not vat.is_empty():
+						var vc: PackedFloat32Array = vat.clips
+						fr = vc[j * 3] + (vc[j * 3 + 1] - 1.0) * float(fracs[j])
+					mm.set_instance_custom_data(j, Color(fr, 0, 0, 0))
+				mmi.multimesh = mm; mmi.material_override = fm2
+				add_child(mmi)
+		"prop":
+			# props as the scatter draws them: several rotations each, glow in the act accent
+			# (imported PBR props draw their own materials, as in _build_cell; spaced by their own size)
+			var kinds3: PackedStringArray = (a[2] if a.size() > 2 else "crystal").split(",")
+			var pmat := ShaderMaterial.new(); pmat.shader = load("res://shaders/3d/prop.gdshader")
+			pmat.set_shader_parameter("tint", Color(0.96, 0.95, 0.93)); pmat.set_shader_parameter("glow_col", Color("b890ff"))
+			var x := 0.0
+			var tall := 0.0
+			for k in kinds3.size():
+				var pmesh := Models.prop_mesh(kinds3[k])
+				var bb := pmesh.get_aabb()
+				var wide := maxf(bb.size.x, bb.size.z)
+				tall = maxf(tall, bb.size.y)
+				for j in 2:
+					var mi := MeshInstance3D.new(); mi.mesh = pmesh
+					if not Models.has_pbr(pmesh): mi.material_override = pmat
+					mi.position = Vector3(x + j * wide * 0.6, 0, -j * wide * 0.9); mi.rotation.y = j * 2.1
+					add_child(mi)
+				x += wide * 1.9 + 10.0
+			cam.position = Vector3(x * 0.5, tall * 0.9, x * 0.62 + tall); cam.look_at(Vector3(x * 0.5, tall * 0.3, 0))
+		"strip":
+			# one authored clip of a hero or boss as six frames, seen three-quarter from the front
+			var sid := a[2] if a.size() > 2 else "warden"
+			var clip := a[3] if a.size() > 3 else "run"
+			var folder := "heroes" if Models.find_asset("heroes", sid) != "" else "bosses"
+			var big := 1.0 if folder == "heroes" else 2.6
+			cam.position = Vector3(140, 50, 200) * big; cam.look_at(Vector3(140, 24, 0) * big)
+			cam.fov = 24
+			for i in 6:
+				var n: Node3D = load(Models.find_asset(folder, sid)).instantiate()
+				add_child(n)
+				n.position = Vector3(i * 56.0 * big, 0, 0); n.rotation.y = -1.0
+				var ap := n.find_child("AnimationPlayer", true, false) as AnimationPlayer
+				if ap != null and ap.has_animation(clip):
+					ap.play(clip); ap.speed_scale = 0.0
+					ap.seek(ap.get_animation(clip).length * (i / 6.0 if a.size() < 5 else i / 5.0 * 0.999), true)
+		"one", "boss":
+			# close-up of one model in four states: idle (front), run (three-quarter), cast, roll/attack
+			var id := a[2] if a.size() > 2 else "warden"
+			cam.position = Vector3(120, 78, 250) if mode == "one" else Vector3(150, 170, 420)
+			cam.look_at(Vector3(120, 26, 0) if mode == "one" else Vector3(150, 70, 0))
+			for i in 4:
+				if mode == "one":
+					var h := HeroRig.new(); add_child(h)
+					var hi := ["warden", "spark", "ember", "storm"].find(id)
+					h.build(id, Content.col(Content.HEROES[maxi(0, hi)].col))
+					rigs.append([h, Vector2(i * 80.0, 0)])
+				else:
+					var b2 := BossRig.new(); add_child(b2)
+					b2.build("herald" if id == "herald" else "tyrant", Color("ff6a2a"), id)
+					rigs.append([b2, Vector2(i * 100.0, 0)])
+		_:
+			cam.position = Vector3(110, 150, 260); cam.look_at(Vector3(110, 60, 0))
+			var b := BossRig.new(); add_child(b); b.build("tyrant", Color("ff6a2a"), "tyrant"); b.position = Vector3(40, 0, 0)
+			var hr := BossRig.new(); add_child(hr); hr.build("herald", Color("c48aff"), "herald"); hr.position = Vector3(200, 0, 0)
+			rigs.append([b, Vector2(40, 0)]); rigs.append([hr, Vector2(200, 0)])
+
+func _process(dt: float) -> void:
+	t += dt
+	for i in rigs.size():
+		var r = rigs[i][0]
+		if r is HeroRig and mode == "one":
+			var faces := [Vector2(0.05, 1), Vector2(0.9, 0.6), Vector2(-0.3, 1), Vector2(1, 0.15)]
+			r.animate({"pos": rigs[i][1], "face": faces[i].normalized(), "mv": 1.0 if i == 1 else 0.0, "ph": t * 10.0,
+				"cast_age": fmod(t, 0.9) if i == 2 else 9.0, "cast_dir": faces[i].normalized(), "roll": 0.3 if i == 3 else -1.0,
+				"hit": 0.0, "dead": false, "t": t, "gs": 195.0 if i == 1 else 0.0}, dt)
+		elif r is BossRig and mode == "boss":
+			r.animate({"pos": rigs[i][1], "face": [Vector2(0.05, 1), Vector2(0.9, 0.6), Vector2(-0.3, 1), Vector2(1, 0.15)][i].normalized(), "hp_frac": 1.0,
+				"flash": 0.0, "t": t, "dt": dt, "attack": i == 2 and fmod(t, 1.5) < dt, "phase": 1})
+		elif r is HeroRig:
+			r.animate({"pos": rigs[i][1], "face": Vector2(0.35, 1).normalized(), "mv": 1.0 if i % 2 == 0 else 0.0, "ph": t * 10.0,
+				"cast_age": 9.0 if i < 2 else fmod(t, 0.6), "cast_dir": Vector2(0.35, 1).normalized(), "roll": -1.0, "hit": 0.0, "dead": false, "t": t}, dt)
+		else:
+			r.animate({"pos": rigs[i][1], "face": Vector2(0.3, 1).normalized(), "hp_frac": 1.0, "flash": 0.0, "t": t, "dt": dt, "attack": fmod(t, 2.0) < dt, "phase": 1})
+	if t > 1.6:
+		set_process(false)
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(out)
+		get_tree().quit()

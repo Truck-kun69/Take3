@@ -1,0 +1,437 @@
+# Shardfall: Rift Survivors — Godot 4 overhaul
+
+The original single-file HTML game (`reference/shardfall_survivors_web.html`, ~5,900 lines of
+canvas + three.js) was re-built as a Godot 4.7 project in `godot/`. The core loop is the same
+(auto-firing weapons, a swarm, XP gems, level-up cards, Rift Champions at each third of an 8-minute act, then its boss) and the four heroes, four
+weapons, four stages, elemental perks and elite affixes were carried over. Around it sit 20 new or
+reworked systems, then three rounds of measured critique and fixes.
+
+## Architecture
+
+```
+scripts/sim/      pure simulation, no nodes; runs headless at any speed
+  world.gd        run state, player, weapons, damage pipeline, reactions, drops, level-ups
+  swarm.gd        all foes as packed struct-of-arrays (swap-remove, uid index)
+  spatial_grid.gd hashed uniform grid, linked buckets, allocation-free rebuild
+  stats.gd        base / added / increased / more modifier pipeline, grouped by source
+  buffs.gd        timed buffs with stacking policies, feeding Stats
+  items.gd        item generation, affix tiers, crafting operations, validation
+  director.gd     pacing director + event deck (the "happenings")
+  bosses.gd       stage tyrants, rift guardian, rogue exiles / nemesis, pinnacle Herald
+  atlas.gd        seeded node-graph map
+  crowd_compute.gd GPU separation (local RenderingDevice) with CPU fallback
+scripts/render/   WorldView: MultiMesh swarm + glow batches, canvas-drawn telegraphs/loot/UI-in-world
+scripts/ui/       HUD, touch controls, every menu/overlay, theme kit
+shaders/          swarm SDF bodies, additive glow sprites, procedural ground
+tests/            unit tests, bot player, stress bench, screenshot tour
+```
+
+The simulation never touches rendering, so the same `World` is driven by a touch/keyboard/gamepad
+player in the game and by `tests/bot.gd` in headless balance runs. That separation is what made the
+three critique cycles measurable instead of opinion.
+
+## The 20 enhancements
+
+| # | Area | Enhancement | Where |
+|---|---|---|---|
+| 1 | Graphics | **Batched SDF swarm renderer.** Every foe is one MultiMesh instance; a canvas shader draws the body from a per-kind polar profile with fake lighting, outline, eyes, crystal facets, elite/exile/ally rim glow, hit flash, status tint and contact shadow. 700 foes = 1 draw call. | `shaders/swarm.gdshader`, `world_view.gd` |
+| 2 | Graphics | **Juice layer.** Trauma-based screen shake (squared, option-scaled), hit-stop on elite kills, slow-motion on perfect dodges, full-screen flash (dampened by *Reduce flashing*), low-life pulsing vignette, roll afterimages, additive particle bursts, loot beams whose height encodes rarity, edge-of-screen compass to off-screen objectives. Damage numbers are pooled, merged per foe within 0.12 s, tiered (normal / crit / reaction / reaction label / DoT) and filtered by option. | `world_view.gd`, `hud.gd`, `world.gd::_text` |
+| 3 | Graphics | **Unified telegraph system.** One `Tele` type (circle, ring, line, cone) with arm-time fill, persistent ticking zones, spinning beams, following zones, friendly/hostile flags. Every boss attack, meteor, volatile death and consecrated ground uses it, so every threat is readable. Colour-blind mode adds hatching. | `world.gd::Tele`, `_draw_tele` |
+| 4 | Controls | **Floating virtual joystick** with dead zone and a 1.6 power response curve, fixed-stick option, left-handed mirroring, multi-touch buttons with charge rings; keyboard and gamepad through a runtime InputMap; Android back button and focus-loss auto-pause. | `touch_controls.gd`, `main.gd` |
+| 5 | Controls | **Dodge roll with input buffer and Perfect Dodge.** 0.26 s i-frames, 0.15 s buffer so an early press still rolls, and a hit absorbed in the first 0.2 s of a roll triggers 0.35 s slow-mo and *Riposte* (guaranteed crits for 2 s). | `world.gd::_roll`, `hurt_player` |
+| 6 | Controls / Options | **Targeting modes** (nearest / strongest / facing cone), a manual **hero Ultimate** charged by damage, two **flasks** charged by kills, and a full **Options** screen: sound, volume, shake, damage numbers, aim mode, joystick mode, left-handed, colour-blind palette, reduce flashing, haptics, auto-equip, loot filter, effects quality, FPS, touch-button override. | `world.gd::use_ult/use_flask/_target`, `screens.gd::show_options` |
+| 7 | Powersets | **Cross-element reaction cascades** (PoE2-style). Seven reactions (Thermal Shock, Toxic Combustion, Superconduct, Overload, Hemorrhagic Arc, Septic Wound, Frostbite). Applying an element to a foe carrying a partner status queues a reaction; reactions re-apply an element to what they hit, which can trigger more. Bounded by depth cap (2), 0.7x falloff per step, a 0.45 s per-foe cooldown and a 24-per-frame budget. | `content.gd::REACTIONS`, `world.gd::apply_elements/_react` |
+| 8 | Powersets | **Support-gem links.** 11 gems (Chain, Multiple Projectiles, Concentrated Effect, Increased Area, Faster Casting, Spell Echo, four Infusions, Brutality), two sockets per weapon, tag-gated (projectile / area / spell). Gems are weapon-local `Stats` layered over the global pipeline. | `content.gd::GEMS`, `stats.gd`, `world.gd::wlocal` |
+| 9 | Powersets | **Keystones** offered at levels 8, 16 and 26: rule changers such as Elemental Equilibrium, Glass Cannon, Chain Reaction, Blood Magic, Iron Reflexes, Pain Attunement, Vaal Pact, Unstoppable Momentum and Avatar of Catalysis. | `content.gd::KEYSTONES`, `world.gd::make_choices` |
+| 10 | Lootables | **Rarity-tiered items** in four slots, 15 affixes with item-level-gated tiers, prefix/suffix limits per rarity, implicit mods, a power score for upgrade arrows and auto-equip, loot beams, loot filter (filtered drops auto-sell). | `items.gd`, `content.gd::AFFIXES` |
+| 11 | Lootables | **Component crafting**: eight shards (Change, Growth, Crown, Chaos, Star, Null, Divine, Rift Ember corruption). Every operation validates preconditions, never consumes currency on failure, and keeps items valid (property-tested over 600 items x 8 operations). | `items.gd::craft`, `screens.gd::show_stash` |
+| 12 | Lootables | **Legendary powers + Cube.** Eight unique powers (The Furnace, Stormherald Coil, Rimeheart, Gorefeast, Cascade Sigil, Gremlin's Greed, Phoenix Ember, Ouroboros Treads). Dissolving a legendary in the Cube stores its power in the Codex; three are active per run regardless of gear (D3 Kanai's Cube). | `content.gd::LEGENDARIES`, `main.gd` "extract" |
+| 13 | Collectibles | **Bestiary and Lore.** Kill counts per foe type unlock tiers (10 / 100 / 1000) worth +3% damage each and a lore line; 12 lore pages drop from events, shrines and bosses; each set of four grants +5% damage and +10 life permanently. | `save.gd`, `world.gd::drop_lore`, Codex screen |
+| 14 | Powerups | **Pylons and shrines** (D3): Power, Conduit, Channeling, Shield and Speed pylons; Fortune, Enlightened, Frenzied and Empowered shrines, placed by the Director. | `director.gd::_place_object`, `content.gd::BUFFS` |
+| 15 | Powerups | **Buff framework with stacking policies** (refresh, intensity, duration-extend, unique) and pylon diminishing returns; also drives flasks, Soul Harvest stacks, Aegis, Overclock, Vital Surge and ultimates. | `buffs.gd` |
+| 16 | Optional boss | **Pinnacle: the Shard Herald.** Summoned with three fragments (Rupture from Breach splinters, Greed from gremlins, Dread from cursed chests, or any from Citadels). Arena lock, three phases at 66% / 33% with invulnerable transitions and adds, weighted no-repeat attack selection biased by range (volley, slam chain, summon, twin spinning beams, closing arena ring, shard storm), enrage at 3:00. | `bosses.gd::_herald` |
+| 17 | Optional boss | **Rogue Exiles and Nemesis.** A named rival with one of your weapons' patterns and a blink-away reaction to burst damage. If an exile kills you it is saved as your Nemesis and returns next run one level stronger, guarding a guaranteed legendary. | `bosses.gd::spawn_exile/on_player_death` |
+| 18 | Events | **Pacing Director + happenings deck.** Build / Peak / Relax phases driven by smoothed intensity (damage taken + swarm density); weighted deck with cooldowns, earliest times, no repeats, concurrency cap and prerequisites. Ten events: Breach, Treasure Gremlin, Cursed Chest, Strongbox, Eclipse, Starfall, Wandering Merchant (gamble), Delirium Mirror, Blood Ritual, Rogue Exile. | `director.gd` |
+| 19 | Endgame | **Greater Rifts + seasonal affixes.** Keyed levels with +17% monster life per level (D3), a 5:00 timer, a progress bar fed by kills and progress orbs, a Rift Guardian at 100%, key upgrades (+1/+2/+3) by time left. A weekly rotating season affix (Souls, Echoes, Avarice, Blight, Mirrors) changes every mode. | `bosses.gd`, `world.gd`, `content.gd::SEASONS` |
+| 20 | Endgame | **Atlas of Falls** (PoE2 node map): a seeded 7x5 graph with pruned-but-connected edges, map tiers by distance, rolled map modifiers that add item quantity/rarity, Corrupted nodes, four Citadels that drop pinnacle fragments; completing a node reveals its neighbours. | `atlas.gd`, `screens.gd::AtlasView` |
+
+## Critique cycles
+
+See the three sections below: each lists what was measured, what was wrong (engineering, player
+friction, balance), and the change made for the next cycle. Measurements come from
+`tests/run_tests.gd` (9 bot-played runs across all modes, plus a 680-foe stress bench) and
+`tests/shots.gd` (screenshots on the real Forward Mobile renderer).
+
+
+### Baseline (cycle 0) — first full implementation
+
+9 bot runs + bench, before any fixes. Two runs never finished and the first sim hung outright.
+
+| Run | Result | Level | Note |
+|---|---|---|---|
+| Campaign, Stormwright | timed out | **2** | 339 kills, 0 gold, 0 items |
+| Campaign stage 3, Sparkcaller | timed out | **1** | 19 kills |
+| Atlas citadel (tier 6), Emberwitch | **died at 2:02** | 1 | 2 kills |
+| Rift GR1 vs GR8, Stormwright | won in 228 s vs **185 s** | 54 / 50 | higher GR finished faster |
+| Stress bench, 680 foes, CPU | 5.23 ms / frame | | separation alone 4.24 ms (81%) |
+
+Screenshots (`docs/screenshots/cycle0_*`) showed an empty battlefield and broken overlays.
+
+### Critique cycle 1
+
+**Engineering**
+1. *Hang:* `SpatialGrid` bucket heads started at 0, so any query before the first rebuild (the bot
+   thinks before the first step) walked a self-loop on foe 0 forever. → heads/next start at -1;
+   regression test `unbuilt grid reads empty`.
+2. *Invisible swarm:* the MultiMesh bounding box is computed once from the initial all-zero
+   transforms and never again (buffers are uploaded wholesale), so the whole batch was culled once
+   the camera left the origin. → huge `custom_aabb` on both batches.
+3. *Zero-size UI root:* anchors were set before the root Control entered the CanvasLayer, so its
+   size stayed 0: no dim behind overlays, uncentred sheets, HUD bars 270 px wide. → anchors and
+   offsets applied after `add_child`, everywhere.
+4. *Stale frame:* the last world frame stayed on screen under every menu. → view hides without a run.
+5. *Cape triangulation error* when facing straight up/down (self-intersecting quad). → two triangles.
+6. *Perf:* CPU separation was 81% of the sim frame. → staggered 30 Hz solve (half the swarm per
+   frame) and a tighter query radius. The GPU path was verified on Vulkan (lavapipe): 0.90 ms for the
+   whole foe step.
+7. *Leaks:* World ↔ Director/Bosses reference cycles leaked every run. → `World.dispose()`.
+
+**Player friction**
+8. *Loot stranding:* ranged kits (Skyfall strikes anywhere on screen) killed far away and the XP,
+   coins and currency stayed there; the kiting bot (like a kiting player) never collected them.
+   → shard gravity: drops older than 3 s drift home, accelerating with age.
+9. *DoT noise:* streams of "1" ticks. → ticks under 3 damage and under 2% of the foe's life are not shown.
+
+**Balance**
+10. *Atlas wall:* tier and biome multipliers stacked (2.5x tier × 3.0x biome) on a level-1 hero.
+    → atlas difficulty comes from tier only; the start node has no mods.
+11. *Runaway power:* linear XP plus 4–10%-per-level scalars let bots reach level 50+ and made GR8
+    faster than GR1. → XP need gains a 0.15·l² term; per-level scalars cut to 3/5/6%.
+
+**Result:** Stormwright level 2 → **25**, stage-3 Sparkcaller level 1 → **27**, atlas citadel
+death → **win**, GR8 now slower than GR1. Bench 5.23 → **3.33 ms** (separation 4.24 → 2.24 ms).
+
+### Critique cycle 2
+
+**Engineering**
+1. *Second hang* (found by the cycle-1 re-run): when a boss dies, `_victory` deals 1e9 to leftover
+   foes; a fleeing Treasure Gremlin then reported a life fraction of about −10⁷ and the
+   "spill coins per 10% lost" loop ran millions of iterations. → fractions clamped to [0, 1],
+   dying gremlins skipped; same clamp on the exile blink check; regression test.
+2. *18.8 ms frame spike:* reproduced only in the first run of a process; an isolated replay of the
+   same seed never exceeded 5 ms. It was first-use cost of script paths, not gameplay. → bench warm-up
+   run; worst frame afterwards **6.7 ms**.
+
+**Player friction / readability**
+3. Foes blended into busy ground (orange on brown). → contact shadow under every body and a thicker outline in the swarm shader.
+4. On-screen touch buttons covered the play area on desktop/gamepad. → shown only after a real touch (or by option).
+
+**Balance** (from cycle-1 data: 8 of 9 bot runs won, mostly above 60% life)
+5. Atlas tier step 0.22 → 0.35; enemy damage now ramps +1/3 over five minutes; rift monster life ×1.5 and slower progress.
+6. The Herald died in 33 s. → life 24000·(0.5 + 0.05·level), and a denser 90 s preparation phase.
+
+**Result:** campaign 4/5 wins with one death to boss bullets; Herald fight about **110 s**.
+New problems: the atlas citadel became a wall again for a fresh hero, and rift difficulty barely
+rose between GR1 and GR8.
+
+### Critique cycle 3
+
+**Engineering / balance (one bug, found from data)**
+1. *Self-refunding ultimate:* an Emberwitch cleared **GR25** (≈65x monster life) averaging 31,716
+   DPS. Tagging damage by source showed 240k of 264k damage came from the ultimate: Cataclysm hits
+   every foe on screen, and ultimate charge came from damage dealt and kills, so one cast refilled the
+   bar and it recast forever. → charge is locked for 6 s after a cast and capped at 8 per second
+   (a full bar needs at least 12.5 s of fighting); regression test `ultimate does not refund itself`.
+
+**Player friction**
+2. *Unmeetable bosses:* GR1 reached 100% and still timed out: the guardian spawned off-screen and
+   walked at 50 px/s toward a hero kiting at 155 px/s. → bosses arrive on-screen (55% of the view
+   radius) behind a summoning ring; the bot seeks out live bosses as a player would via the compass.
+3. *Atlas head start:* maps grant two extra level-up picks per tier above 1 and ramp the tier
+   multiplier in over the first minute, so a fresh hero can draft a build before full pressure.
+
+**Performance**
+4. Foes more than a screen away no longer run separation at all. CPU separation 2.24 → **1.94–2.23 ms**
+   (run-to-run noise), sim frame **2.8–3.3 ms** at 680 foes.
+
+**Final measured state** (`tests/run_tests.gd -- sim bench`):
+
+| Run | Result | Time | Level | Low life |
+|---|---|---|---|---|
+| Campaign stage 1 (4 heroes) | 2 wins, 1 death, 1 time-out | 142–200 s | 12–28 | 0–54% |
+| Campaign stage 3, Sparkcaller | win | 187 s | 21 | 54% |
+| Atlas citadel tier 6, Emberwitch | win | 176 s | 34 | 60% |
+| Greater Rift 1 / 8 / 15 | win / win / win | 207 / 203 / 269 s of 300 | 31–32 | 64–85% |
+| Greater Rift 25 | wall (1 kill) | time-out | 1 | 58% |
+| Pinnacle: Shard Herald | win | 170 s | 17 | 40% |
+| Stress bench 680 foes | CPU 3.29 ms total | | | |
+
+### What would still make it better (next iteration)
+
+* **Warden underperforms** in every bot run (lowest DPS, the one stage-1 death). Part of that is the
+  bot's melee play, but the orbit weapon's reach vs. contact damage needs a human playtest pass
+  before numbers change.
+* **Reaction mix is lopsided**: Thermal Shock is 60–90% of all reactions because fire and cold are
+  the most common perk pair. Either rebalance perk weights or give each reaction a distinct niche
+  (e.g. Superconduct as the boss-killer).
+* **Late-rift spikes**: GR15 peaked at 14 ms worst frame with 1,500+ reactions and 44 damage numbers
+  per second. Next steps: spread the reaction budget across frames instead of dropping jobs, and move
+  `Swarm` (statuses, separation, movement) to a C++ GDExtension for the CPU path.
+* **APK size**: 139.01 MB for 0.9.9 (docs/RELEASE.md, "APK size"): model textures ship at 1024-2048 px
+  under the texel budget, so the 50 MB budget of 0.9.7 is retired. Installing over mobile data is the cost.
+* **Solid props (0.9.9)**: trees, dead trees, pillars and arch posts (high) and boulders and walls (low)
+  block walking, rolling and the swarm (`scripts/sim/prop_layout.gd`, shared by the renderer and
+  Terrain): bodies are pushed out along each circle's normal and slide round; a jump clears the low ones,
+  never lands inside any, and comes down short of a high one in its path. Bosses ignore props, as they
+  ignore terrain. 400 foes: +0.16 ms a tick on a desktop CPU.
+* **No art pipeline**: everything is procedural (SDF bodies, canvas-drawn props). A sprite atlas would
+  plug into the same MultiMesh batches via a texture and UV rect in `INSTANCE_CUSTOM`.
+* **Bot ≠ human**: all balance numbers come from a deliberately mediocre bot. Touch feel (dead
+  zone, curve, button sizes) has only been verified in screenshots, not on a phone.
+
+
+## Terrain: elevation, water and elemental ground (scripts/sim/terrain.gd)
+
+![Terrain in four acts](screenshots/terrain_stages.png)
+
+Fights stay on the flat simulation plane; the ground is a seeded heightfield the sim and every shader share.
+
+* **Shape:** 640-unit chunks of 40 x 40 cells (16 units), generated on demand and prefetched one per
+  frame. Per act (`Content.TERRAIN`): rolling hills with lakes and streams (Mossglen), terraces cut
+  by lava rivers (Cinder), sunken pits, ledges and black pools (Crypt), plateaus over void chasms (Neon).
+  A 260-unit plateau around the start (and the Herald's whole arena) is always flat and dry.
+* **Rules:** cliffs (rise per cell above the act's limit) and deep liquid block movement; the hero
+  and foes slide along them and blocked foes sidestep around. Shallows slow to 65%; lava shallows
+  burn (5% life every half second). Spawns, events and breakables land on walkable ground.
+  Striking down from 24+ units of high ground deals +15%.
+* **Elements and the ground:** cold on a foe in water freezes a 60-unit ice sheet for 6 s that anyone
+  can cross (over lava it is an obsidian crust); lightning on a foe in water electrifies the pool and
+  arcs to every foe wading in it (80% weapon damage, up to 10); fire on water raises steam and melts
+  ice. The Sparkcaller's Absolute Zero freezes every lake on screen for 9 s. The void never freezes.
+* **Rendering:** the 7 x 7 chunks around the hero become one R32F height texture and an RG8 state
+  texture (ice, charge), published as global shader uniforms. The ground is a camera-following grid
+  displaced in the vertex shader; foes, sparks, projectiles, loot, decals, telegraphs and bolts add the
+  same bilinear height, so everything stands on the same hill without per-object bookkeeping. Water,
+  lava and void are one surface shader at the act's liquid level, shading by depth from the height
+  texture. Fog stays flat, so it pools in valleys. The classic 2D view draws a top-down terrain map.
+* **Cost:** chunk generation 2-4 ms; terrain adds ~0.9 ms to foe movement at 680 foes (cell fast path).
+
+Critique passes: (1) [hills invisible from the high camera, water lost against dark grass, ice a
+blocky white sticker](screenshots/terrain_pass1.png): valleys now darker and ridges lighter, water has
+a sky sheen, glints and foam, ice has soft edges, cracks and frost; (2) lava swamped foes in combat
+([before](screenshots/terrain_combat.png)): now dark crust plates with glowing seams
+([after](screenshots/terrain_lava_pass2.png)). [Electrified water](screenshots/terrain_electrified.png),
+[2D view](screenshots/terrain_2d.png).
+
+## Act V: the Drowned Cathedral
+
+![The Tide Bishop](screenshots/act5_tide_bishop.png)
+
+* **Ground:** a low flooded nave (`Content.TERRAIN[4]`): shallow water over flagstones, deep aisles cut
+  through it, raised ruins as dry ground. **The tide rises** 16 units over the act (cells reclassify
+  live: dry ground becomes shallows, shallows become deep), a banner marks each third, and it keeps
+  climbing while the boss lives. Cold makes roads across it.
+* **Set pieces** (TRELLIS 2, act-specific prop slots `<kind>_4`): barnacled limestone columns hung with
+  seaweed, rotting black pews, wrought-iron candelabras whose flames glow candle-gold.
+* **Swarm** (free CC0 reskins, foe slots `<kind>_4`): drowned Shardlings (KayKit's hooded rogue
+  skeleton) and fish-men Skitterers (Quaternius' Fish).
+* **The Tide Bishop** (boss slot `tyrant_4`): a towering drowned bishop in rotted gold-and-sea-green
+  vestments, barnacled mitre and nautilus crozier with a sea-green lantern; a FLUX dev painting turned
+  into a TRELLIS 2 mesh and rigged by `realistic_heroes.py` at 2.5x hero scale with the boss clips.
+  Besides the tyrant's volleys, summons and slams he rings **the Tolling Bell** (a wide cold blast
+  telegraphed around the hero, every 9 s, 6 s below half life) and at half life **floods the nave**
+  (+10 tide). He walks on water.
+* Unlocks after Act IV; Act V is also an atlas biome. Profiles from before Act V gain the extra slot.
+* fal spend: about $1.40 (three props, two Bishop paintings, the Bishop and his crozier).
+
+[Concepts](screenshots/act5_concepts.png), [in game](screenshots/act5_ingame.png), [menu](screenshots/act5_menu.png).
+
+## The Shard Web (passive tree) and Torment tiers
+
+![The Shard Web](screenshots/shard_web.png)
+
+* **Echoes** are earned at the end of every run: kills / 250, +2 for a win, +1 per 3 rift levels and
+  the Torment tier's bonus on a win (at most 12 a run). Each node costs one; resetting the web refunds all.
+* **The web** (`Content.PASSIVES`, 33 nodes): four branches from Exile's Spark, each with minors, a
+  notable and a keystone. Might (damage, criticals; *Executioner*: crits 50% harder, 20% rarer),
+  Arcana (area, cooldowns, reactions; *Cascade Theory*: one deeper cascade; *Tidecaller*: your ice lasts
+  twice as long, chains leap once more), Fortitude (life, regeneration, armour; *Undying Vow*: leech
+  and % regeneration for 6% speed), Fortune (gold, quantity, rarity, pickup, experience; *Gambler's
+  Shard*: +25% quantity for 8% less damage). Taken nodes feed the stat pipeline as one source.
+* **Torment I-VI** (`Content.TORMENT`) for the campaign, atlas and pinnacle: foe life x1.6 to x10.5,
+  damage x1.25 to x3, +15% to +100% loot and +20% to +125% gold, extra Echoes. Winning on your highest
+  tier unlocks the next. Rifts ignore Torment (they scale by level). Selector on the title screen,
+  shown on the results screen.
+* Tests: adjacency, reachability of every node, passive stats applied, torment scaling and unlock,
+  Echo rewards.
+
+Critique pass: [the first layout](screenshots/shard_web_pass1_cramped.png) scaled the graph by height,
+crowding the side branches and colliding labels, with the Take button below the fold; the graph now uses
+the full width, side-branch labels sit above their nodes, and details and actions live in a side column.
+[Menu and results](screenshots/torment_menu_end.png).
+
+## The lantern, the Whisperer and the real sky
+
+Three systems that make a run feel watched.
+
+**The lantern** (`World._step_light`). `World.light` goes from 1 to 0. It fades at
+0.018/s at the start of a run, rising to 0.045/s by the boss, and is scaled by the `dark_rate` stat.
+Kills relight it: +0.003 for an ordinary foe, +0.05 for an elite, +0.5 for a boss or exile. Pylons and
+shrines refill it. The Eclipse event drains it 2.5× as fast. Below 0.2 the hero is **Engulfed**:
+foes deal up to +30% damage and loot rolls +30% rarity. Both renderers dim by `World.gloom()`
+(0 when lit, 1 when dark; an eclipse counts as 1):
+- sun, ambient and fog;
+- a vignette closing in;
+- foes beyond the lantern's reach are not drawn.
+
+The HUD shows a flame and a bar left of the timer, with the Engulfed line marked. In bot sims the
+average light is 0.35–0.9 depending on how fast the hero kills. A kiting Warden spends about a minute
+Engulfed. The pinnacle arena is always lit.
+
+**The Whisperer** (`Director` object kind `whisper`, `Content.WHISPERS`). From about 60 s, a hooded figure
+appears near the hero every 70–95 s, at most three times a run, and never once the boss is out.
+It lasts 30 s. Touching it opens two bargains, each a boon paired with a price, applied as one
+stat source for the rest of the run:
+
+| Bargain | Boon | Price |
+|---|---|---|
+| Blood Price | +50% more damage | the life flask no longer heals; it releases a poison nova and cloud |
+| Glass Crown | +25% crit chance, +60% crit damage | 40% less life |
+| Ember Pact | +2 projectiles | the light fades 3× as fast |
+| Gilded Tongue | +100% rarity and gold | foes have 35% more life |
+| Quickened Grave | +30% movement, 30% faster cooldowns | foes deal 40% more damage |
+| Hollow Hours | +60% experience | no life regeneration |
+| The Long Night | up to +80% damage the darker it is | the light never rises above half |
+
+Each accepted bargain pays +1 Echo at the end of the run, and the end screen lists them under
+"Marked by the Whisperer".
+
+**The real sky** (`scripts/sim/moon.gd`). The Moon's phase comes from the system clock, using the
+mean synodic month from a known new moon, which is accurate to within about a day. The title screen
+draws the disc at its true phase with its name and percent lit. The phase applies effects:
+- **New moon** (±1.5 days): eclipses ×3, dark ×1.25, +20% rarity.
+- **Full moon**: dark ×0.6, +15% spawns, +15% quantity, eclipses ×0.5.
+- **Waxing**: +5% XP.
+- **Waning**: +10% gold.
+
+Calendar omens:
+- **The Veil is Thin** (Oct 24 – Nov 2): the Whisperer comes sooner and one extra time.
+- **The Longest Night** (Dec 18 – Jan 3): dark ×1.25, +20% gold.
+- **Midsummer** (Jun 18 – 25): dark ×0.6.
+
+`main.start` passes `moon` and `sky_date` in the run cfg. Tests and sims omit them, which gives no
+sky effects and keeps them deterministic.
+
+## Five innovations from the genre survey (Nov 2026)
+
+Chosen from a survey of survivor-likes and ARPGs (Vampire Survivors, Ball x Pit, Deep Rock Galactic:
+Survivor, Brotato, Halls of Torment, Hades, Balatro, Last Epoch, Path of Exile 2) as the ideas that
+build most on systems Shardfall already had.
+
+**Weapon Fusion** (`Content.FUSIONS`, `World.fused`). Once two weapons are evolved and unfused, a gold
+Fusion card can appear at level-up. Both weapons keep firing, deal 25% more damage, carry each
+other's element (so fused weapons trigger the reaction engine), and gain the pair's behaviour:
+
+| Fusion | Weapons | Behaviour |
+|---|---|---|
+| Glacial Nova | Rime Bolt + Flame Pulse | each pulse also fires a ring of 8 frost bolts |
+| Frost Halo | Rime Bolt + Spin Blades | the blades shed frost bolts outward |
+| Hailstorm | Rime Bolt + Skyfall | each strike bursts into 4 shards |
+| Solar Wheel | Flame Pulse + Spin Blades | each pulse flings the blades wide, and they burn |
+| Thunderclap | Flame Pulse + Skyfall | each strike detonates a small pulse where it lands |
+| Tempest Blades | Spin Blades + Skyfall | blades call lightning on foes they cut, at most once per 0.4 s |
+
+**Surfaces** (`Terrain.surf`, `World._surface_react`). Pools that the fight itself pours onto land
+or shallows:
+
+| Pool | Where it comes from |
+|---|---|
+| Oil | barrels; Act II tar seeps open on their own |
+| Poison | spitters' deaths |
+| Blood | elites and brutes; 6% of other kills |
+
+Reactions:
+- Fire ignites oil, and the fire spreads along connected oil, one cell per 0.12 s.
+- Fire detonates poison in a toxic blast, which uses up the pool.
+- Cold turns poison into crystal spikes.
+- Lightning arcs through every foe standing in blood.
+
+Four times a second, things standing in a pool are affected:
+- Burning oil and spikes damage foes; burning oil also hurts the hero.
+- Poison poisons foes and lightly hurts the hero.
+- Oil slows.
+
+Rendered from a fourth global texture, `terrain_f` (R oil, G poison, B blood, A fire; R and G
+together mean spikes), with noisy pool edges, an oily sheen, bubbling poison, charred flame licks,
+crystal shards, and flame puffs above burning cells.
+
+**Bank or push** (`World.hoard`, Director `gate` objects):
+- Filling the Hoard: kills +1, elites +15, completed events +40, bosses and exiles +60.
+- Gates: from about 55 s, a Rift Gate opens every 55–70 s and stays for 22 s.
+- Banking: stepping into a gate banks the Hoard at its multiplier. The payout is half the banked
+  value in gold, 1 Echo per 300, and 1 rare item per 150 (at most 4), which spill out of the gate.
+- Pushing: each gate left to close raises the multiplier by 0.5, up to x3.
+- End of run: death loses the unbanked Hoard; a win banks it.
+
+**Prophecies** (`Content.PROPHECIES`, the `prophecy` profile key). Three objectives are offered on
+the menu, each with three reward choices: a legendary, three rares, chaos, exalted, Echoes or gold.
+The chosen prophecy stays active until it is fulfilled within a single run or abandoned. Progress
+comes from run metrics, and the reward pays out mid-run as soon as the objective is met.
+
+**Daily Rift** (`scripts/sim/daily.gd`):
+- Seed and code: the date hashes to a 20-bit seed, shared as a code like `SHARD-HXEL`.
+- What the seed fixes: the act, the exile, two map modifiers and the run's RNG.
+- Left out for fairness: gear, the Shard Web, legendary powers, the Moon and prophecies.
+- Score: kills + 2 per second survived + 1500 for a win + half the banked Hoard.
+- Records: the best score per code is kept for the newest 30 codes; the first clear of the day pays
+  3 Echoes; any code can be typed in to play a friend's rift.
+- A daily win never changes campaign progress or Torment unlocks.
+
+The bot now steps out of fire, poison and spikes. Without that, poison chip damage during Rogue
+Exile fights cost 2 of the 6 campaign sims. The sims reset the nemesis before running, because the
+unit tests' defeats would otherwise raise one.
+
+## 0.10.0-alpha: The Shattering of the Veil
+
+**The story** (`scripts/data/story.gd`). Five acts, each with a title, its place in the story, its lore, its
+boss and that boss's taunt, a victory note and two Rift Echo fragments; the four exiles' bios and the one
+mechanic each is built around. Written text only: spoken lines live in `data/voice_manifest.json`
+(docs/VOICES.md), and the gate fails if a script repeats one.
+- A campaign run opens on a 3.5 s banner with the act's title, its place in the story and the first line of
+  its lore; a boss arrives with its nameplate and taunt.
+- **Rift Echoes** (`World.place_echoes`): two Echo Shards per act, on open ground in front of the act's arches
+  nearest the start (at least 420 units out). Touching one, or vaulting over it, gives a 10 s Rift Surge
+  (+30% damage, +20% move speed, cooldowns x0.85), a written exchange in the subtitle banner (the exile's
+  remark, then the narrator reading the fragment, 5 s, never pausing the run) and the fragment's page in the
+  Codex. The same act and run seed put them in the same places.
+
+**The cold open** (`intro_screen.gd`, `render3d/cold_open.gd`): 12 s over Act I itself, on first launch and
+from Main Menu > Replay Intro. The run's own 3D view, its camera sweeping down over Mossglen Hollow while a
+Rift Shard streaks through the torn Veil and strikes; four narrator beats, each its line + 0.5 s; then a glide
+to black and the title stage. Tap/Next and Skip stop the narrator (`VoiceBank.stop_all`) and mark it seen.
+
+**The Emberwitch's contagion** (`scripts/sim/contagion.gd`). Her Flame Pulse becomes Incineration: it lands
+on the densest pack within 420 units, detonates for 0.6x spell power and +2 Burn, and leaves the ground
+burning for 1.6 s (+1 Burn every 0.25 s). Burn stacks to 5 and lasts 4 s after the latest stack; every 0.25 s
+a burning foe takes burn dps x stacks x (1 + 0.18 x (stacks - 1)) x 0.25 (a stack's burn dps is 0.12x the
+spell power that lit it). A foe with 2+ stacks passes its fire to up to 2 neighbours within 72 that carry
+fewer (max(1, stacks - 1) each, one generation further, at most generation 4; 0.35 s between spreads). A
+burning foe's death, or a foe reaching 5 stacks, conflagrates (115 across, 1.25x spell power, +2 Burn), at
+most once every 1.5 s; at most 60 spread and conflagration events a tick. An Incineration or conflagration
+that reaches a tree trunk (a WOOD solid) lights it for 6 s: +1 Burn every 0.5 s to foes within 55 of its
+bark. The pause menu counts ignitions, spreads, conflagrations and trees lit. At 400 foes the whole tick
+averages under 4 ms in the tests (about 1.4 ms on the build machine).
+
+**Prop synergies.** The Warden's jump over a boulder or wall lands in a crater (110 across, 1.5x his blades'
+damage, a heavy knockback). The Sparkcaller's Rime Bolts ricochet off stone up to twice, 25% harder each
+time. The Stormwright's Skyfall striking shallow water or within 60 of a rift crystal spreads to twice its
+radius and arcs to three foes outside it.
+
+**Menus.** Main menu: Continue Campaign (the act pill over one large tile), New Campaign, Daily Rift (today's
+code and your best), Heroes (the showcase: the exile cast and settle, their lore, a mechanic card, their intro
+line), Codex & Story (Story, Exiles, Bestiary, Lore, Powers, Records, Arsenal), Options, Replay Intro, and a
+bar for Gear, Upgrades and Modes. Options: Audio (Master, Music, SFX, Voice), Graphics (tier, 3D scale,
+Renderer: Vulkan or OpenGL Safe Mode, UI scale, Show FPS and the rest), Game, Diagnostics. Pause: Resume,
+Build & Stats, Gear & Crafting, Settings, Restart Run and Main Menu (both confirmed). Every button is at least
+48 units of the 1280 x 720 design base tall, in portrait and in landscape. Android Back never quits: in a run
+it toggles the pause menu (and backs out of the pages inside it), elsewhere it returns to the main menu.

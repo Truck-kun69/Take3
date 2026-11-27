@@ -1,0 +1,5223 @@
+extends Node
+## Headless test + benchmark runner.
+##   godot --headless --path godot res://tests/tests.tscn -- [unit] [sim] [bench] [--json=path]
+## Unit tests check invariants of the data-driven systems; `sim` runs bot-played runs in every mode
+## and reports balance metrics; `bench` stresses a full swarm and reports per-system frame cost.
+
+var failures := 0
+var passes := 0
+var report := {}
+
+func _ready() -> void:
+	var args := OS.get_cmdline_user_args()
+	if args.is_empty():
+		args = PackedStringArray(["unit", "sim", "bench"])
+	var save := get_node_or_null("/root/Save")
+	if save == null:
+		push_error("Save autoload missing")
+		get_tree().quit(2)
+		return
+	save.path = "user://test_profile.json"
+	save.data = save.defaults()
+	save.data.options.sound = false
+	if "unit" in args:
+		_unit()
+		_terrain_tests()
+		_meta_tests()
+		_sky_tests()
+		_fusion_tests()
+		_surface_tests()
+		_hoard_tests()
+		_prophecy_tests()
+		_daily_tests()
+		_anim_tests()
+		_alpha_weapon_tests()
+		_v7_tests()
+		_gate_p01_tests()
+		_tyrant_fsm_tests()
+		_audio_tests()
+		_height_tests()
+		_interp_tests()
+		_vat_tests()
+		_jump_tests()
+		_jump_polish_tests()
+		_look_tests()
+		_remediation_tests()
+		_voice_tests()
+		_pack_tests()
+		await _alpha10_tests()
+		_ops_tests()
+		await _fit_tests()
+		await _largest_scale_tests()
+		_perf_tests()
+		await _perf_view_tests()
+		await _stream_tests()
+		_pacing_tests()
+		_camp_tests()
+		_coach_tests()
+		await _camp_ui_tests()
+		await _look_feel_tests()
+		_look_render_tests()
+		_look_vfx_tests()
+		_look_art2_tests()
+	elif "camp" in args:
+		_camp_tests()
+		_coach_tests()
+		await _camp_ui_tests()
+	elif "look" in args:
+		await _look_feel_tests()
+		_look_render_tests()
+		_look_vfx_tests()
+		_look_art2_tests()
+	elif "voice" in args:
+		_voice_tests()
+		_pack_tests()
+	elif "alpha10" in args:
+		await _alpha10_tests()
+	elif "ops" in args:
+		_ops_tests()
+		await _fit_tests()
+		await _largest_scale_tests()
+	elif "voicesim" in args:
+		_pacing_tests()
+		_voice_sim()
+	elif "perf" in args:
+		_perf_tests()
+		await _perf_view_tests()
+		await _stream_tests()
+	elif "stream" in args:
+		await _stream_tests()
+	elif "lodprobe" in args:
+		for kind in ["grunt", "runner", "brute", "charger", "spitter", "breach"]:
+			var m: Mesh = Models.foe_mesh(kind)
+			var sf := RenderingServer.mesh_get_surface(m.get_rid(), 0)
+			var vc: int = sf.get("vertex_count", 0)
+			var row := "%s: %d tris, %d verts, hi=%s; LODs:" % [kind, int(sf.get("index_count", 0)) / 3, vc, str(Quality.high())]
+			for l in sf.get("lods", []): row += " %d (err %.4f)" % [(l.index_data as PackedByteArray).size() / (2 if vc < 65536 else 4) / 3, l.edge_length]
+			print("LODPROBE ", row)
+	if "voice_dropin" in args: _voice_dropin_tests()
+	if "sim" in args: _sims()
+	if "bench" in args: _bench()
+	print("\n== %d passed, %d failed ==" % [passes, failures])
+	for w in _worlds: w.dispose()
+	_worlds.clear()
+	for a in args:
+		if a.begins_with("--json="):
+			var f := FileAccess.open(a.substr(7), FileAccess.WRITE)
+			f.store_string(JSON.stringify(report, "  "))
+			f.close()
+	get_tree().quit(1 if failures > 0 else 0)
+
+var _verbose := OS.get_environment("TESTS_VERBOSE") != ""        # print passing checks too
+func ok(cond: bool, what: String) -> void:
+	if cond:
+		passes += 1
+		if _verbose: print("  ok: " + what)
+	else:
+		failures += 1
+		print("  FAIL: " + what)
+
+# ================================================================= unit tests
+func _unit() -> void:
+	print("== unit")
+	# stat pipeline: (base + added) * (1 + inc) * more
+	var s := Stats.new()
+	s.set_source("a", [["damage", "add", 2.0], ["damage", "inc", 0.5]])
+	s.set_source("b", [["damage", "more", 1.2], ["damage", "inc", 0.25]])
+	ok(is_equal_approx(s.value("damage", 10.0), 12.0 * 1.75 * 1.2), "stat pipeline math")
+	s.clear_source("a")
+	ok(is_equal_approx(s.value("damage", 10.0), 10.0 * 1.25 * 1.2), "clear_source")
+	s.set_source("c", [["cooldown", "inc", -5.0]])
+	ok(s.value("cooldown", 1.0) > 0.0, "increased is floored, never inverts")
+	var loc := Stats.new()
+	loc.set_source("g", [["damage", "more", 0.5]])
+	ok(is_equal_approx(s.value("damage", 10.0, loc), 10.0 * 1.25 * 1.2 * 0.5), "local stats layer")
+	s.set_source("stack", [["damage", "more", 2.0]], 3.0)
+	ok(is_equal_approx(s.components("damage").z, 1.2 * 8.0), "more stacks exponentially")
+
+	# buffs: stacking policies
+	var bs := Stats.new()
+	var b := Buffs.new(bs)
+	b.add("soulharvest"); b.add("soulharvest"); b.add("soulharvest")
+	ok(b.stacks("soulharvest") == 3, "INTENSITY stacks")
+	ok(is_equal_approx(bs.value("damage", 1.0), 1.06), "stacked buff modifies stats")
+	ok(b.add("aegis") and not b.add("aegis"), "UNIQUE rejects reapplication")
+	b.add("quicksilver"); b.add("quicksilver"); b.add("quicksilver")
+	ok(b.remaining("quicksilver") <= 10.0 + 0.001, "DURATION capped at max_dur")
+	b.add("power")
+	var first := b.remaining("power")
+	b.remove("power")
+	b.add("power")
+	ok(b.remaining("power") < first, "pylon diminishing returns")
+	for k in 200: b.step(0.5)
+	ok(b.list.is_empty() and not bs.flag("invuln"), "buffs expire and clear their modifiers")
+
+	# items & crafting
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	var bad := 0
+	for k in 600:
+		var r := k % 4
+		var it := Items.make(Content.SLOTS[k % 4], r, 1 + k % 50, rng)
+		for cur in Content.CURRENCY_IDS:
+			Items.craft(it, cur, rng)
+			if not Items.valid(it): bad += 1
+	ok(bad == 0, "items stay valid through every crafting op (%d invalid)" % bad)
+	var it2 := Items.make("ring", Content.Rarity.NORMAL, 10, rng)
+	ok(Items.craft(it2, "chaos", rng) != "", "chaos rejects normal items")
+	ok(Items.craft(it2, "transmute", rng) == "" and it2.rarity == Content.Rarity.MAGIC, "transmute -> magic")
+	ok(Items.craft(it2, "regal", rng) == "" and it2.rarity == Content.Rarity.RARE, "regal -> rare")
+	Items.craft(it2, "corrupt", rng)
+	ok(Items.craft(it2, "exalt", rng) != "", "corrupted items are locked")
+	var low := Items.make("relic", Content.Rarity.RARE, 1, rng)
+	var tiers_ok := true
+	for a in low.affixes:
+		if int(Content.AFFIXES[a.id].tiers[a.tier][0]) > 1: tiers_ok = false
+	ok(tiers_ok, "affix tiers respect item level")
+	var j := JSON.parse_string(JSON.stringify(low))
+	ok(Items.valid(Items.normalise(j)), "item JSON round trip")
+
+	# atlas
+	var at := Atlas.generate(1234)
+	var e := {}
+	for x in at.edges: e[int(x)] = true
+	ok(Atlas.connected(at.nodes.size(), e), "atlas graph connected")
+	ok(at.nodes[at.start].open, "atlas start node open")
+	Atlas.complete(at, at.start)
+	var opened := 0
+	for n in at.nodes: if n.open: opened += 1
+	ok(opened >= 2, "completing a node reveals neighbours")
+	var at2 := Atlas.with_progress(1234, Atlas.progress(at))
+	ok(at2.nodes[at.start].done, "atlas progress round trip")
+	var cit := 0
+	for n in at.nodes: if n.kind == "citadel": cit += 1
+	ok(cit == 4, "four citadels")
+
+	# reactions & cascades in a live world
+	var w := _world({"mode": "campaign", "hero": 2, "seed": 7})
+	for k in 40:
+		w.spawn_foe(Content.E.BRUTE, Vector2(100 + (k % 8) * 18, (k / 8) * 18), 0)
+	w.grid.build(w.sw)
+	for i in w.sw.n: w.sw.apply_status(i, Content.El.COLD, 1.0, 5.0)
+	w.hit(0, 1.0, 1 << Content.El.FIRE, Vector2.ZERO, 0.0, 0)
+	w._resolve_reactions()
+	ok(int(w.metrics.reactions) >= 2, "reaction cascades (%d)" % w.metrics.reactions)
+	ok(int(w.metrics.cascade_max) <= Content.REACT_DEPTH + 1, "cascade depth capped (%d)" % w.metrics.cascade_max)
+	ok(int(w.metrics.reactions) <= Content.REACT_BUDGET, "reaction budget respected")
+
+	# regression (cycle 1): querying a grid before its first build must not hang
+	var g0 := SpatialGrid.new()
+	var sw0 := Swarm.new()
+	sw0.add(0, Vector2.ZERO, 1.0, 1.0, 5.0, 1.0, 1.0, 0, 0)
+	ok(g0.query(Vector2.ZERO, 50.0, sw0) == 0, "unbuilt grid reads empty")
+	# regression (cycle 2): an overkilled gremlin must not spin the coin-spill loop
+	var wg := _world({"mode": "campaign", "hero": 0, "seed": 9})
+	var ge := wg.director.start("goblin")
+	var gi := wg.sw.index_of(int(ge.u))
+	wg.sw.take(gi, 1e9)
+	var tg0 := Time.get_ticks_msec()
+	wg.director.step(1.0 / 60.0)
+	ok(Time.get_ticks_msec() - tg0 < 200 and wg.picks.size() < 20, "overkill does not explode the gremlin loop")
+	wg.dispose()
+	# regression (cycle 3): a screen-wide ultimate must not recharge itself
+	var wu := _world({"mode": "rift", "hero": 2, "gr": 1, "seed": 4})
+	for k in 200: wu.spawn_foe(Content.E.GRUNT, Vector2(randf_range(-300, 300), randf_range(-200, 200)), 0)
+	wu.grid.build(wu.sw)
+	wu.ult = 100.0
+	wu.use_ult()
+	for k in 60: wu.step(1.0 / 60.0)
+	ok(wu.ult < 1.0, "ultimate does not refund itself (charge after cast %.1f)" % wu.ult)
+	wu.dispose()
+	# breakables shatter under skills and pay out
+	var wb := _world({"mode": "campaign", "hero": 2, "seed": 21})
+	wb.breakables.append({"pos": Vector2(40, 0), "kind": 0, "r": 10.0})
+	wb.breakables.append({"pos": Vector2(900, 0), "kind": 1, "r": 13.0})
+	wb.nova_at(Vector2.ZERO, 60.0, 1.0, 0, Color.WHITE)
+	ok(wb.breakables.size() == 1 and wb.broken.size() == 1, "nova shatters only breakables in reach")
+	wb.dispose()
+	# swarm swap-removal keeps uid index coherent
+	var sw := Swarm.new()
+	for k in 50: sw.add(0, Vector2(k, 0), 10.0, 1.0, 5.0, 1.0, 1.0, 0, 0)
+	var u7 := sw.uid[7]
+	sw.remove(3); sw.remove(0); sw.remove(10)
+	ok(sw.index_of(u7) >= 0 and sw.uid[sw.index_of(u7)] == u7, "uid index survives swap-removal")
+	ok(sw.n == 47, "swarm count after removal")
+
+	# director never exceeds its concurrency cap; events fire
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 3})
+	var maxc := 0
+	for k in 60 * 140:
+		w2.director.step(1.0 / 60.0)
+		w2.t += 1.0 / 60.0
+		maxc = maxi(maxc, w2.director.active.size())
+	ok(maxc <= w2.director.max_concurrent(), "director concurrency cap (%d)" % maxc)
+	ok(w2.director.history.size() >= 2, "director starts events (%d)" % w2.director.history.size())
+
+	# greater rift scaling is exponential
+	ok(is_equal_approx(Content.gr_hp_mult(11) / Content.gr_hp_mult(10), 1.17), "GR +17% life per level")
+
+	# save round trip
+	var sv := get_node("/root/Save")
+	sv.data.gold = 123
+	sv.data.stash = [Items.make("boots", 2, 20, rng)]
+	sv.flush()
+	sv.data = sv.defaults()
+	sv.load_profile()
+	ok(int(sv.data.gold) == 123 and sv.data.stash.size() == 1 and Items.valid(sv.data.stash[0]), "profile save/load")
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+
+# ================================================================= terrain (elevation pass)
+func _terrain_tests() -> void:
+	print("== terrain")
+	for st in Content.TERRAIN.size():
+		var a := Terrain.new(st, 4242, Content.TERRAIN[st])
+		var b := Terrain.new(st, 4242, Content.TERRAIN[st])
+		var same := true
+		for k in 50:
+			var p := Vector2(k * 137.0 - 3000.0, k * 91.0 - 2000.0)
+			if not is_equal_approx(a.height(p), b.height(p)) or a.type_at(p) != b.type_at(p): same = false
+		ok(same, "stage %d terrain is deterministic for a seed" % st)
+		ok(a.passable(Vector2.ZERO) and a.passable(Vector2(200, 0)) and a.passable(Vector2(0, -200)), "stage %d spawn plateau is walkable" % st)
+		var sv := a.survey(Vector2(1800, -1200), 1400.0)
+		ok(sv.land + sv.shallow > 0.7 and sv.cliff < 0.12, "stage %d leaves most ground walkable (%s)" % [st, str(sv)])
+		# a long random walk never ends up inside a cliff or deep liquid
+		var p := Vector2.ZERO
+		var bad := 0
+		var rng := RandomNumberGenerator.new(); rng.seed = st
+		var dir := Vector2.RIGHT
+		for i in 3000:
+			if i % 40 == 0: dir = Vector2.from_angle(rng.randf() * TAU)
+			p = a.move(p, p + dir * 9.0)
+			if not a.passable(p): bad += 1
+		ok(bad == 0, "stage %d movement slides along cliffs and shores (%d bad steps)" % [st, bad])
+	# ice: freezing deep water makes it walkable, and it thaws
+	var T := Terrain.new(0, 77, Content.TERRAIN[0])
+	var deep := Vector2.INF
+	for r in range(300, 4000, 32):
+		for k in 16:
+			var q := Vector2.from_angle(TAU * k / 16.0) * r
+			if T.type_at(q) == Terrain.DEEP: deep = q; break
+		if deep != Vector2.INF: break
+	ok(deep != Vector2.INF and not T.passable(deep), "deep water blocks movement")
+	T.freeze(deep, 40.0, 1.0)
+	ok(T.passable(deep), "frozen water can be walked on")
+	for i in 70: T.step(1.0 / 60.0)
+	ok(not T.passable(deep), "ice thaws")
+	ok(T.electrify(deep, 40.0, 1.0) > 0 and T.is_charged(deep), "lightning charges water")
+	var L := Terrain.new(3, 77, Content.TERRAIN[3])
+	ok(L.freeze(Vector2(5000, 5000), 300.0, 5.0) == 0, "the void never freezes")
+	# a run: spawns land on walkable ground and foes never stand in a wall after moving
+	var w := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 9})
+	var spawn_ok := true
+	for i in 200:
+		if not w.terrain.passable(w.ring_point()): spawn_ok = false
+	ok(spawn_ok, "spawn ring points are walkable")
+	for i in 120: w.spawn_foe(Content.E.GRUNT)
+	var stuck := 0
+	for f in 300:
+		w.in_move = Vector2.from_angle(f * 0.05)
+		w.step(1.0 / 60.0)
+	for i in w.sw.n:
+		if (w.sw.flags[i] & (Swarm.F_BOSS | Swarm.F_HERALD)) == 0 and not w.terrain.passable(w.sw.pos[i]): stuck += 1
+	ok(stuck <= 2, "foes stay on walkable ground (%d inside walls)" % stuck)
+	ok(w.terrain.passable(w.pp), "the hero stays on walkable ground")
+
+# ================================================================= Shard Web and Torment
+func _meta_tests() -> void:
+	print("== shard web / torment")
+	var taken := ["start"]
+	ok(Content.passive_can_take("m1", taken) and not Content.passive_can_take("m6", taken), "only nodes touching the web can be taken")
+	ok(not Content.passive_can_take("start", taken), "a node is taken once")
+	var all_linked := true
+	for id in Content.PASSIVES:
+		for l in Content.PASSIVES[id].links:
+			if not Content.PASSIVES.has(l): all_linked = false
+	ok(all_linked, "every web link points at a real node")
+	# every node is reachable from the centre
+	var seen := ["start"]
+	var grow := true
+	while grow:
+		grow = false
+		for id in Content.PASSIVES:
+			if not seen.has(id) and Content.passive_can_take(id, seen): seen.append(id); grow = true
+	ok(seen.size() == Content.PASSIVES.size(), "the whole web is reachable (%d/%d)" % [seen.size(), Content.PASSIVES.size()])
+	var keep: Array = Save.data.passives
+	Save.data.passives = ["start"]
+	var w0 := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 3})
+	Save.data.passives = ["start", "m1", "m3", "f1"]
+	var w1 := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 3})
+	ok(w1.stats.value("damage", 10.0) > w0.stats.value("damage", 10.0) * 1.07, "passives raise damage")
+	ok(w1.max_hp >= w0.max_hp + 14.0, "passives raise life")
+	Save.data.passives = keep
+	var t0 := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 3, "torment": 0})
+	var t3 := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 3, "torment": 3})
+	ok(is_equal_approx(t3.hp_mult() / t0.hp_mult(), float(Content.TORMENT[3].hp)), "torment scales foe life")
+	ok(t3.stats.value("item_quantity", 1.0) > t0.stats.value("item_quantity", 1.0), "torment raises loot")
+	var tr := _world({"mode": "rift", "hero": 0, "seed": 3, "gr": 4, "torment": 3})
+	ok(tr.torment == 0, "rifts ignore torment (they scale by level)")
+	var tmax0: int = Save.data.torment_max
+	var e0: int = Save.data.echoes
+	Save.data.torment_max = 0
+	t0.kills = 600
+	t0.end_run(true)
+	ok(Save.data.torment_max == 1, "a win unlocks the next torment")
+	ok(Save.data.echoes - e0 == t0.echoes_run and t0.echoes_run == 600 / 250 + 2, "echoes: kills / 250 + 2 for a win (%d)" % t0.echoes_run)
+	Save.data.torment_max = tmax0
+	Save.data.echoes = e0
+
+func _sky_tests() -> void:
+	print("== sky, lantern and the Whisperer")
+	# Moon: 2026-11-09 07:02 UTC was a new moon, 2026-11-24 14:53 UTC a full moon
+	var nm := Moon.phase_at(1794207720.0)
+	ok(nm < 0.03 or nm > 0.97, "moon: known new moon reads as new (%.3f)" % nm)
+	var fm := Moon.phase_at(1795532000.0)
+	ok(absf(fm - 0.5) < 0.03 and Moon.phase_id(fm) == "full", "moon: known full moon reads as full (%.3f)" % fm)
+	ok(Moon.phase_name(0.25) == "First Quarter" and Moon.phase_name(0.85) == "Waning Crescent", "moon: phase names")
+	ok(Moon.omen_id([10, 31]) == "veil" and Moon.omen_id([1, 2]) == "longnight" and Moon.omen_id([12, 25]) == "longnight" and Moon.omen_id([3, 3]) == "", "calendar omens, incl. across the new year")
+	var wn := _world({"mode": "campaign", "hero": 0, "seed": 4, "moon": 0.0})
+	var wf := _world({"mode": "campaign", "hero": 0, "seed": 4, "moon": 0.5})
+	var w0 := _world({"mode": "campaign", "hero": 0, "seed": 4})
+	ok(wn.stats.value("item_rarity", 1.0) > w0.stats.value("item_rarity", 1.0), "new moon: rarer loot")
+	ok(wn.stats.value("dark_rate", 1.0) > 1.0 and wf.stats.value("dark_rate", 1.0) < 1.0, "new moon darkens faster, full moon slower")
+	ok(Moon.eclipse_weight(0.0) > Moon.eclipse_weight(0.5) and wf.spawn_rate() > w0.spawn_rate(), "new moon: more eclipses; full moon: thicker packs")
+	# the lantern
+	for i in 120: w0.step(1.0 / 20.0)
+	ok(w0.light < 1.0, "the light fades over time (%.2f)" % w0.light)
+	w0.light = 0.1
+	w0.step(0.05)
+	ok(w0.engulfed() > 0.0 and w0.gloom() > 0.8, "below the line the hero is engulfed")
+	var d_lit := w0.dmg_mult()
+	w0.light = 0.0
+	ok(w0.dmg_mult() > d_lit * 1.05, "foes hit harder in the dark")
+	var i0 := w0.spawn_foe(Content.E.GRUNT, w0.pp + Vector2(60, 0), 0)
+	var before := w0.light
+	w0.sw.take(i0, 1e9)
+	w0._reap()
+	ok(w0.light > before, "kills relight the lantern")
+	w0.light = 0.05
+	w0.relight(1.0)
+	ok(is_equal_approx(w0.light, 1.0), "shrines refill it")
+	# the Whisperer
+	var ww := _world({"mode": "campaign", "hero": 0, "seed": 9})
+	ww.offer_whisper()
+	ok(ww.whisper_offer.size() == 2 and ww.whisper_offer[0] != ww.whisper_offer[1], "the Whisperer offers two different bargains")
+	var hp0 := ww.max_hp
+	ww.accept_bargain("glass_crown")
+	ok(ww.has_bargain("glass_crown") and ww.max_hp < hp0 * 0.65 and ww.stats.value("crit_chance", 0.0) >= 0.25, "Glass Crown: crit up, life down")
+	ok(ww.whisper_offer.is_empty(), "accepting closes the offer")
+	ww.accept_bargain("long_night")
+	ww.light = 1.0
+	ww.step(0.05)
+	ok(ww.light <= 0.5, "The Long Night caps the light at half")
+	ww.light = 0.0
+	ww.step(0.05)
+	ok(ww.stats.value("damage", 1.0) > 1.6, "and pays in damage in the dark")
+	ww.accept_bargain("blood_price")
+	ww.hp = ww.max_hp * 0.5
+	ww.flasks[0].c = 60.0
+	var hot := ww.heal_hot
+	ww.use_flask(0)
+	ok(ww.heal_hot == hot and ww.flasks[0].c < 60.0, "Blood Price: the life flask no longer heals")
+	ww.accept_bargain("")
+	ok(ww.bargains.size() == 3, "refusing takes nothing")
+	var e0: int = Save.data.echoes
+	ww.kills = 0
+	ww.end_run(false)
+	ok(ww.echoes_run == 3, "each bargain pays an Echo (%d)" % ww.echoes_run)
+	Save.data.echoes = e0
+	var wp := _world({"mode": "campaign", "hero": 0, "seed": 9})
+	wp.director.whisper_t = 0.0
+	wp.step(0.05)
+	var found := false
+	for o in wp.director.objects:
+		if o.kind == "whisper":
+			found = true
+			wp.pp = o.pos
+	ok(found, "the Director places the Whisperer")
+	wp.step(0.05)
+	ok(wp.whisper_offer.size() == 2, "touching it opens the offer")
+	var pin := _world({"mode": "pinnacle", "hero": 0, "seed": 9})
+	pin.director.whisper_t = 0.0
+	pin.step(0.05)
+	ok(pin.director.objects.filter(func(o): return o.kind == "whisper").is_empty() and pin.light == 1.0, "no Whisperer and no dark in the pinnacle")
+
+func _fusion_tests() -> void:
+	print("== weapon fusion")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 21})
+	for id in ["bolt", "nova", "storm", "orbit"]:
+		w.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+		w.wlocal[id] = Stats.new()
+	var ch := w.make_choices()
+	var fuses := ch.filter(func(c): return c.kind == "fuse")
+	ok(not fuses.is_empty(), "two evolved weapons offer a fusion")
+	var c := {"kind": "fuse", "id": Content.fusion_key("nova", "bolt"), "a": "bolt", "b": "nova"}
+	ok(c.id == "bolt+nova" and Content.FUSIONS.has(c.id), "fusion keys are sorted pairs")
+	var em0 := w.elmask("bolt")
+	w.pending = 1
+	w.apply_choice(c)
+	ok(w.fused("bolt") == "nova" and w.fused("nova") == "bolt", "fusing links both weapons")
+	ok(w.elmask("bolt") & (1 << Content.El.FIRE) != 0 and em0 & (1 << Content.El.FIRE) == 0, "a fused weapon carries its partner's element")
+	ok(w.wlocal["bolt"].value("damage", 1.0) > 1.2, "fused weapons deal 25% more damage")
+	for c2 in w.make_choices():
+		ok(not (c2.kind == "fuse" and (c2.a in ["bolt", "nova"] or c2.b in ["bolt", "nova"])), "a fused weapon is never offered again")
+	# Glacial Nova: a pulse with foes nearby adds a ring of bolts
+	for k in 6: w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(60, 0).rotated(k), 0)
+	w.grid.build(w.sw)
+	var n0 := w.projs.size()
+	w._nova(Content.WEAPONS.nova.evo_s, 1.0)
+	ok(w.projs.size() >= n0 + 8, "Glacial Nova hurls eight frost bolts (%d)" % (w.projs.size() - n0))
+	# all six fusions run for a few seconds without errors
+	for key in Content.FUSIONS:
+		var ww := _world({"mode": "campaign", "hero": 0, "seed": 22})
+		var ab: PackedStringArray = key.split("+")
+		for id in ab:
+			ww.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+			ww.wlocal[id] = Stats.new()
+		ww.apply_choice({"kind": "fuse", "id": key, "a": ab[0], "b": ab[1]})
+		ww.stats.set_source("t", [["max_hp", "add", 1e6]])
+		var k0 := ww.kills
+		for f in 300:
+			if f % 10 == 0 and ww.sw.n < 60: ww.spawn_foe(Content.E.GRUNT, ww.pp + Vector2(randf_range(-150, 150), randf_range(-150, 150)), 0)
+			ww.step(1.0 / 30.0)
+		ok(ww.kills > k0 and not ww.over, "%s fights (%d kills)" % [Content.FUSIONS[key].name, ww.kills - k0])
+		ww.dispose()
+
+func _surface_tests() -> void:
+	print("== surfaces")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 31})
+	var T := w.terrain
+	var at := T.nearest_passable(w.pp + Vector2(120, 0))
+	ok(T.pour(at, 40.0, Terrain.Surf.OIL, 10.0) > 0 and T.surf_at(at) == Terrain.Surf.OIL, "oil pools on dry ground")
+	var i := w.spawn_foe(Content.E.BRUTE, at, 0, 0, 50.0)
+	w.grid.build(w.sw)
+	w.apply_elements(i, 1 << Content.El.FIRE, 0)
+	ok(T.surf_at(at) == Terrain.Surf.FIRE, "fire ignites oil")
+	T.pour(at + Vector2(64, 0), 24.0, Terrain.Surf.OIL, 10.0)
+	T.pour(at + Vector2(32, 0), 24.0, Terrain.Surf.OIL, 10.0)
+	for k in 20: T.step(0.13)
+	ok(T.surf_at(at + Vector2(64, 0)) == Terrain.Surf.FIRE, "fire runs along connected oil")
+	var hp0 := w.sw.hp[w.sw.index_of(w.sw.uid[i])]
+	w._surf_t = 1.0
+	w._step_surfaces(0.05)
+	ok(w.sw.hp[i] < hp0, "foes standing in burning oil take damage")
+	# poison: fire detonates, cold crystallises
+	var at2 := T.nearest_passable(w.pp + Vector2(-200, 80))
+	T.pour(at2, 30.0, Terrain.Surf.POISON, 10.0)
+	var j := w.spawn_foe(Content.E.BRUTE, at2, 0, 0, 50.0)
+	w.grid.build(w.sw)
+	w.apply_elements(j, 1 << Content.El.COLD, 0)
+	ok(T.surf_at(at2) == Terrain.Surf.SPIKES, "cold crystallises poison into spikes")
+	var at3 := T.nearest_passable(w.pp + Vector2(0, -260))
+	T.pour(at3, 30.0, Terrain.Surf.POISON, 10.0)
+	var k3 := w.spawn_foe(Content.E.BRUTE, at3, 0, 0, 50.0)
+	w.grid.build(w.sw)
+	var h3 := w.sw.hp[k3]
+	w.apply_elements(k3, 1 << Content.El.FIRE, 0)
+	ok(T.surf_at(at3) == Terrain.Surf.NONE and w.sw.hp[k3] < h3 and int(w.metrics.terrain.get("blast", 0)) == 1, "fire detonates poison (and spends the pool)")
+	# blood conducts lightning to every foe standing in it
+	var at4 := T.nearest_passable(w.pp + Vector2(260, 200))
+	T.pour(at4, 48.0, Terrain.Surf.BLOOD, 10.0)
+	var a := w.spawn_foe(Content.E.BRUTE, at4, 0, 0, 50.0)
+	var b := w.spawn_foe(Content.E.BRUTE, at4 + Vector2(24, 0), 0, 0, 50.0)
+	w.grid.build(w.sw)
+	var hb := w.sw.hp[b]
+	w.apply_elements(a, 1 << Content.El.LIGHT, 0)
+	ok(w.sw.hp[b] < hb and int(w.metrics.terrain.get("conduct", 0)) == 1, "lightning arcs through blood")
+	# pools fade
+	for k in 100: T.step(0.2)
+	ok(T.surf.is_empty(), "pools dry up")
+	# sources: a spitter dies into a poison pool; Act II seeps open on their own
+	var s := w.spawn_foe(Content.E.SPITTER, T.nearest_passable(w.pp + Vector2(-100, -100)), 0)
+	var sp := w.sw.pos[s]
+	w.sw.take(s, 1e9)
+	w._reap()
+	ok(T.surf_at(sp) == Terrain.Surf.POISON, "spitters burst into poison")
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 32, "stage": 1})
+	for k in 400: w2._step_surfaces(0.05)
+	ok(not w2.terrain.surf.is_empty(), "Act II's tar seeps open by themselves")
+
+func _hoard_tests() -> void:
+	print("== bank or push")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 41})
+	for k in 5: w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(80, 0), 0)
+	for k in 5: w.sw.take(k, 1e9)
+	w._reap()
+	ok(w.hoard >= 5.0, "kills fill the hoard (%d)" % int(w.hoard))
+	w.hoard = 400.0
+	w.gate_passed()
+	w.gate_passed()
+	ok(is_equal_approx(w.hoard_mult, 2.0), "walking past gates raises the multiplier")
+	for k in 4: w.gate_passed()
+	ok(is_equal_approx(w.hoard_mult, 3.0), "the multiplier caps at x3")
+	var g0 := w.gold
+	var picks0 := w.picks.size()
+	var r := w.bank_hoard(w.pp)
+	ok(is_equal_approx(r.value, 1200.0) and w.gold > g0 and w.hoard == 0.0 and w.hoard_mult == 1.0, "banking pays gold and resets")
+	ok(r.echoes == 4 and w.hoard_echoes == 4, "banking pays Echoes (%d)" % r.echoes)
+	ok(w.picks.size() > picks0, "rare items spill out of the gate")
+	# the Director opens gates; touching one banks, ignoring one pushes
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 42})
+	w2.director.gate_t = 0.0
+	w2.director.whisper_t = 1e9
+	w2.hoard = 100.0
+	w2.step(0.05)
+	var gate: Dictionary = {}
+	for o in w2.director.objects:
+		if o.kind == "gate": gate = o
+	ok(not gate.is_empty(), "a Rift Gate opens")
+	w2.pp = gate.pos
+	w2.step(0.05)
+	ok(w2.hoard == 0.0 and w2.hoard_banked >= 100.0, "stepping into the gate banks the hoard")
+	var w3 := _world({"mode": "campaign", "hero": 0, "seed": 43})
+	w3.director.gate_t = 0.0
+	w3.step(0.05)
+	for o in w3.director.objects: o.life = 0.01
+	w3.step(0.05)
+	ok(w3.hoard_mult == 1.5, "an unused gate closes and pushes the multiplier")
+	# death loses the unbanked hoard; a win banks it
+	var w4 := _world({"mode": "campaign", "hero": 0, "seed": 44})
+	w4.hoard = 300.0
+	w4.hoard_mult = 2.0
+	var e0: int = Save.data.echoes
+	w4.end_run(false)
+	ok(w4.hoard_lost == 600.0 and w4.hoard_echoes == 0, "death loses the unbanked hoard")
+	var w5 := _world({"mode": "campaign", "hero": 0, "seed": 45})
+	w5.hoard = 300.0
+	w5.end_run(true)
+	ok(w5.hoard_banked == 300.0 and w5.hoard_echoes == 1, "a win banks what you carry")
+	Save.data.echoes = e0
+
+func _prophecy_tests() -> void:
+	print("== prophecies")
+	var saved: Dictionary = Save.data.prophecy.duplicate(true)
+	Save.data.prophecy = {"offers": [], "active": {}, "done": 0}
+	var offers := Save.prophecy_offers()
+	ok(offers.size() == 3 and offers[0][1].size() == 3, "three prophecies on offer, three rewards each")
+	ok(offers[0][0] != offers[1][0] and offers[1][0] != offers[2][0], "the offers differ")
+	Save.data.prophecy.active = {"id": "reaper", "reward": "chaos"}
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 51})
+	ok(w.prophecy.id == "reaper", "a run carries the active prophecy")
+	var ch0 := int(Save.data.currency.chaos)
+	w.kills = 599
+	w._step_prophecy(1.0)
+	ok(not w.prophecy_done, "not yet (599/600)")
+	w.kills = 600
+	w._proph_t = 0.0
+	w._step_prophecy(1.0)
+	ok(w.prophecy_done and int(Save.data.currency.chaos) == ch0 + 4, "fulfilled: the chosen reward pays out")
+	ok(Save.data.prophecy.active.is_empty() and int(Save.data.prophecy.done) == 1, "and leaves the profile")
+	# item rewards drop at the hero's feet
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 52, "prophecy": {"id": "alloy", "reward": "rare3"}})
+	var p0 := w2.picks.size()
+	w2.metrics.fusions = 1
+	w2._step_prophecy(1.0)
+	ok(w2.picks.size() >= p0 + 3, "three rare items drop")
+	# objectives read from the run
+	var w3 := _world({"mode": "campaign", "hero": 0, "seed": 53, "prophecy": {"id": "pyre", "reward": "gold"}})
+	var e := w3.spawn_foe(Content.E.BRUTE, w3.pp + Vector2(90, 0), 1)
+	w3.sw.apply_status(e, Content.El.FIRE, 3.0, 4.0)
+	w3.sw.take(e, 1e9)
+	w3._reap()
+	ok(w3.prophecy_progress().x == 1.0, "a burning elite counts for The Pyre")
+	ok(_world({"mode": "pinnacle", "hero": 0, "seed": 54, "prophecy": {"id": "reaper", "reward": "gold"}}).prophecy.is_empty(), "no prophecies in the pinnacle")
+	Save.data.prophecy = saved
+
+func _daily_tests() -> void:
+	print("== daily rift")
+	var s := Daily.seed_for_date("20261112")
+	ok(s == Daily.seed_for_date("20261112") and s != Daily.seed_for_date("20261113"), "one seed per day")
+	var code := Daily.code_for(s)
+	ok(code.begins_with("SHARD-") and code.length() == 10 and Daily.seed_from_code(code) == s, "codes round-trip (%s)" % code)
+	ok(Daily.seed_from_code(code.to_lower().replace("shard-", " ")) == s, "codes forgive case, spaces and a missing prefix")
+	ok(Daily.seed_from_code("SHARD-0O1I") == -1 and Daily.seed_from_code("nope") == -1, "bad codes are refused")
+	var c1 := Daily.config(s)
+	var c2 := Daily.config(s)
+	ok(c1.stage == c2.stage and c1.hero == c2.hero and c1.mods == c2.mods and c1.mods.size() == 2 and c1.mods[0] != c1.mods[1], "a code always means the same rift")
+	# no gear, passives or legendaries
+	var eq0: Dictionary = Save.data.equipped.duplicate(true)
+	Save.data.equipped.weapon = {"slot": "weapon", "rarity": 3, "base": "", "mods": [["damage", "inc", 5.0]], "leg": "phoenix"}
+	var cfg := c1.duplicate()
+	cfg["hero"] = int(c1.hero)
+	var w := _world(cfg)
+	ok(w.daily and w.map_mods == c1.mods and w.stats.value("damage", 1.0) < 2.0 and not w.has_leg("phoenix"), "the rift ignores gear and legendaries")
+	Save.data.equipped = eq0
+	# score and best
+	var dsv: Dictionary = Save.data.daily.duplicate(true)
+	Save.data.daily = {"best": {}, "claimed": ""}
+	w.kills = 300
+	w.t = 100.0
+	w.daily_date = "20261112"
+	var cl0: Array = Save.data.cleared.duplicate()
+	w.end_run(true)
+	ok(w.daily_score == 300 + 200 + 1500 and w.daily_best and int(Save.data.daily.best[w.daily_code]) == w.daily_score, "score = kills + 2/s + 1500 for a win (%d)" % w.daily_score)
+	ok(Save.data.daily.claimed == "20261112" and w.hoard_echoes >= 3, "the first clear of the day pays 3 Echoes")
+	ok(Save.data.cleared == cl0, "a daily win leaves campaign progress alone")
+	var w2 := _world(cfg)
+	w2.kills = 10
+	w2.end_run(false)
+	ok(not w2.daily_best and int(Save.data.daily.best[w.daily_code]) == w.daily_score, "a worse run keeps the best")
+	Save.data.daily = dsv
+
+func _alpha_weapon_tests() -> void:
+	print("== alpha weapons, pacing, champions, unlocks")
+	ok(Content.WEAPON_IDS.size() >= 12, "at least twelve weapons")
+	for id in ["lance", "mine", "glaive", "wisp", "arc", "aura", "cleave", "meteor", "totem"]:
+		var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 11})
+		w.weapons.clear()
+		w.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+		w.wlocal[id] = Stats.new()
+		w.stats.set_source("t", [["max_hp", "add", 1e6]])
+		w.hp = 1e6
+		for k in 40: w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(cos(k * 0.7), sin(k * 0.7)) * (50.0 + k * 3.0), 0, 0, 0.2)
+		var k0 := w.kills
+		for f in 360: w.step(1.0 / 60.0)
+		ok(w.kills > k0, "%s kills foes on its own (%d kills in 6 s)" % [Content.WEAPONS[id].name, w.kills - k0])
+		ok(Content.PERKS.has(Content.WEAPONS[id].pair) and Content.WEAPONS[id].lv.size() == 5, "%s has five levels and an evolution perk" % id)
+	var c := _world({"mode": "campaign", "hero": 0, "seed": 3})
+	ok(absf(c.rt() - 0.0) < 0.01 and c.pace < 1.0, "campaign acts are paced")
+	c.t = Content.STAGE_TIME
+	ok(absf(c.rt() - Content.PACE_REF) < 0.01, "the end of an act sits where the old 150 s ramps ended")
+	var r := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 3})
+	ok(r.pace == 1.0 and r.xp_scale == 1.0, "rifts keep real time")
+	var m := _world({"mode": "campaign", "hero": 0, "seed": 4})
+	m.stats.set_source("t", [["max_hp", "add", 1e6]]); m.hp = 1e6
+	m.t = Content.STAGE_TIME / 3.0 - 0.1
+	for f in 30: m.step(1.0 / 60.0)
+	ok(m.champions_met == 1 and m.champ_uids.size() == 1, "a Rift Champion arrives at a third of the act")
+	var ci := -1
+	for i in m.sw.n:
+		if m.sw.uid[i] == m.champ_uids[0]: ci = i
+	ok(ci >= 0 and (m.sw.flags[ci] & Swarm.F_ELITE) != 0 and m.sw.mhp[ci] > 1000.0, "the champion is a giant elite")
+	m.hit(ci, 1e9, 0, Vector2.ZERO, 0.0, 0)
+	for f in 5: m.step(1.0 / 60.0)
+	ok(m.champions_slain == 1, "killing it is counted")
+	# unlock track
+	var keep = Save.data.duplicate(true)
+	Save.data = Save.defaults()
+	ok(Save.weapon_pool().size() == 4, "a fresh profile offers the four starting weapons")
+	Save.data.stats.kills = 200
+	ok(Save.check_unlocks() == ["lance"] and Save.weapon_pool().has("lance"), "150 kills unlock the Storm Lance")
+	ok(Save.check_unlocks().is_empty(), "an unlock is granted once")
+	Save.data.cleared[0] = true
+	ok(Save.check_unlocks().has("glaive"), "clearing Act I unlocks the Frost Glaive")
+	var w2 := _world({"mode": "campaign", "hero": 0, "seed": 5})
+	var offered := {}
+	for k in 60:
+		w2.lvl = 3
+		for ch in w2.make_choices():
+			if ch.kind == "w": offered[ch.id] = true
+	ok(offered.has("lance") and not offered.has("meteor"), "level-ups offer unlocked weapons only")
+	ok(Content.fusion_def(Content.fusion_key("lance", "meteor")).name != "", "any two weapons have a fusion")
+	Save.data = keep
+
+func _v7_tests() -> void:
+	print("== roll curve, action buffers")
+	var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 21})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	for f in 30: w.step(1.0 / 120.0)
+	w.in_move = Vector2.RIGHT
+	var spd := w.stats.value("move_speed", float(Content.HEROES[0].spd))
+	var p0 := w.pp
+	w.in_roll = true
+	var half := 0.0
+	var steps := 0
+	w.step(1.0 / 240.0)
+	while w.roll_t > 0.0 and steps < 400:
+		w.step(1.0 / 240.0)
+		steps += 1
+		if half == 0.0 and w.roll_t <= World.ROLL_TIME * 0.5: half = w.pp.distance_to(p0)
+	var dist := w.pp.distance_to(p0)
+	var flat := spd * 2.6 * World.ROLL_TIME
+	ok(absf(dist - flat) / flat < 0.08, "a roll still covers the old distance (%.0f vs %.0f)" % [dist, flat])
+	ok(half / dist > 0.56, "most of it in the first half (%.0f%%)" % (100.0 * half / dist))
+	var u := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 22})
+	u.stats.set_source("t", [["max_hp", "add", 1e6]]); u.hp = 1e6
+	for f in 10: u.step(1.0 / 60.0)
+	u.ult = 99.0
+	u.in_ult = true
+	u.step(1.0 / 60.0)
+	ok(u.ult_buffer > 0.0 and u.ult >= 99.0, "an early ultimate press is held, not dropped")
+	u.ult = 100.0
+	u.step(1.0 / 60.0)
+	ok(u.ult < 50.0 and u.ult_buffer == 0.0, "and fires as soon as the charge is full")
+	u.ult = 20.0
+	u.in_ult = true
+	for f in 12: u.step(1.0 / 60.0)
+	ok(u.ult_buffer <= 0.0, "the buffer expires after 0.12 s")
+	u.ult = 100.0
+	u.step(1.0 / 60.0)
+	ok(u.ult >= 100.0, "an expired press does not fire later")
+	var h := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 23})
+	for f in 10: h.step(1.0 / 60.0)
+	h.hitstop = 0.1
+	h.in_roll = true
+	for f in 3: h.step(1.0 / 60.0)
+	ok(h.in_roll, "a press during a hit-stop stays latched")
+	for f in 8: h.step(1.0 / 60.0)
+	ok(h.roll_t > 0.0 or h.roll_cd > 0.0, "and rolls when the hit-stop ends")
+	ok(Sfx.CRITICAL.has("boss") and Sfx.CRITICAL.has("level") and not Sfx.CRITICAL.has("impact"), "boss and level-up cues are exempt from the per-frame sound cap")
+
+func _gate_p01_tests() -> void:
+	print("== fixed clock, countdown timers, acceleration")
+	var fc := FixedStep.new()
+	var total := 0
+	for f in 600: total += fc.advance(1.0 / 60.0 + (0.0015 if f % 2 == 0 else -0.0015))      # a jittery 60 Hz display
+	ok(total >= 598 and total <= 601, "a jittery 60 Hz display gets one tick per frame (%d ticks in 600 frames)" % total)
+	var fc2 := FixedStep.new()
+	var per: Array[int] = []
+	for f in 60: per.append(fc2.advance(1.0 / 30.0))
+	ok(per.min() == 2 and per.max() == 2, "30 fps runs exactly two ticks per frame")
+	var fc3 := FixedStep.new()
+	ok(fc3.advance(0.5) == FixedStep.MAX_STEPS and fc3.acc == 0.0, "a 500 ms hitch runs two ticks and drops the backlog (no spiral)")
+	ok(fc3.advance(0.0) == 0, "and does not catch up afterwards")
+	# arcane orbs: same cadence at 60 Hz and when dt doubles. Props stay on (0.10.0: substepped, guarded
+	# movement); only the elite's own orbs are counted (violet, 6 s), never the wave spitters' shots, whose
+	# paths round the props differ by dt and are not what this measures. A pooled shot re-armed as an orb
+	# counts as new: its life jumps up.
+	var counts: Array[int] = []
+	for dt in [1.0 / 60.0, 1.0 / 30.0]:
+		var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 31})
+		w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+		w.weapons.clear()
+		var i := w.spawn_foe(Content.E.BRUTE, w.pp + Vector2(300, 0), 1, 0, 50.0)
+		w.sw.affix[i] = Content.Aff.ARCANE
+		var shots := 0
+		var life := {}
+		var steps := int(35.0 / dt)
+		for k in steps:
+			w.step(dt)
+			var now := {}
+			for e: World.Proj in w.eshots:
+				if e.col == Color("d070ff") and (not life.has(e) or e.life > float(life[e]) + 1e-4): shots += 1
+				now[e] = e.life
+			life = now
+		counts.append(shots)
+	ok(counts[0] == counts[1] and counts[0] >= 8, "an arcane elite fires on a fixed cadence at any dt (%s orbs in 35 s)" % str(counts))
+	# thunderdome works without a conduit pylon
+	var d := _world({"mode": "rift", "hero": 3, "gr": 1, "seed": 32})
+	d.stats.set_source("t", [["max_hp", "add", 1e6]]); d.hp = 1e6
+	d.weapons.clear()
+	for k in 30: d.spawn_foe(Content.E.GRUNT, d.pp + Vector2(cos(k), sin(k)) * 150.0, 0, 0, 50.0)
+	d.buffs.add("thunderdome")
+	var zaps := 0
+	for k in 60:
+		d.step(1.0 / 60.0)
+		for f in d.fx: if f.k == "zap" and f.t <= 1.0 / 60.0 + 0.0001: zaps += 1        # struck this tick
+	ok(zaps >= 8 and not d.buffs.has("conduit"), "the Stormwright's Thunderdome strikes without a Conduit pylon (%d strikes in 1 s)" % zaps)
+	# acceleration: crisp, not instant
+	var m := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 33})
+	m.stats.set_source("t", [["max_hp", "add", 1e6]]); m.hp = 1e6
+	for k in 5: m.step(1.0 / 60.0)
+	var spd := m.stats.value("move_speed", float(Content.HEROES[0].spd))
+	m.in_move = Vector2.RIGHT
+	m.step(1.0 / 60.0)
+	var v1 := m.vel.length()
+	for k in 3: m.step(1.0 / 60.0)
+	var v4 := m.vel.length()
+	ok(v1 > spd * 0.2 and v1 < spd * 0.4 and v4 >= spd * 0.99, "walking reaches full speed in 0.06 s (%.0f%% after one tick)" % (100.0 * v1 / spd))
+	m.in_move = Vector2.ZERO
+	for k in 3: m.step(1.0 / 60.0)
+	ok(m.vel.length() < 1.0, "and stops within 0.05 s")
+
+func _tyrant_fsm_tests() -> void:
+	print("== tyrant state machine")
+	var w := _world({"mode": "campaign", "hero": 0, "stage": 4, "seed": 41})
+	w.terrain.props_on = false                       # the state machine alone: the kiting hero is teleported
+	w.stats.set_source("t", [["max_hp", "add", 1e7], ["regen", "add", 1e6]]); w.hp = 1e7
+	w.weapons.clear()
+	w.bosses.spawn_stage_boss(false)
+	var u: int = w.bosses.stage_uids[0]
+	var seen := {}
+	var attacks: Array[String] = []
+	var states := {}
+	var exposed_ok := true
+	var moved_in_windup := false
+	var prev_state := -1
+	var prev_pos := Vector2.ZERO
+	for k in 60 * 60:
+		if k % 150 == 0:                             # a kiting hero: every 2.5 s back off to a random range
+			var bi := w.sw.index_of(u)
+			if bi >= 0: w.pp = w.sw.pos[bi] + Vector2.from_angle(w.rng.randf() * TAU) * w.rng.randf_range(80.0, 380.0)
+		w.step(1.0 / 60.0)
+		var st: Dictionary = w.bosses.bstate[u]
+		var i := w.sw.index_of(u)
+		if i < 0: break
+		var s := int(st.get("s", -1))
+		states[s] = true
+		if s == Bosses.WINDUP and prev_state == Bosses.WINDUP and w.sw.pos[i].distance_to(prev_pos) > 3.0: moved_in_windup = true
+		if s == Bosses.WINDUP and prev_state != Bosses.WINDUP: attacks.append(String(st.atk))
+		if bool(st.exposed) and s != Bosses.RECOVER: exposed_ok = false
+		prev_state = s
+		prev_pos = w.sw.pos[i]
+	for a in attacks: seen[a] = true
+	var repeats := 0
+	for k in range(1, attacks.size()):
+		if attacks[k] == attacks[k - 1]: repeats += 1
+	ok(states.size() == 4, "the tyrant goes through chase, windup, execute and recover")
+	ok(attacks.size() >= 12, "it attacks steadily (%d attacks in 60 s)" % attacks.size())
+	ok(seen.has("cleave") and seen.has("volley") and seen.has("slam") and seen.has("bell"), "it uses dash-cleave, volley, slam and (Act V) the bell: %s" % str(seen.keys()))
+	ok(repeats == 0, "never the same attack twice in a row")
+	ok(not moved_in_windup, "it stands still while winding up")
+	ok(exposed_ok, "it is Exposed only while recovering")
+	var w2 := _world({"mode": "campaign", "hero": 0, "stage": 0, "seed": 42})
+	w2.bosses.spawn_stage_boss(false)
+	var u2: int = w2.bosses.stage_uids[0]
+	var j := w2.sw.index_of(u2)
+	w2.step(1.0 / 60.0)
+	var st2: Dictionary = w2.bosses.bstate[u2]
+	var h0 := w2.sw.hp[j]
+	w2.hit(j, 100.0, 0, Vector2.ZERO, 0.0, 1)
+	var plain := h0 - w2.sw.hp[j]
+	st2.exposed = true
+	h0 = w2.sw.hp[j]
+	w2.hit(j, 100.0, 0, Vector2.ZERO, 0.0, 1)
+	var exp := h0 - w2.sw.hp[j]
+	ok(absf(exp / plain - 1.3) < 0.01, "an Exposed tyrant takes 30%% more damage (%.2fx)" % (exp / plain))
+
+func _audio_tests() -> void:
+	print("== audio buses, voices, pitch climb")
+	ok(AudioServer.get_bus_index("Music") > 0 and AudioServer.get_bus_index("SFX") > 0 and AudioServer.get_bus_index("UI") > 0, "Music, SFX and UI buses exist")
+	ok(AudioServer.get_bus_effect_count(0) > 0 and AudioServer.get_bus_effect(0, 0) is AudioEffectHardLimiter, "the Master bus ends in a hard limiter")
+	ok(Sfx.players["gem"].bus == &"SFX" and Sfx.players["click"].bus == &"UI" and Sfx.ambience.bus == &"Music", "sounds are routed to their buses")
+	var safe := bool(Save.opt("sfx_safe"))
+	ok(Sfx.players["gem"].max_polyphony == (1 if safe else 5) and Sfx.players["boss"].max_polyphony == (1 if safe else 3), "rapid-fire sounds get 5 voices")
+	if not safe:
+		Sfx._climb_ms.erase("gem")
+		var p0 := Sfx._pitch("gem", 1.0, 100000)
+		var p1 := Sfx._pitch("gem", 1.0, 100200)
+		var p2 := Sfx._pitch("gem", 1.0, 100400)
+		var p3 := Sfx._pitch("gem", 1.0, 101000)
+		ok(is_equal_approx(p0, 1.0) and is_equal_approx(p1, pow(2.0, 1.0 / 12.0)) and is_equal_approx(p2, pow(2.0, 2.0 / 12.0)) and is_equal_approx(p3, 1.0), "gem pickups climb a semitone each and reset after a 0.45 s gap")
+
+## A spot facing a cliff band: walkable here, walkable 150-200 units ahead, a cliff cell in between.
+func _find_cliff_crossing(w: World) -> Array:
+	var T := w.terrain
+	for ring in range(8, 60):
+		for k in 48:
+			var a := TAU * k / 48.0
+			var p := Vector2(cos(a), sin(a)) * float(ring) * 32.0
+			if not T.passable(p): continue
+			for dk in 16:
+				var d := Vector2.from_angle(TAU * dk / 16.0)
+				var hit := false
+				for step in range(1, 6):
+					if T.type_at(p + d * step * 16.0) == Terrain.CLIFF: hit = true
+				if not (hit and T.passable(p + d * 180.0) and T.passable(p + d * World.JUMP_DIST)): continue
+				# a real wall: walking straight at it for 2 s gets nowhere near the far side
+				var q := p
+				for f in 120: q = T.move(q, q + d * 160.0 / 60.0)
+				if (q - p).dot(d) < 60.0:
+					return [p, d]
+	return []
+
+func _jump_tests() -> void:
+	print("== jump")
+	var found := []
+	var w: World
+	for st in [1, 3, 2, 0, 4]:
+		w = _world({"mode": "campaign", "hero": 0, "stage": st, "seed": 51})
+		found = _find_cliff_crossing(w)
+		if not found.is_empty(): break
+	ok(not found.is_empty(), "found a cliff to test against")
+	if found.is_empty(): return
+	w.stats.set_source("t", [["max_hp", "add", 1e7]]); w.hp = 1e7
+	w.weapons.clear()
+	var start: Vector2 = found[0]
+	var dir: Vector2 = found[1]
+	w.pp = start
+	w.in_move = dir
+	for k in 120: w.step(1.0 / 60.0)
+	var walked := (w.pp - start).dot(dir)
+	ok(walked < 90.0, "walking stops at the cliff (%.0f units in 2 s)" % walked)
+	w.pp = start
+	w.vel = Vector2.ZERO
+	w.jump_cd = 0.0
+	w.in_jump = true
+	w.step(1.0 / 60.0)
+	ok(w.airborne(), "the jump takes off")
+	var peak_ok := true
+	for k in 60:
+		w.step(1.0 / 60.0)
+		if w.airborne() and w.jump_progress() < 0.0: peak_ok = false
+	var crossed := (w.pp - start).dot(dir)
+	ok(not w.airborne() and crossed > 150.0 and w.terrain.passable(w.pp), "and lands past the cliff on solid ground (%.0f units)" % crossed)
+	ok(w.jump_cd > 0.0, "then it is on cooldown")
+	var before := w.pp
+	w.in_jump = true
+	w.in_move = Vector2.ZERO
+	w.step(1.0 / 60.0)
+	ok(not w.airborne(), "a second jump inside the cooldown does nothing")
+	# landings are always on solid ground, from anywhere, in any direction
+	var bad := 0
+	var rng := RandomNumberGenerator.new(); rng.seed = 7
+	for k in 400:
+		var p := Vector2(rng.randf_range(-2500, 2500), rng.randf_range(-2500, 2500))
+		if not w.terrain.passable(p): continue
+		var to := w.jump_landing(p, Vector2.from_angle(rng.randf() * TAU))
+		if not w.terrain.passable(to): bad += 1
+	ok(bad == 0, "every landing is on walkable ground (%d bad of 400 tries)" % bad)
+	# in the air: no melee contact, ground telegraphs miss; projectiles still hit
+	var a := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 52})
+	a.weapons.clear()
+	for k in 5: a.step(1.0 / 60.0)
+	a.in_jump = true
+	a.in_move = Vector2.RIGHT
+	a.step(1.0 / 60.0)
+	for k in 6: a.spawn_foe(Content.E.BRUTE, a.pp + Vector2(randf_range(-10, 10), randf_range(-10, 10)), 0, 0, 50.0)
+	a.add_tele(0, a.pp, 300.0, 0.05, 0.0, 30.0, true, false, -1, Color.RED, "test slam")
+	var hp0 := a.hp
+	for k in 15: a.step(1.0 / 60.0)
+	ok(a.airborne() and a.hp == hp0, "airborne: neither the swarm nor a slam lands a hit")
+	a.spawn_eshot(a.pp + Vector2(-20, 0), Vector2(600, 0), 7.0)
+	a.inv_t = 0.0
+	for k in 3: a.step(1.0 / 60.0)
+	ok(a.hp < hp0, "but projectiles still do")
+
+## The jump's touch button, airborne hazards, and how the 3D view draws it (arc, shadow on every tier).
+func _jump_polish_tests() -> void:
+	print("== jump: controls, hazards, drawing")
+	# the thumb cluster: five buttons, all on screen, at least 12 px of clear space between any two circles,
+	# at 16:9, 20:9 and portrait, with and without a camera cutout, for either hand
+	var worst := INF
+	var off := 0
+	var count_ok := true
+	for sz in [Vector2(1280, 720), Vector2(1600, 720), Vector2(720, 1280), Vector2(960, 720)]:
+		for m in [Vector4.ZERO, Vector4(60, 0, 40, 24)]:
+			for lh in [false, true]:
+				var lay := TouchControls.layout_for(sz, m, lh)
+				count_ok = count_ok and lay.size() == 5 and lay.map(func(b): return b.id).has("jump")
+				for i in lay.size():
+					var a: Dictionary = lay[i]
+					var ap: Vector2 = a.pos
+					var ar: float = a.r
+					if ap.x - ar < 0.0 or ap.y - ar < 0.0 or ap.x + ar > sz.x or ap.y + ar > sz.y: off += 1
+					for j in range(i + 1, lay.size()):
+						var b: Dictionary = lay[j]
+						worst = minf(worst, ap.distance_to(b.pos) - ar - float(b.r))
+	ok(count_ok and off == 0 and worst >= 12.0, "ROLL, ULT, JUMP, 1 and 2 fit on screen with at least 12 px between them at 16:9, 20:9 and portrait (closest pair %.1f px, %d off screen)" % [worst, off])
+	# airborne, the hero is untouched by burning oil and poison underfoot; on the ground both hurt
+	var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 61})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	for k in 5: w.step(1.0 / 60.0)
+	w.terrain.pour(w.pp + Vector2(60, 0), 70.0, Terrain.Surf.FIRE, 30.0)
+	w.terrain.pour(w.pp + Vector2(160, 0), 70.0, Terrain.Surf.POISON, 30.0)
+	var hp0 := w.hp
+	w.in_jump = true
+	w.in_move = Vector2.RIGHT
+	for k in 30: w.step(1.0 / 60.0)           # airborne over the fire and the poison
+	var air_hp := w.hp
+	ok(w.airborne() and air_hp == hp0, "a jump over burning oil and poison takes no damage")
+	var g := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 61})
+	g.stats.set_source("t", [["max_hp", "add", 1e6]]); g.hp = 1e6
+	g.weapons.clear()
+	for k in 5: g.step(1.0 / 60.0)
+	g.terrain.pour(g.pp, 70.0, Terrain.Surf.FIRE, 30.0)
+	var g0 := g.hp
+	for k in 30: g.step(1.0 / 60.0)
+	ok(g.hp < g0, "standing in burning oil does hurt")
+	# the 3D view: arc height, the drawn progress between ticks, and the hero's own contact shadow, on Low
+	Save.data.options.gfx = 1                      # the Low tier: no shadow maps
+	var j := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 62})
+	j.stats.set_source("t", [["max_hp", "add", 1e6]]); j.hp = 1e6
+	j.weapons.clear()
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(j)
+	for k in 3: j.step(1.0 / 60.0)
+	v._process(1.0 / 60.0)
+	var blob_ground: float = v._hero_blob.transform.basis.x.x
+	ok(Quality.tier() == 0 and v._hero_blob.visible and v._hero_blob.transform.origin.x == v.hero_p.x and v._hero_blob.transform.origin.y == v.hero_p.y,
+		"on Low the hero has a contact shadow under it")
+	j.in_jump = true
+	j.in_move = Vector2.RIGHT
+	j.step(1.0 / 60.0)                             # take-off tick
+	var ticks := 0
+	while j.jump_t > World.JUMP_TIME * 0.5 and ticks < 120:
+		j.step(1.0 / 60.0)
+		ticks += 1
+	v.alpha = 0.5
+	v._process(1.0 / 60.0)
+	var jp := v._hero_jp
+	var expect := maxf(lerpf(v.ground_y(j.jump_from), v.ground_y(j.jump_to), jp) + 4.0 * jp * (1.0 - jp) * WorldView3D.JUMP_ARC, v.ground_y(v.hero_p) + 2.0)
+	ok(jp > 0.4 and jp < 0.6 and absf(v.hero_y - expect) < 0.01, "mid-jump the hero is drawn on the arc (progress %.2f, %.1f above the ground)" % [jp, v.hero_y - v.ground_y(v.hero_p)])
+	ok(v.hero_y - v.ground_y(v.hero_p) > 50.0, "about 58 units up at the apex")
+	ok(v._hero_blob.transform.basis.x.x < blob_ground * 0.8, "and its shadow shrinks while it is up (radius %.1f -> %.1f)" % [blob_ground, v._hero_blob.transform.basis.x.x])
+	var t0 := j.jump_t
+	v.alpha = 0.0
+	v._process(1.0 / 60.0)
+	var jp0 := v._hero_jp
+	v.alpha = 1.0
+	v._process(1.0 / 60.0)
+	ok(v._hero_jp > jp0 and absf((v._hero_jp - jp0) - FixedStep.STEP / World.JUMP_TIME) < 0.001, "between ticks the arc moves smoothly (one tick = %.3f of the jump)" % (FixedStep.STEP / World.JUMP_TIME))
+	Save.data.options.gfx = 0
+	v.queue_free()
+
+func _look_tests() -> void:
+	print("== look: resolution, ground, light, draping")
+	# 3D resolution: phones by tier, FXAA only at 0.9 and up, the dynamic factor's floor
+	var M: Script = load("res://scripts/main.gd")
+	ok(M.auto_render_scale(0, true) == 0.75 and M.auto_render_scale(1, true) == 1.0 and M.auto_render_scale(2, true) == 1.0,
+		"phones render 3D at 0.75 on Low and natively on Medium and High")
+	ok(M.auto_render_scale(0, false) == 1.0 and M.auto_render_scale(2, false) == 1.0, "desktops native on every tier")
+	ok(M.fxaa_allowed(1.0) and M.fxaa_allowed(0.9) and not M.fxaa_allowed(0.85) and not M.fxaa_allowed(0.75),
+		"FXAA runs at a 3D scale of 0.9 or more only (a Medium phone loses it when the dynamic factor drops)")
+	var d := 1.0
+	for k in 20: d = M.dyn_down(d, 1.0, 1.0 / 60.0)
+	ok(is_equal_approx(d, 0.85) and is_equal_approx(M.dyn_down(1.0, 0.025, 1.0 / 60.0), 0.92),
+		"the dynamic factor steps down 0.08 (0.15 when twice over budget) and stops at 0.85 (%.2f)" % d)
+	# the ground grid and texture detail per tier
+	var qs := []
+	var d2 := []
+	for g in [1, 2, 3]:
+		Save.data.options.gfx = g
+		qs.append(Quality.ground_q())
+		var gm := ShaderMaterial.new()
+		WorldView3D.apply_ground(gm, 0)
+		d2.append(gm.get_shader_parameter("detail2"))
+	Save.data.options.gfx = 0
+	ok(qs == [16.0, 12.0, 10.0], "ground grid spacing Low / Medium / High: %s" % str(qs))
+	ok(d2 == [false, true, true], "the second texture scale (detail2) on Medium and High: %s" % str(d2))
+	# the run's view: sky ambient, glow, lights, shadows, ground tiles, decals, marks, fog, water
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 64})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	for k in 3: w.step(1.0 / 60.0)
+	v._process(1.0 / 60.0)
+	ok(v.env.ambient_light_source == Environment.AMBIENT_SOURCE_SKY and v.sky_mat.sky_top_color == WorldView3D.STAGE_LOOK[0].sky
+		and v.sky_mat.ground_bottom_color == WorldView3D.STAGE_LOOK[0].gnd, "ambient light comes from the act's sky")
+	var cool := true
+	for lk in WorldView3D.STAGE_LOOK:
+		var sk: Color = lk.sky
+		var gn: Color = lk.gnd
+		cool = cool and sk.b > sk.r and gn.r > gn.b and gn.get_luminance() < sk.get_luminance() * 0.5
+	ok(cool, "every act: a cool sky over a dark, warm ground")
+	ok(v.env.glow_blend_mode == Environment.GLOW_BLEND_MODE_SCREEN and v.env.glow_bloom == 0.0 and is_equal_approx(v.env.glow_hdr_threshold, 1.25)
+		and is_equal_approx(v.env.glow_intensity, 0.45) and is_equal_approx(v.env.glow_strength, 0.85), "glow: screen blend, no bloom, threshold 1.25, intensity 0.45, strength 0.85")
+	for k in 400: v._lighting(1.0 / 60.0)
+	var fl: float = v.torch.light_energy / (1.6 * WorldView3D.LIGHT_GAIN)
+	ok(w.gloom() == 0.0 and absf(v.sun.light_energy - 1.2) < 0.01 and fl > 0.8 and fl < 1.2 and v.torch.omni_range == 360.0
+		and is_equal_approx(v.key_light.light_energy, 0.9 * WorldView3D.LIGHT_GAIN),
+		"lights: sun 1.2, torch 1.6 x gain (flicker %.2f) over 360 units, key 0.9 x gain" % fl)
+	v._camera(1.0 / 60.0)
+	ok(is_equal_approx(v.sun.directional_shadow_max_distance, 720.0 * v.view_scale), "sun shadows reach 720 at the landscape camera (%.0f)" % v.sun.directional_shadow_max_distance)
+	var casts := 0
+	var span := 0.0
+	for c in v.ground.get_children():
+		if c.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF: casts += 1
+		span = maxf(span, absf(c.position.x) * 2.0 + (c.mesh as PlaneMesh).size.x)
+	ok(casts == 0 and v.ground.get_child_count() == WorldView3D.GROUND_TILES * WorldView3D.GROUND_TILES, "ground tiles receive shadows but cast none")
+	ok(absf(span - WorldView3D.GROUND_SIZE) <= WorldView3D.GROUND_TILES * v.GROUND_Q, "the ground spans %.0f (GROUND_SIZE 2200)" % span)
+	var dp := v.fx.decals[0].mesh as PlaneMesh
+	ok(dp.subdivide_width == 8 and dp.subdivide_depth == 8 and v.fx.marks_mm.multimesh.mesh == dp, "decals and marks: 9 x 9 quads to drape over the terrain")
+	# a mark on a slope sits at the ground under its centre + 0.4
+	var best := w.pp
+	var bh := -1e9
+	for k in 64:
+		var q: Vector2 = w.pp + Vector2.from_angle(TAU * k / 64.0) * (80.0 + 4.0 * k)
+		if v.ground_y(q) > bh: bh = v.ground_y(q); best = q
+	v.fx._marks.clear()
+	v.fx._mark(best, 40.0, 1)
+	v._process(1.0 / 60.0)
+	var mx := FX3D.mark_xform(v.fx._marks[0], v.ground_y(best))
+	ok(v.fx.marks_mm.multimesh.visible_instance_count == 1 and absf(mx.origin.y - (v.ground_y(best) + 0.4)) < 0.001 and is_equal_approx(mx.basis.x.length(), 40.0),
+		"a scorch mark on a slope lies at the ground under its centre + 0.4 (%.1f on ground %.1f)" % [mx.origin.y, v.ground_y(best)])
+	var o1 := v.fx._make_obj("chest", Color(0.9, 0.7, 0.2))
+	var o2 := v.fx._make_obj("shrine", Color(0.9, 0.7, 0.2))
+	var m1 = (o1.get_child(0) as MeshInstance3D).material_override
+	var m2 = (o2.get_child(0) as MeshInstance3D).material_override
+	ok(m1 is ShaderMaterial and m1.shader.resource_path == "res://shaders/3d/prop.gdshader" and m1 == m2, "event props are lit by prop.gdshader, one material per colour")
+	o1.queue_free(); o2.queue_free()
+	var fp := v.env_fx.fog.mesh as PlaneMesh
+	ok(fp.subdivide_width == 24 and fp.subdivide_depth == 24 and v.env_fx.fog_mat.get_shader_parameter("drape") == true and v.env_fx.fog.position.y == 0.0,
+		"the ground fog is a 25 x 25 grid draped onto the terrain in its shader")
+	# Bleed sheds small dark drops that fall from the body (Burn's embers pop upward): not its glow's colour alone
+	var bi := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(60, 0))
+	if bi >= 0: w.sw.bleed[bi] = 1.0
+	var s0: int = v.fx.s_n
+	for k in 40:
+		v.env_fx._frame += 1
+		v.env_fx._status_fx()
+	var drops := 0
+	for k in range(s0, v.fx.s_n):
+		if v.fx.s_vel[k].y < -50.0: drops += 1
+	ok(bi >= 0 and drops > 0, "a bleeding foe sheds drops that fall (%d in 40 frames), not only a red glow" % drops)
+	if bi >= 0: w.sw.bleed[bi] = 0.0
+	v._features()
+	var wet: bool = v.water.visible
+	w.terrain.liquid = "none"
+	v.bind(w)
+	v._process(1.0 / 60.0)
+	ok(wet and not v.water.visible, "water drawn on a wet act, hidden on an act without liquid")
+	v.queue_free()
+	# the title stage: the run's sky ambient and glow, dimmer lights, the fog parting at the hero
+	var ms := MenuStage3D.new()
+	add_child(ms)
+	var me: Environment = ms.cam.environment
+	var push: PackedVector4Array = ms.fog_mat.get_shader_parameter("pushers")
+	ok(me.ambient_light_source == Environment.AMBIENT_SOURCE_SKY and me.glow_blend_mode == Environment.GLOW_BLEND_MODE_SCREEN and me.glow_bloom == 0.0
+		and is_equal_approx(me.glow_hdr_threshold, 1.25) and is_equal_approx(me.glow_intensity, 0.45), "title stage: sky ambient and the run's glow")
+	ok(push.size() == 6 and push[0] == Vector4(MenuStage3D.ORIGIN.x + MenuStage3D.HERO_AT.x, MenuStage3D.ORIGIN.z + MenuStage3D.HERO_AT.y, 48.0, 14.0),
+		"title stage: the fog parts around the hero")
+	ok(is_equal_approx(ms.braziers[0].light_energy, 6.0) and is_equal_approx(ms.rift_light.light_energy, 5.4) and is_equal_approx(ms.key_light.light_energy, 4.2),
+		"title stage: braziers 6, rift 5.4, key 4.2 (40% under 10, 9, 7)")
+	ms.queue_free()
+	# bosses: one compiled flash shader for all, a dimmer light
+	var b1 := BossRig.new()
+	var b2 := BossRig.new()
+	add_child(b1); add_child(b2)
+	b1.build("tyrant", Color.RED, "tyrant_4")
+	b2.build("tyrant", Color.GREEN, "tyrant_4")
+	ok(b1._over_flash != null and b1._over_flash != b2._over_flash and b1._over_flash.shader == b2._over_flash.shader and b1._over_flash.shader == BossRig._flash_sh,
+		"bosses share one hit-flash shader, each with its own material")
+	ok(is_equal_approx(b1.light.light_energy, 0.85 * WorldView3D.LIGHT_GAIN), "a boss's light starts at 0.85 x gain")
+	b1.queue_free(); b2.queue_free()
+
+func _anim_tests() -> void:
+	print("== foe animation (vertex animation textures)")
+	for kind in ["grunt", "runner", "brute", "spitter", "splitter", "mini", "charger", "breach", "goblin"]:
+		var v := Models.foe_vat(kind)
+		var good := not v.is_empty()
+		if good:
+			var vc: PackedFloat32Array = v.clips
+			for sl in 5:
+				if vc[sl * 3 + 1] < 2.0 or vc[sl * 3 + 2] <= 0.0 or vc[sl * 3] + vc[sl * 3 + 1] + 1.0 > float(v.rows): good = false
+			if v.pos.get_width() != v.verts or v.pos.get_height() != v.rows: good = false
+		ok(good, "%s has walk, attack, hit, death and spawn clips inside its texture" % kind)
+	ok(not Models.foe_vat("grunt", 4).is_empty() and Models.foe_vat("grunt", 4) != Models.foe_vat("grunt"), "Act V's skeleton variant has its own clips")
+	ok(Models.foe_vat("exile").is_empty(), "kinds without a baked file fall back to the shader animation")
+	var w := _world({"mode": "campaign", "hero": 0, "seed": 61})
+	for k in 20: w.step(0.05)
+	var i := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(200, 0), 0, 0, 50.0)
+	ok(is_equal_approx(w.sw.born[i], w.t), "a foe remembers when it spawned")
+	w.sw.take(i, 1.0)
+	ok(is_equal_approx(w.sw.hit_at[i], w.t), "a hit starts a flinch")
+	var u := w.sw.uid[i]
+	w.step(0.05)
+	w.sw.take(w.sw.index_of(u), 1.0)
+	ok(w.sw.hit_at[w.sw.index_of(u)] < w.t, "but not again within 0.7 s")
+	var j := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(6, 0), 0, 0, 50.0)
+	var uj := w.sw.uid[j]
+	w.inv_t = 0.0
+	w.grid.build(w.sw)
+	w._contact()
+	ok(is_equal_approx(w.sw.atk_t[w.sw.index_of(uj)], w.t), "touching the hero plays the attack")
+	w.dispose()
+
+## 0.9.9: the hero's locomotion rate has no cliff and a standing cast stops when the hero moves; bosses play
+## idle and die; models with the albedo map on a later surface count as PBR; solid props (PropLayout) block
+## walking (bodies slide round them), a jump clears the low ones and never lands inside any, and every
+## graphics tier lays out the same solids.
+func _remediation_tests() -> void:
+	print("== 0.9.9 remediation")
+	var hr := HeroRig.new()
+	var worst := 0.0
+	var prev := hr.loco_rate(0.0)
+	for sp in range(2, 202, 2):
+		var r := hr.loco_rate(float(sp))
+		worst = maxf(worst, absf(r - prev))
+		prev = r
+	ok(worst < 0.05, "the locomotion rate has no cliff from 0 to 200 units/s (largest step %.3f)" % worst)
+	ok(is_equal_approx(hr.loco_rate(100.0), 1.0) and is_equal_approx(hr.loco_rate(155.0), 1.0), "and plays at the clips' own rate from walk to run speed")
+	hr.free()
+	var h := HeroRig.new()
+	add_child(h)
+	h.build("warden", Color.WHITE)
+	ok(h.tree != null, "the Warden's model builds its animation tree")
+	if h.tree != null:
+		var dt := 1.0 / 60.0
+		var st := {"pos": Vector2.ZERO, "face": Vector2.RIGHT, "cast_dir": Vector2.RIGHT, "cast_age": 9.0, "mv": 0.0, "vel": 0.0,
+			"roll": -1.0, "hit": 0.0, "dead": false, "t": 0.0, "ph": 0.0, "jump": -1.0}
+		for k in 10:
+			h.animate(st, dt); h.tree.advance(dt)
+		st.cast_age = 0.0
+		h.animate(st, dt); h.tree.advance(dt)
+		var full_on := bool(h.tree.get("parameters/cast_full/active"))
+		st.mv = 1.0
+		st.vel = 150.0
+		for k in 24:
+			st.cast_age = float(st.cast_age) + dt
+			h.animate(st, dt); h.tree.advance(dt)
+		var full_after := bool(h.tree.get("parameters/cast_full/active"))
+		var up_after := bool(h.tree.get("parameters/cast_up/active"))
+		ok(full_on and not full_after and not up_after, "a standing cast plays full-body and stops once the hero moves, with no upper-body replay (%s -> %s, upper %s)" % [full_on, full_after, up_after])
+	h.queue_free()
+	var b := BossRig.new()
+	add_child(b)
+	b.build("tyrant", Color.RED, "tyrant")
+	ok(b.anim != null and b.anim.has_animation("idle") and b.anim.has_animation("die"), "the tyrant model has idle and die clips")
+	if b.anim != null:
+		var bs := {"pos": Vector2(500, 500), "face": Vector2.RIGHT, "hp_frac": 1.0, "flash": 0.0, "t": 0.0, "dt": 1.0 / 60.0, "attack": false, "phase": 0}
+		for k in 40:
+			b.animate(bs); b.anim.advance(1.0 / 60.0)
+		var idle := String(b.anim.current_animation)
+		for k in 40:
+			bs.pos = Vector2(500.0 + 2.0 * k, 500.0)
+			b.animate(bs); b.anim.advance(1.0 / 60.0)
+		var walk := String(b.anim.current_animation)
+		bs.dead = true
+		for k in 6:
+			b.animate(bs); b.anim.advance(1.0 / 60.0)
+		var die := String(b.anim.current_animation)
+		ok(idle == "idle", "a boss standing still plays idle (%s)" % idle)
+		ok(walk == "walk", "a boss on the move plays walk (%s)" % walk)
+		ok(die == "die" and b.anim.get_animation("die").loop_mode == Animation.LOOP_NONE and b.death_time() > 0.5, "a fallen boss plays die once (%s, %.2f s)" % [die, b.death_time()])
+	b.queue_free()
+	var am := ArrayMesh.new()
+	for sf in 2:
+		var stl := SurfaceTool.new()
+		stl.begin(Mesh.PRIMITIVE_TRIANGLES)
+		stl.add_vertex(Vector3.ZERO); stl.add_vertex(Vector3.RIGHT); stl.add_vertex(Vector3.UP)
+		stl.commit(am)
+	var tm := StandardMaterial3D.new()
+	tm.albedo_texture = ImageTexture.create_from_image(Image.create(4, 4, false, Image.FORMAT_RGB8))
+	am.surface_set_material(0, StandardMaterial3D.new())
+	am.surface_set_material(1, tm)
+	ok(Models.has_pbr(am), "a mesh with the albedo map on its second surface counts as PBR")
+	# collision against placed props (test circles [x, y, r, low] on the flat ground round the start)
+	var w := _world({"mode": "campaign", "hero": 0, "stage": 0, "seed": 5})
+	var t := w.terrain
+	var br := World.HERO_R
+	var wall := PackedFloat32Array([0.0, 120.0, 14.0, 0.0])
+	for wx in [-36.0, -18.0, 0.0, 18.0, 36.0]:
+		wall.append_array(PackedFloat32Array([wx, -100.0, 18.0, 1.0]))
+	t.set_test_props(wall)
+	var p := Vector2(4.0, 40.0)
+	var into := false
+	for k in 120:
+		p = t.move(p, p + Vector2(0.0, 3.0), br)
+		if p.distance_to(Vector2(0.0, 120.0)) < 14.0 + br - 0.01: into = true
+	ok(not into and p.y > 120.0 + 14.0, "walking into a trunk slides round it, never through (ends at %s)" % p)
+	p = Vector2(20.0, -40.0)
+	into = false
+	var step := Vector2(0.5, -1.0).normalized() * 3.0                 # 27 degrees off straight on
+	for k in 160:
+		p = t.move(p, p + step, br)
+		for cx in [-36.0, -18.0, 0.0, 18.0, 36.0]:
+			if p.distance_to(Vector2(cx, -100.0)) < 18.0 + br - 0.01: into = true
+	ok(not into and p.y < -100.0 - 18.0, "walking into a wall at an angle slides along it and round its end (ends at %s)" % p)
+	p = Vector2(10.0, -40.0)
+	into = false
+	for k in 120:
+		p = t.move(p, p + Vector2(0.0, -3.0), br)
+		for cx in [-36.0, -18.0, 0.0, 18.0, 36.0]:
+			if p.distance_to(Vector2(cx, -100.0)) < 18.0 + br - 0.01: into = true
+	ok(not into and p.y > -100.0, "walking straight at a wall stops at its face, never through (ends at %s)" % p)
+	var land := w.jump_landing(Vector2(0.0, -20.0), Vector2(0.0, -1.0))
+	ok(land.y < -100.0 - 18.0 - br and t.props_clear(land, br), "a jump vaults the low wall and lands past it (%s)" % land)
+	var land2 := w.jump_landing(Vector2(0.0, 0.0), Vector2(0.0, 1.0))
+	ok(land2.y > 0.0 and land2.y <= 120.0 - 14.0 - br and t.props_clear(land2, br), "a jump at a trunk comes down short of it (%s)" % land2)
+	t.set_test_props(PackedFloat32Array([0.0, 140.0, 18.0, 1.0]))
+	var land3 := w.jump_landing(Vector2(0.0, -60.0), Vector2(0.0, 1.0))
+	ok(t.props_clear(land3, br) and land3.y > 140.0, "a jump whose landing falls on a boulder lands past it (%s)" % land3)
+	w.dispose()
+	# the real layout: shapes per kind, the same solids on every tier, the arch opening walkable
+	var w2 := _world({"mode": "campaign", "hero": 0, "stage": 0, "seed": 5})
+	var shapes_ok := true
+	var tiers_ok := true
+	var arches := 0
+	var arch_ok := true
+	for cx in range(-2, 3):
+		for cy in range(-2, 3):
+			var c := Vector2i(cx, cy)
+			var lay := PropLayout.chunk(c, 0, w2.terrain, 1.0)
+			var want := 0
+			var low := 0
+			for it in lay.items:
+				match String(it[0]):
+					"tree", "tree_dead", "pillar": want += 1
+					"rock": want += 1; low += 1
+					"wall": want += 5; low += 5
+					"arch":
+						want += 2
+						arches += 1
+						var mid: Vector2 = it[1]
+						if not w2.terrain.props_clear(mid, br): arch_ok = false
+			var sol: PackedFloat32Array = lay.solids
+			var nlow := 0
+			for j in range(0, sol.size(), 4):
+				if sol[j + 3] > 0.5: nlow += 1
+			if sol.size() / 4 != want or nlow != low: shapes_ok = false
+			if PropLayout.chunk(c, 0, w2.terrain, 0.7).solids != sol or PropLayout.chunk(c, 0, w2.terrain, 1.3).solids != sol: tiers_ok = false
+	ok(shapes_ok, "trunks, pillars and boulders block as one circle, walls as five overlapping ones, arches as two posts; boulders and walls are low")
+	ok(tiers_ok, "every graphics tier lays out the same solid props (25 chunks)")
+	ok(arches > 0 and arch_ok, "the hero fits through an arch's opening (%d arches)" % arches)
+	w2.dispose()
+
+## The 3D view places foes, effects, smoke and lights at ground_y() + their own height on the CPU (the
+## instanced shaders do no terrain lookup). Checks that ground_y() is the simulation's height on hilly
+## ground and that what the view writes for foes, shots, crystals, debris, sparks and lights sits on it.
+## 0.10.0: the voice layer. data/voice_manifest.json holds every line once. VoiceBank plays a line's .ogg when
+## the file exists, timed (subtitle, ducking, the next intro beat) to its real length, and otherwise a chime of
+## the speaker's own for the manifest's estimate; priorities, cooldowns, the voice buses, the intro screen and
+## the run's voice cues are checked here, all on a stepped clock.
+func _voice_bank() -> VoiceBank:
+	var vb := VoiceBank.new()
+	vb.manual_clock = true
+	add_child(vb)
+	return vb
+
+func _voice_tests() -> void:
+	print("== 0.10.0 voice")
+	var vb := _voice_bank()
+	ok(vb.errors.is_empty(), "the voice manifest loads with 0 errors%s" % ("" if vb.errors.is_empty() else ": " + "; ".join(vb.errors)))
+	ok(vb.entries.size() == 61, "it holds 61 lines (%d)" % vb.entries.size())
+	var hero_cues := {"intro": 1, "cast": 3, "ult": 2, "kill_streak": 2, "low_hp": 2, "boss_spawn": 1, "death": 1}
+	var miss: Array = []
+	for h in ["warden", "spark", "ember", "storm"]:
+		for c in hero_cues:
+			if vb.variants(h, c) != int(hero_cues[c]): miss.append("%s/%s" % [h, c])
+	if vb.variants("narrator", "intro") != 4: miss.append("narrator/intro")
+	for k in 5:
+		if vb.variants("narrator", "act_%d" % k) != 1: miss.append("narrator/act_%d" % k)
+	for b in ["tyrant", "herald"]:
+		for c in ["spawn", "die"]:
+			if vb.variants(b, c) != 1: miss.append("%s/%s" % [b, c])
+	ok(miss.is_empty(), "each exile resolves its 7 cues (12 lines), the narrator 4 intro beats and 5 act openings, both bosses spawn and die%s" % ("" if miss.is_empty() else ": missing " + str(miss)))
+	var rules := {"cast": [0, 60.0], "kill_streak": [1, 30.0], "low_hp": [2, 15.0], "ult": [2, 4.0], "boss_spawn": [3, 0.0], "death": [3, 0.0], "spawn": [3, 0.0], "die": [3, 0.0], "intro": [3, 0.0]}
+	var off: Array = []
+	for id in vb.entries:
+		var e: Dictionary = vb.entries[id]
+		var cue := String(e.cue)
+		var want: Array = rules.get(cue, [3, 0.0]) if not cue.begins_with("act_") else [3, 0.0]
+		if int(e.priority) != int(want[0]) or not is_equal_approx(float(e.cooldown_s), float(want[1])): off.append(id)
+		if String(e.file) != "res://audio/voices/%s/%s_%d.ogg" % [e.speaker, cue, int(e.variant)] or String(id) != "%s_%s_%d" % [e.speaker, cue, int(e.variant)]: off.append(id + " (path)")
+	ok(off.is_empty(), "priorities, cooldowns, ids and .ogg paths follow the cue table%s" % ("" if off.is_empty() else ": " + str(off)))
+	# no .ogg (the line pointed at a missing file, so this holds once the real pack is in): the speaker's chime,
+	# held for the manifest's estimate
+	var e0: Dictionary = vb.entries["warden_cast_0"]
+	e0.file = "res://tests/fixtures/no_such_line.ogg"
+	var r := vb.say("warden", "cast", 0)
+	ok(bool(r.played) and not bool(r.using_pack) and is_equal_approx(float(r.duration), float(e0.duration_fallback_s)) and String(r.text) == String(e0.text) and String(r.speaker) == "warden",
+		"with no .ogg a line plays the speaker's chime for the manifest's estimate (%.1f s) and returns its text" % float(r.get("duration", 0.0)))
+	var ap := vb.active_player()
+	ok(ap != null and ap.stream is AudioStreamWAV and ap.bus == &"VoiceHero", "the chime is a generated AudioStreamWAV on the VoiceHero bus")
+	var sigs := {}
+	var fresh := VoiceBank.new()
+	var c_us := Time.get_ticks_usec()
+	var c_len := 0.0
+	for s in ["warden", "spark", "ember", "storm", "narrator", "tyrant", "herald"]:
+		var ch: AudioStreamWAV = fresh.chime(s)
+		if ch != null and ch.data.size() > 0:
+			sigs[hash(ch.data)] = s
+			c_len = maxf(c_len, ch.data.size() / 2.0 / VoiceBank.CHIME_RATE)
+	var c_ms := (Time.get_ticks_usec() - c_us) / 1000.0
+	fresh.free()
+	ok(sigs.size() == 7, "all 7 speakers have a chime of their own (%d distinct, the longest %.2f s)" % [sigs.size(), c_len])
+	ok(c_ms < 250.0, "the 7 chimes are made in %.0f ms on this machine (one a frame at startup on a phone)" % c_ms)
+	vb.queue_free()
+	# priority: a higher line cuts in, an equal or lower one waits its turn
+	var pb := _voice_bank()
+	var a := pb.say("warden", "cast", 0)
+	var b2 := pb.say("warden", "boss_spawn")
+	ok(bool(a.played) and bool(b2.played) and pb.active_id() == "warden_boss_spawn_0", "a boss_spawn line (priority 3) cuts off a cast bark (priority 0)")
+	var c2 := pb.say("warden", "cast", 1)
+	ok(not bool(c2.played) and String(c2.reason) == "busy", "a bark is refused while a higher-priority line plays (%s)" % c2.get("reason", ""))
+	pb.queue_free()
+	var ub := _voice_bank()
+	var u := ub.say("ember", "ult", 0)
+	var c3 := ub.say("ember", "cast", 0)
+	ok(bool(u.played) and not bool(c3.played) and ub.active_cue() == "ult", "a cast bark is refused while an ult line (priority 2) plays")
+	ub.queue_free()
+	# cooldowns: per cue, and a 2.8 s gap after any line before the next priority 0-1 bark
+	var cb := _voice_bank()
+	var ccd := float(cb.line("storm", "cast", 0).cooldown_s)
+	var fired := 0
+	var first_len := 0.0
+	for k in 20:
+		var rr := cb.say("storm", "cast")
+		if bool(rr.played):
+			fired += 1
+			first_len = float(rr.duration)
+		cb.step(0.3)
+	ok(fired == 1, "rapid casts fire once and are held back through the %.0f s cooldown (%d fired in 6 s)" % [ccd, fired])
+	cb.step(ccd - 6.0 - 0.5)
+	var early := cb.say("storm", "cast")
+	cb.step(maxf(ccd, first_len + VoiceBank.GLOBAL_GAP_S) - (ccd - 0.5) + 0.05)      # past the cooldown and the 2.8 s gap after the line
+	var again := cb.say("storm", "cast")
+	ok(not bool(early.played) and String(early.reason) == "cooldown" and bool(again.played), "still held 0.5 s before it ends (%s), and fire again once it has passed (another variant: no repeats)" % early.get("reason", ""))
+	cb.queue_free()
+	var gb := _voice_bank()
+	var g0 := gb.say("spark", "cast", 0)
+	gb.step(float(g0.duration) + 1.0)
+	var g1 := gb.say("spark", "kill_streak", 0)
+	gb.step(2.0)
+	var g2 := gb.say("spark", "kill_streak", 0)
+	ok(bool(g0.played) and not bool(g1.played) and String(g1.reason) == "gap" and bool(g2.played), "a priority 0-1 bark waits 2.8 s after the last line ends (%s)" % g1.get("reason", ""))
+	gb.step(float(g2.duration) + 0.5)
+	ok(bool(gb.say("spark", "low_hp", 0).played), "a low-health line (priority 2) does not wait for that gap")
+	gb.queue_free()
+	# drop-in: a real .ogg at the line's path replaces the chime, timed to its own length
+	var db := _voice_bank()
+	db.entries["warden_cast_0"].file = "res://tests/fixtures/voice_probe.ogg"
+	var real := db.say("warden", "cast", 0)
+	var rp := db.active_player()
+	var st: AudioStream = rp.stream if rp != null else null
+	ok(bool(real.played) and bool(real.using_pack) and st is AudioStreamOggVorbis and absf(float(real.duration) - st.get_length()) < 0.001 and absf(float(real.duration) - 1.25) < 0.05,
+		"a dropped-in .ogg plays instead of the chime, timed to its real length (%.2f s, estimate %.1f s)" % [float(real.get("duration", 0.0)), float(db.entries["warden_cast_0"].duration_fallback_s)])
+	ok(st is AudioStreamOggVorbis and not (st as AudioStreamOggVorbis).loop, "and never loops")
+	db.step(1.3)
+	ok(not db.is_speaking(), "the line ends when the clip does, not at the estimate")
+	db.entries["warden_low_hp_0"].file = "res://tests/fixtures/no_such_line.ogg"
+	var absent := db.say("warden", "low_hp", 0)
+	ok(bool(absent.played) and not bool(absent.using_pack) and is_equal_approx(float(absent.duration), float(db.entries["warden_low_hp_0"].duration_fallback_s)), "a line whose .ogg is missing falls back to the chime")
+	db.queue_free()
+	# buses
+	var bi := ["Voice", "VoiceHero", "VoiceNarrator", "VoiceBoss"].map(func(n): return AudioServer.get_bus_index(n))
+	ok(not bi.has(-1), "Voice, VoiceHero, VoiceNarrator and VoiceBoss buses exist (%s)" % str(bi))
+	if not bi.has(-1):
+		ok(AudioServer.get_bus_send(bi[0]) == &"Master" and AudioServer.get_bus_send(bi[1]) == &"Voice" and AudioServer.get_bus_send(bi[2]) == &"Voice" and AudioServer.get_bus_send(bi[3]) == &"Voice",
+			"the three voice buses feed Voice, and Voice feeds Master")
+		var comp := false
+		for k in AudioServer.get_bus_effect_count(bi[1]):
+			if AudioServer.get_bus_effect(bi[1], k) is AudioEffectCompressor: comp = true
+		var ps: AudioEffectPitchShift = null
+		var rv := false
+		for k in AudioServer.get_bus_effect_count(bi[3]):
+			var fx := AudioServer.get_bus_effect(bi[3], k)
+			if fx is AudioEffectPitchShift: ps = fx
+			if fx is AudioEffectReverb: rv = true
+		ok(comp and rv and ps != null and is_equal_approx(ps.pitch_scale, 0.9), "VoiceHero has a compressor; VoiceBoss a reverb and a 0.90 pitch shift")
+	var rb := _voice_bank()
+	rb.say("narrator", "act_0")
+	var nb: StringName = rb.active_player().bus if rb.active_player() != null else &""
+	rb.stop(0.0)
+	rb.say("tyrant", "spawn")
+	var tb: StringName = rb.active_player().bus if rb.active_player() != null else &""
+	ok(nb == &"VoiceNarrator" and tb == &"VoiceBoss", "narrator lines play on VoiceNarrator, boss lines on VoiceBoss (%s, %s)" % [nb, tb])
+	rb.queue_free()
+	# ducking: Music -6 dB and SFX -3 dB over 0.12 s while a voice plays, back over 0.25 s when it ends
+	var mi := AudioServer.get_bus_index("Music")
+	var si := AudioServer.get_bus_index("SFX")
+	var m0 := AudioServer.get_bus_volume_db(mi)
+	var s0 := AudioServer.get_bus_volume_db(si)
+	var kb := _voice_bank()
+	var kl := kb.say("spark", "ult", 0)
+	kb.step(0.06)
+	var m_half := AudioServer.get_bus_volume_db(mi)
+	kb.step(0.07)
+	var m_d := AudioServer.get_bus_volume_db(mi)
+	var s_d := AudioServer.get_bus_volume_db(si)
+	ok(m_half < m0 - 1.0 and m_half > m0 - 5.0 and is_equal_approx(m_d, m0 - 6.0) and is_equal_approx(s_d, s0 - 3.0),
+		"while a voice plays, Music ducks 6 dB and SFX 3 dB, smoothly over 0.12 s (%.1f halfway; %.1f / %.1f dB)" % [m_half - m0, m_d - m0, s_d - s0])
+	kb.step(float(kl.duration) - 0.13)
+	kb.step(0.13)
+	var m_mid := AudioServer.get_bus_volume_db(mi)
+	kb.step(0.13)
+	ok(not kb.is_speaking() and m_mid < m0 - 0.5 and m_mid > m0 - 5.5 and is_equal_approx(AudioServer.get_bus_volume_db(mi), m0) and is_equal_approx(AudioServer.get_bus_volume_db(si), s0),
+		"and both buses return exactly to their levels over 0.25 s once it ends (%.1f dB halfway)" % (m_mid - m0))
+	kb.queue_free()
+	# Options > Voice volume drives the Voice bus
+	var vi := AudioServer.get_bus_index("Voice")
+	var vv0 = Save.opt("voice_volume")
+	Save.set_opt("voice_volume", 0.5)
+	var half_db := AudioServer.get_bus_volume_db(vi) if vi >= 0 else 99.0
+	Save.set_opt("voice_volume", 0.0)
+	var muted := vi >= 0 and AudioServer.is_bus_mute(vi)
+	Save.set_opt("voice_volume", 1.0 if vv0 == null else vv0)
+	ok(vv0 != null and absf(half_db - linear_to_db(0.5)) < 0.01 and muted and vi >= 0 and not AudioServer.is_bus_mute(vi), "Options > Voice volume sets the Voice bus (50%% = %.1f dB; 0 mutes it)" % half_db)
+	# subtitles: up for max(2.0, duration + 0.35) s
+	ok(is_equal_approx(VoiceBank.subtitle_seconds(1.0), 1.35) and is_equal_approx(VoiceBank.subtitle_seconds(4.0), 4.35), "a subtitle stays up for its line's length + 0.35 s")
+	var sb := _voice_bank()
+	var subs := Subtitles.new()
+	subs.manual_clock = true
+	add_child(subs)
+	subs.bind(sb)
+	var sl := sb.say("warden", "boss_spawn")
+	# held for its clip (+ 0.35 s) and never less than reading it at 15 characters a second (+ 0.8 s)
+	var hold := maxf(VoiceBank.subtitle_seconds(float(sl.duration)), VoiceBank.read_seconds(String(sl.text)))
+	subs.step(hold - 0.05)
+	var shown := subs.is_showing() and subs.shown_text() == String(sl.text)
+	subs.step(0.1)
+	ok(shown and not subs.is_showing(), "the subtitle banner shows the line and clears after %.2f s" % hold)
+	# every voice line and every written Rift Echo line is up long enough to read at 15 characters a second
+	var fast: Array = []
+	for id in sb.entries:
+		var e: Dictionary = sb.entries[id]
+		var up := maxf(VoiceBank.subtitle_seconds(sb.duration_of(String(e.speaker), String(e.cue), int(e.variant))), VoiceBank.read_seconds(String(e.text)))
+		if String(e.text).length() / up > VoiceBank.READ_CPS + 0.01: fast.append(id)
+	var frag: String = Story.echo(0, 0).text
+	subs.exchange([["Narrator", UIKit.TEXT, frag, 2.8]])
+	subs.step(VoiceBank.read_seconds(frag) - 0.05)
+	var frag_up := subs.shown_text() == frag
+	ok(fast.is_empty() and frag_up and VoiceBank.read_seconds(frag) > 2.8, "every subtitle reads at 15 characters a second or slower, a Rift Echo's fragment too (%.1f s for %d characters, was 2.8 s)%s" % [VoiceBank.read_seconds(frag), frag.length(), "" if fast.is_empty() else ": " + str(fast.slice(0, 4))])
+	subs.queue_free()
+	sb.queue_free()
+	# the stream cache keeps at most 16 voice clips in memory
+	var lb := _voice_bank()
+	for k in 17: lb.cache_put("res://fake/%d.ogg" % k, AudioStreamWAV.new())
+	ok(lb.cache_size() == VoiceBank.LRU_MAX and not lb.cache_has("res://fake/0.ogg") and lb.cache_has("res://fake/16.ogg"), "at most 16 voice streams stay in memory, the least recently used dropped first")
+	lb.cache_get("res://fake/1.ogg")
+	lb.cache_put("res://fake/17.ogg", AudioStreamWAV.new())
+	ok(lb.cache_has("res://fake/1.ogg") and not lb.cache_has("res://fake/2.ogg"), "a stream just played is kept over an older one")
+	lb.queue_free()
+	# hero select: a new exile's intro replaces the last one's at once
+	var hb := _voice_bank()
+	var p1 := hb.preview_hero("warden")
+	hb.step(0.5)
+	var p2 := hb.preview_hero("ember")
+	ok(bool(p1.played) and bool(p2.played) and hb.active_id() == "ember_intro_0", "picking another exile stops the last intro and plays the new one's (%s)" % hb.active_id())
+	hb.queue_free()
+	# the cold open: four narrator beats, each held for its line + 0.5 s; a tap moves on, Skip ends it
+	var ib := _voice_bank()
+	var intro := IntroScreen.new()
+	intro.bank = ib
+	intro.manual_clock = true
+	add_child(intro)
+	var b0 := ib.active_id()
+	var d0 := ib.remaining()                         # the clip's length once the pack is in, the estimate until then
+	var adv := func(x: float) -> void:
+		ib.step(x)
+		intro.step(x)
+	adv.call(d0 + IntroScreen.GAP_S - 0.05)
+	var still0 := intro.beat == 0
+	adv.call(0.1)
+	ok(IntroScreen.GAP_S == 0.5 and b0 == "narrator_intro_0" and still0 and intro.beat == 1 and ib.active_id() == "narrator_intro_1", "the intro holds each beat for its line + 0.5 s, then plays the next")
+	intro.tap()
+	ok(intro.beat == 2 and ib.active_id() == "narrator_intro_2" and intro.shown_text() == String(ib.entries["narrator_intro_2"].text), "a tap moves to the next beat at once, cutting the narrator off; the text is the manifest's")
+	intro.skip()
+	ok(intro.done and not ib.is_speaking(), "Skip ends the intro and stops the narrator")
+	intro.queue_free()
+	ib.queue_free()
+	# in a run: the act opening, a boss and the exile's reply, the ultimate, low life, a streak, a cast, death
+	var vw := World.new()
+	vw.setup({"mode": "campaign", "stage": 1, "hero": 2, "seed": 3, "headless": true, "season": ""})
+	var dbk := _voice_bank()
+	var dir := VoiceDirector.new()
+	dir.bank = dbk
+	dir.manual_clock = true
+	dir.cast_chance = 1.0
+	dir.cast_min_foes = 0
+	add_child(dir)
+	dir.bind(vw)
+	var go := func(x: float) -> void:
+		dbk.step(x)
+		dir.step(x)
+	ok(dbk.active_id() == "narrator_act_1_0", "a campaign run opens with the narrator's line for its act (%s)" % dbk.active_id())
+	go.call(dbk.remaining() + 0.01)
+	vw.moment.emit("boss_spawn", {"boss": "tyrant", "name": "Cindermaw"})
+	var boss_line := dbk.active_id()
+	go.call(dbk.remaining() + VoiceDirector.REPLY_GAP_S + 0.01)
+	ok(boss_line == "tyrant_spawn_0" and dbk.active_id() == "ember_boss_spawn_0", "a boss arrives with its spawn line, then the exile replies (%s, %s)" % [boss_line, dbk.active_id()])
+	go.call(dbk.remaining() + 0.01)
+	vw.moment.emit("ult", {})
+	ok(dbk.active_speaker() == "ember" and dbk.active_cue() == "ult", "the ultimate plays an ult line")
+	go.call(dbk.remaining() + 3.0)
+	vw.hp = vw.max_hp * 0.2
+	go.call(0.1)
+	ok(dbk.active_cue() == "low_hp", "dropping under 30%% life plays a low-health line (%s)" % dbk.active_cue())
+	go.call(dbk.remaining() + 3.0)
+	vw.combo = 30
+	go.call(0.1)
+	ok(dbk.active_cue() == "kill_streak", "a 25-kill streak plays a kill-streak line (%s)" % dbk.active_cue())
+	go.call(dbk.remaining() + 3.0)
+	vw.cast_t = vw.t + 1.0
+	go.call(0.1)
+	ok(dbk.active_cue() == "cast", "a weapon cast in a fight can bark (%s)" % dbk.active_cue())
+	go.call(dbk.remaining() + 0.5)
+	vw.moment.emit("boss_die", {"boss": "herald"})
+	ok(dbk.active_id() == "herald_die_0", "a boss's fall plays its die line")
+	go.call(dbk.remaining() + 0.5)
+	vw.ended.emit(false)
+	ok(dbk.active_speaker() == "ember" and dbk.active_cue() == "death", "falling plays the exile's death line")
+	dir.unbind()
+	dir.queue_free()
+	dbk.queue_free()
+	vw.dispose()
+	# the World raises the moments the director listens for
+	var mw := World.new()
+	mw.setup({"mode": "campaign", "stage": 2, "hero": 0, "seed": 5, "headless": true, "season": ""})
+	var seen: Array = []
+	mw.moment.connect(func(k: String, info: Dictionary) -> void: seen.append([k, String(info.get("boss", "")), String(info.get("name", ""))]))
+	mw.ult = 100.0
+	mw.use_ult()
+	mw.bosses.spawn_stage_boss(false)
+	var bix := -1
+	for i in mw.sw.n:
+		if (mw.sw.flags[i] & Swarm.F_BOSS) != 0: bix = i
+	if bix >= 0: mw.bosses.on_kill(bix, mw.sw.pos[bix])
+	mw.bosses._do_spawn_herald()
+	var pale := String(Content.STAGES[2].boss)
+	ok(seen.has(["ult", "", ""]) and seen.has(["boss_spawn", "tyrant", pale]) and seen.has(["boss_die", "tyrant", pale]) and seen.has(["boss_spawn", "herald", "The Shard Herald"]),
+		"the World raises ult, boss_spawn and boss_die moments with the boss's voice and name (%s)" % str(seen))
+	mw.dispose()
+	# the game itself: a first launch opens on the intro over the menu; picking an exile plays their intro line
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var intro_up: bool = mn.get("intro") != null and int(mn.intro.beat) == 0 and VoiceBank.current != null and VoiceBank.current.active_id() == "narrator_intro_0"
+	if mn.get("intro") != null: mn.intro.skip()
+	var intro_gone: bool = mn.get("intro") == null and bool(sv.data.intro_seen) and mn.state == "menu"
+	ok(intro_up and intro_gone, "a first launch opens on the narrated intro over the menu, and Skip leaves the menu (%s, %s)" % [intro_up, intro_gone])
+	mn._on_act("hero", 3)
+	var vid := VoiceBank.current.active_id() if VoiceBank.current != null else ""
+	ok(vid == "storm_intro_0", "picking an exile on the title screen plays their intro line (%s)" % vid)
+	mn.queue_free()
+	VoiceBank.stop_all(0.0)
+	sv.data = keep
+
+## 0.10.1: the version on screen and in reports comes from one setting; "Copy report" puts the device, settings,
+## last benchmark and session trails on the clipboard as text; "Copy save" / "Paste save" carry a profile across a
+## reinstall (the release-key switch): one checksummed line that survives a chat app's wrapping, never carrying
+## this phone's diagnostics or (from the next iteration) purchases, which only Google Play can restore.
+func _ops_tests() -> void:
+	print("== 0.10.1 report and save transfer")
+	var ver := String(ProjectSettings.get_setting("application/config/version", ""))
+	ok(ver != "" and Diag.version() == ver and RegEx.create_from_string("^\\d+\\.\\d+\\.\\d+").search(ver) != null, "the version comes from application/config/version (%s)" % ver)
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	var bench := {"fps": 57.6, "ms": 17.4, "low1": 41.0, "foes": 400, "draws": 212, "ktris": 610, "tier": "High", "scale": 100, "res": "2340x1080",
+		"device": "SM-S901B", "gpu": "Adreno (TM) 730", "renderer": "mobile"}
+	sv.data.bench = bench
+	var had_prev := FileAccess.file_exists(Diag.PREV)
+	var prev_text := FileAccess.get_file_as_string(Diag.PREV) if had_prev else ""
+	var pf := FileAccess.open(Diag.PREV, FileAccess.WRITE)
+	pf.store_string("  1.00 == boot\n  2.00 start campaign\n  9.50 run t=7.0 foes=212 TEST-PREV-TAIL\n")
+	pf.close()
+	var rep := Diag.report_text()
+	if had_prev:
+		var rf := FileAccess.open(Diag.PREV, FileAccess.WRITE)
+		rf.store_string(prev_text)
+		rf.close()
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(Diag.PREV))
+	ok(rep.begins_with("Shardfall " + ver) and rep.contains("device:") and rep.contains("gpu:") and rep.contains("graphics:"), "Copy report opens with the version, the device, the GPU and the graphics settings")
+	ok(rep.contains("58 FPS") and rep.contains("610k"), "it carries the last benchmark")
+	ok(rep.contains("TEST-PREV-TAIL"), "and the previous session's trail (the crash trail, after a crash)")
+	ok(rep.length() < 20000, "and stays short enough to paste into a message (%d characters)" % rep.length())
+	# Copy save / Paste save
+	sv.data = sv.defaults()
+	sv.data.gold = 1234
+	sv.data.echoes = 9
+	sv.data.passives = ["start", "m1", "m3"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for k in 40: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 30, rng))
+	sv.data.selftest = {"results": [{"f": "base", "fps": 60}]}
+	sv.data.bench = {"fps": 61.0}
+	var token: String = sv.export_text()
+	ok(token.begins_with("SHARDFALL-SAVE:1:") and not token.contains("\n"), "Copy save makes one line of text (%d characters with 40 items in the stash)" % token.length())
+	ok(token.length() < 65536, "short enough for one chat message (under 65,536 characters)")
+	sv.data = sv.defaults()
+	sv.data.gold = 7
+	sv.data.selftest = {"results": [{"f": "base", "fps": 33}]}
+	sv.data.bench = {"fps": 33.0}
+	var wrapped := ""
+	for i in range(0, token.length(), 60): wrapped += token.substr(i, 60) + "\n "
+	var err: String = sv.import_text(wrapped)
+	ok(err == "" and int(sv.data.gold) == 1234 and sv.data.stash.size() == 40 and sv.data.passives == ["start", "m1", "m3"] and int(sv.data.echoes) == 9,
+		"Paste save restores the profile, even after a chat app wraps the text (%s)" % (err if err != "" else "ok"))
+	ok(is_equal_approx(float(sv.data.bench.get("fps", 0.0)), 33.0) and int(sv.data.selftest.results[0].fps) == 33, "this phone's own benchmark and self-test results stay")
+	var bk := String(sv.path).get_basename() + "_before_paste.json"
+	ok(FileAccess.file_exists(bk) and FileAccess.get_file_as_string(bk).contains("\"gold\":7"), "the profile it replaced is kept in %s" % bk.get_file())
+	var before := JSON.stringify(sv.data)
+	var at := token.length() - 10
+	var flipped := token.substr(0, at) + ("A" if token[at] != "A" else "B") + token.substr(at + 1)
+	var e1: String = sv.import_text(flipped)
+	var e2: String = sv.import_text(token.substr(0, token.length() - 40))
+	var e3: String = sv.import_text("hello there")
+	ok(e1 != "" and e2 != "" and e3 != "" and JSON.stringify(sv.data) == before, "a damaged, cut-short or foreign paste is refused and changes nothing (%s | %s | %s)" % [e1, e2, e3])
+	sv.data["purchases"] = {"from_google_play": true}
+	var forged: String = sv.encode_save({"version": 2, "gold": 5, "purchases": {"starter_pack": true}})
+	var e4: String = sv.import_text(forged)
+	ok(e4 == "" and int(sv.data.gold) == 5 and sv.data.get("purchases", {}) == {"from_google_play": true}, "a pasted save never brings purchases: the phone keeps its own (%s)" % str(sv.data.get("purchases", {})))
+	sv.data.erase("purchases")
+	# the buttons, and the version on the title screen
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var on_title := _texts(mn.screens, "Label").any(func(s): return s.contains(ver))
+	mn.screens._opt_tab = Screens.OPT_TABS.find("Game")
+	mn.screens.show_options("menu")
+	var game_tab := _texts(mn.screens, "Button")
+	var opt_sub := _texts(mn.screens, "Label").any(func(s): return s.contains(ver))
+	mn.screens._opt_tab = Screens.OPT_TABS.find("Diagnostics")
+	mn.screens.show_options("menu")
+	var diag_tab := _texts(mn.screens, "Button")
+	mn.screens.show_crash(PackedStringArray(["one", "two"]))
+	var crash := _texts(mn.screens, "Button")
+	mn.screens.show_bench(bench)
+	var bench_b := _texts(mn.screens, "Button")
+	mn.screens._opt_tab = 0
+	ok(on_title and opt_sub, "the title screen and the Options title show the version")
+	ok(game_tab.has("Copy save") and game_tab.has("Paste save"), "Options has Copy save and Paste save")
+	ok(diag_tab.has("Copy report") and crash.has("Copy report") and bench_b.has("Copy report"), "Copy report is in Options > Diagnostics, on the crash report and on the benchmark result")
+	mn.queue_free()
+	sv.data = keep
+
+## 0.10.1, the S22 check: held sideways a phone's UI is 720 units tall, and a page's Back and main actions sit in
+## its sheet's foot, on screen however long the page gets (the end of a run with bargains, unlocks, happenings and
+## loot; a 60-line crash report; Options; the benchmark). Held upright (1080x2340, the UI scaled 1.9x as main does)
+## a long title wraps instead of pushing the crash report off the screen's right edge.
+func _fit_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size                       # headless: 64x64
+	win.size = Vector2i(2340, 1080)             # the S22 held sideways: a 1560x720 UI
+	await get_tree().process_frame
+	var vs: Vector2 = mn.screens.get_viewport_rect().size
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 2})
+	w.bargains = ["ember_pact", "blood_price", "long_night"]
+	w.new_unlocks = ["glaive", "wisp"]
+	w.director.history = [[30.0, "breach"], [90.0, "goblin"], [150.0, "eclipse"], [210.0, "ritual"]]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for k in 6: w.loot_run.append(Items.make(Content.SLOTS[k % 4], Content.Rarity.RARE + k % 2, 20, rng))
+	mn.screens.show_end(w)
+	var end_r := await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
+	var trail: Array = []
+	for i in 60: trail.append("[%d.0] line %d of the session's trail" % [i, i])
+	mn.screens.show_crash(PackedStringArray(trail))
+	var crash_r := await _off_screen(mn.screens, ["Copy report", "Continue"])
+	mn.screens._opt_tab = Screens.OPT_TABS.find("Game")
+	mn.screens.show_options("menu")
+	var opt_r := await _off_screen(mn.screens, ["Back"])
+	mn.screens._opt_tab = 0
+	mn.screens.show_bench({"fps": 57.6, "ms": 17.4, "low1": 41.0, "foes": 400, "draws": 212, "ktris": 610, "tier": "High", "scale": 100,
+		"res": "2340x1080", "device": "SM-S901B", "gpu": "Adreno (TM) 730", "renderer": "mobile"})
+	var bench_r := await _off_screen(mn.screens, ["Copy report", "Run again", "Back"])
+	var srng := RandomNumberGenerator.new()
+	srng.seed = 5
+	for k in 8: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, srng))
+	var leg := -1
+	var gl: Array = mn.screens._gear_list()               # the page's own order (rarest first)
+	for k in gl.size():
+		if String(gl[k].it.get("leg", "")) != "": leg = k
+	var stash_want := ["Equip", "Salvage", "Back"] + (["Extract power"] if leg >= 0 else [])
+	mn.screens._sel_item = leg if leg >= 0 else 2
+	mn.screens.show_stash(false)
+	var stash_r := await _off_screen(mn.screens, stash_want)
+	var pause_want := ["Resume", "Build & Stats", "Gear", "Options", "Restart Run", "Main Menu"]
+	mn.screens.show_pause(w)
+	var pause_r := await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear", "Options"])
+	mn.screens._sel_passive = "a6"
+	mn.screens.show_web()
+	var web_want := ["Not yet reachable", "Reset web  (refund all)", "Back"]      # a6 from a fresh profile: not reachable yet
+	var web_r := await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
+	# with Echoes to spend the web opens on a node within reach (it opened on the taken start node: Take disabled), and
+	# lists the nodes within reach as tiles at least MIN_TOUCH (40 dp) a side: the graph's nodes are 9.5-14 dp targets;
+	# at an S22's own x1.125 the whole graph stays on screen (at the old 300 floor its bottom arm sat under the foot)
+	sv.data.echoes = 3
+	mn.screens._sel_passive = "start"
+	mn.screens.show_web()
+	await get_tree().create_timer(0.35).timeout          # the sheet's settle, as _off_screen waits
+	var tk := _btn(mn.screens, "Take  \u00b7  1 Echo")
+	var tk_ok: bool = tk != null and not tk.disabled           # read now: the page is rebuilt below
+	var rtiles: Array = []
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("passive"): rtiles.append(b)
+	var rsmall := rtiles.filter(func(b): return (b as Control).size.y < UIKit.MIN_TOUCH or (b as Control).size.x < UIKit.MIN_TOUCH)
+	var pre := String(mn.screens._sel_passive)
+	sv.data.options.ui_scale = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	mn._ui_scale()
+	await get_tree().process_frame
+	mn.screens.show_web()
+	var g22 := await _off_screen(mn.screens, ["Take  \u00b7  1 Echo", "Back"]) + _graph_shown(mn.screens)
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	await get_tree().process_frame
+	sv.data.echoes = 0
+	mn.screens._sel_passive = "a6"
+	ok(tk_ok and Content.passive_can_take(pre, ["start"]) and rtiles.size() == 4 and rsmall.is_empty() and g22 == "",
+		"with Echoes to spend the Shard Web opens on a node within reach (%s), lists the %d nodes within reach as tiles of 63 units or more, and at an S22's x1.125 keeps its whole graph on screen (Take %s, small %d)%s" % [pre, rtiles.size(), "on" if tk_ok else "missing or off", rsmall.size(), g22])
+	ok(vs.y == 720.0 and end_r == "", "held sideways (%dx%d UI), the end of a long run keeps Play again, Camp and Main menu on screen%s" % [vs.x, vs.y, end_r])
+	ok(crash_r == "" and opt_r == "" and bench_r == "", "and so do the crash report's Copy report and Continue, Options' Back and the benchmark's buttons%s%s%s" % [crash_r, opt_r, bench_r])
+	ok(stash_r == "", "the stash keeps the selected item's %s on screen with Back%s" % [" / ".join(stash_want.slice(0, stash_want.size())), stash_r])
+	ok(pause_r == "" and web_r == "", "the pause menu: Build & Stats, Gear and Options on one row, every button on screen; the Shard Web's whole graph, Take, Reset and Back on screen%s%s" % [pause_r, web_r])
+	# held upright: the S22's 1080x2340, which main._ui_scale answers by scaling the UI up 1.9x
+	win.size = Vector2i(1080, 2340)
+	await get_tree().process_frame
+	var pv: Vector2 = mn.screens.get_viewport_rect().size
+	mn.screens.show_crash(PackedStringArray(trail.slice(0, 8)))
+	var up_r := await _off_screen(mn.screens, ["Copy report", "Continue"])
+	var title_lines := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if String(l.text) == "THE LAST SESSION ENDED UNEXPECTEDLY": title_lines = (l as Label).get_line_count()
+	mn.screens.show_stash(false)
+	up_r += await _off_screen(mn.screens, stash_want)
+	mn.screens.show_pause(w)
+	up_r += await _off_screen(mn.screens, pause_want) + _one_row(mn.screens, ["Build & Stats", "Gear", "Options"])
+	mn.screens.show_web()
+	up_r += await _off_screen(mn.screens, web_want) + _graph_shown(mn.screens)
+	win.size = size0
+	await get_tree().process_frame
+	ok(pv.x < 700.0 and up_r == "" and title_lines >= 2, "held upright (%dx%d UI), the crash report's title wraps (%d lines) and its buttons, the stash's, the pause menu's and the Shard Web's stay on screen%s" % [pv.x, pv.y, title_lines, up_r])
+	# the Shard Web's names: none on another, all inside the view, at the sizes its page gives it
+	var wv := Screens.WebView.new()
+	var web_bad: Array = []
+	var named := 0
+	for sz in [Vector2(560, 420), Vector2(600, 420), Vector2(660, Screens.WEB_MIN_H), Vector2(700, 310), Vector2(830, 310), Vector2(830, 390), Vector2(1000, 480)]:
+		wv.size = sz
+		var lay: Dictionary = wv.label_layout()
+		named = lay.size()
+		var ids: Array = lay.keys()
+		for i in ids.size():
+			var a: Rect2 = lay[ids[i]]
+			if not Rect2(Vector2.ZERO, sz).encloses(a): web_bad.append("%s outside at %dx%d" % [ids[i], sz.x, sz.y])
+			for j in range(i + 1, ids.size()):
+				if a.intersects(lay[ids[j]]): web_bad.append("%s on %s at %dx%d" % [ids[i], ids[j], sz.x, sz.y])
+	wv.free()
+	ok(named == 8 and web_bad.is_empty(), "the Shard Web's 8 notable and keystone names never overlap and stay inside the view%s" % (("  (" + "; ".join(web_bad) + ")") if not web_bad.is_empty() else ""))
+	mn.queue_free()
+	sv.data = keep
+
+## Options > UI scale at Largest (x1.3) on an S22 at its own x1.125 (on a phone main applies that itself; here the
+## option stands in for both), held sideways and upright. main._ui_scale clamps the canvas to UI_MIN_TALL /
+## UI_MIN_WIDE, the UI scale row says what was applied, and on every page every button and label stays inside the
+## screen side to side (and top to bottom outside a scroll area), with no label lying over a button it is not part
+## of. Unclamped (x1.46) the canvas was 490 units tall sideways (the exile's name over PLAY, the bottom row cut off)
+## and 459 wide upright (Options' values and its Diagnostics tab off the right edge).
+func _largest_scale_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.stats.runs = 1
+	sv.data.seen_version = Diag.version()
+	sv.data.cleared = [true, false, false, false, false]
+	for i in Content.HEROES.size():                  # the exile with the longest ultimate text: the title's plate at its tallest
+		if String(Content.HEROES[i].ult_d).length() > String(Content.HEROES[int(sv.data.hero)].ult_d).length(): sv.data.hero = i
+	var rng := RandomNumberGenerator.new(); rng.seed = 12
+	for k in 6: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, rng))
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	var s22: float = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	sv.data.options.ui_scale = Screens.UI_SCALES[Screens.UI_SCALES.size() - 1]
+	for orient: Vector2i in [Vector2i(2340, 1080), Vector2i(1080, 2340)]:
+		var side := orient.x > orient.y
+		var tag := "sideways" if side else "upright"
+		win.size = orient
+		sv.data.options.ui_scale = Screens.UI_SCALES[Screens.UI_SCALES.size() - 1] * s22
+		mn._ui_scale()
+		await get_tree().process_frame
+		var vs: Vector2 = mn.screens.get_viewport_rect().size
+		ok((vs.y >= main_script().UI_MIN_TALL - 0.5) if side else (vs.x >= main_script().UI_MIN_WIDE - 0.5),
+			"%s on an S22 at Largest the canvas keeps %s (%dx%d, x%.3f of the asked x%.3f)" % [tag, ("%d units tall" % int(main_script().UI_MIN_TALL)) if side else ("%d wide" % int(main_script().UI_MIN_WIDE)), vs.x, vs.y, UIKit.ui_scale_applied, sv.data.options.ui_scale])
+		var bad: Array = []
+		mn._menu()
+		bad.append_array(await _fits_screen(mn.screens, "title"))
+		mn._on_act("heroes", null)
+		bad.append_array(await _fits_screen(mn.screens, "heroes"))
+		for tab in 4:
+			mn.screens._opt_tab = tab
+			mn.screens.show_options("menu")
+			bad.append_array(await _fits_screen(mn.screens, "options %d" % tab))
+		mn.screens._opt_tab = 0
+		mn.screens._sel_item = 0
+		mn.screens.show_stash(false)
+		bad.append_array(await _fits_screen(mn.screens, "gear"))
+		for page in ["camp", "smith", "kiln", "nim", "sella", "brask"]:
+			CampPages.show(mn.screens, page)
+			bad.append_array(await _fits_screen(mn.screens, page))
+		for pg in ["codex", "upgrades", "endgame", "daily", "web"]:
+			mn._on_act(pg, null)
+			bad.append_array(await _fits_screen(mn.screens, pg))
+		mn._on_act("campaign", 0)
+		await get_tree().process_frame
+		mn.world.pending = 1
+		mn._on_level()
+		for k in 6: await get_tree().process_frame
+		bad.append_array(await _fits_screen(mn.screens, "level-up"))
+		mn._on_act("pick", mn.world.make_choices()[0])
+		mn._pause()
+		bad.append_array(await _fits_screen(mn.screens, "pause"))
+		mn.screens.show_build(mn.world)
+		bad.append_array(await _fits_screen(mn.screens, "build"))
+		mn._resume()
+		mn.world.end_run(false, true)
+		mn.screens.show_end(mn.world)
+		bad.append_array(await _fits_screen(mn.screens, "end"))
+		mn._menu()
+		ok(bad.is_empty(), "%s on an S22 at Largest, the title, Heroes, Options (4 tabs), Gear, the Camp and its stations, Codex, Upgrades, Modes, the Daily Rift, the Shard Web, level-up, pause, Build & Stats and the end of a run keep every button and label on screen, none over another's button%s" % [tag, ("" if bad.is_empty() else ": " + str(bad.slice(0, 6)) + (" (+%d)" % (bad.size() - 6) if bad.size() > 6 else ""))])
+	sv.data.options.ui_scale = Screens.UI_SCALES[Screens.UI_SCALES.size() - 1]      # Largest itself, upright: x1.9 x 1.3 > the clamp
+	mn._ui_scale()
+	await get_tree().process_frame
+	mn.screens._opt_tab = 1
+	mn.screens.show_options("menu")
+	ok(UIKit.ui_scale_applied < 1.29 and _label_starting(mn.screens, "Largest asks for 130%") != null and _btn(mn.screens, "Largest (%d%%)" % roundi(UIKit.ui_scale_applied * 100.0)) != null,
+		"the UI scale row shows the scale the screen applied (x%.2f) and says Largest was limited" % UIKit.ui_scale_applied)
+	mn.screens._opt_tab = 0
+	sv.data.options.ui_scale = 1.0
+	win.size = size0
+	mn._ui_scale()
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
+
+func _label_starting(root: Node, start: String) -> Label:
+	for l in root.find_children("*", "Label", true, false):
+		if String(l.text).begins_with(start) and (l as Control).is_visible_in_tree() and _live(l): return l
+	return null
+
+## What on a page leaves the screen: a button or label past either side (anywhere) or past the top or bottom (outside a
+## scroll area), or a label lying over a button it is not part of (both as far as their scroll areas show them).
+## Each as "<page>: <text> <why>".
+func _fits_screen(root: Control, tag: String) -> Array:
+	await get_tree().create_timer(0.35).timeout          # the sheet's 0.22 s settle
+	var vr := root.get_viewport_rect().grow(0.5)
+	var out: Array = []
+	var shown: Array = []                                # [control, the part its scroll areas leave in view]
+	for c in root.find_children("*", "Control", true, false):
+		if not (c is Button or c is Label) or not (c as Control).is_visible_in_tree() or not _live(c): continue
+		var r := (c as Control).get_global_rect()
+		if r.size.x < 1.0 or r.size.y < 1.0: continue
+		var txt := String(c.text) if c is Button else String((c as Label).text)
+		if c is Label and txt.strip_edges() == "": continue
+		var scrolled := false
+		var seen := r
+		var n := c.get_parent()
+		while n != null:
+			if n is ScrollContainer:
+				scrolled = true
+				seen = seen.intersection((n as Control).get_global_rect())
+			n = n.get_parent()
+		if r.position.x < vr.position.x or r.end.x > vr.end.x: out.append("%s: %s off the side %s" % [tag, txt.left(24), str(r)])
+		elif not scrolled and (r.position.y < vr.position.y or r.end.y > vr.end.y): out.append("%s: %s off the top or bottom %s" % [tag, txt.left(24), str(r)])
+		if seen.get_area() > 1.0: shown.append([c, seen])
+	for e in shown:
+		if not (e[0] is Label): continue
+		var lr: Rect2 = e[1]
+		for f in shown:
+			if not (f[0] is Button) or (f[0] as Node).is_ancestor_of(e[0]): continue
+			var ov := lr.intersection(f[1])
+			if ov.get_area() > 0.2 * lr.get_area(): out.append("%s: label %s over button %s" % [tag, String((e[0] as Label).text).left(20), String((f[0] as Button).text).left(16)])
+	return out
+
+## "" when the Shard Web's graph is drawn whole: inside the screen and every scroll area around it.
+func _graph_shown(root: Control) -> String:
+	for g in root.find_children("*", "Control", true, false):
+		if not (g is Screens.WebView): continue
+		var r := (g as Control).get_global_rect()
+		var n := g.get_parent()
+		while n != null:
+			if n is ScrollContainer and not (n as Control).get_global_rect().grow(0.5).encloses(r):
+				return "  (the web's graph %s runs past its scroll area %s)" % [str(r), str((n as Control).get_global_rect())]
+			n = n.get_parent()
+		return "" if root.get_viewport_rect().grow(0.5).encloses(r) else "  (the web's graph is off the screen)"
+	return "  (no Shard Web graph)"
+
+## "" when the buttons named share one row (the same top edge); else where each one is.
+func _one_row(root: Control, labels: Array) -> String:
+	var ys := {}
+	for b in root.find_children("*", "Button", true, false):
+		if labels.has(String(b.text)) and (b as Control).is_visible_in_tree(): ys[String(b.text)] = roundi((b as Control).global_position.y)
+	return "" if ys.size() == labels.size() and ys.values().all(func(y): return y == ys.values()[0]) else "  (not one row: %s)" % str(ys)
+
+## "" when every button named is visible, inside the screen and inside every scroll area around it; else what is not.
+func _off_screen(root: Control, labels: Array) -> String:
+	await get_tree().create_timer(0.35).timeout          # the sheet's 0.22 s settle
+	var vr := root.get_viewport_rect().grow(0.5)
+	var bad: Array = []
+	for want in labels:
+		var found := false
+		for b in root.find_children("*", "Button", true, false):
+			if String(b.text) != want or not (b as Control).is_visible_in_tree(): continue
+			found = true
+			var r := (b as Control).get_global_rect()
+			var why := ""
+			if not vr.encloses(r): why = "off the screen at %s" % str(r)
+			var n := b.get_parent()
+			while n != null and why == "":
+				if n is ScrollContainer and not (n as Control).get_global_rect().grow(0.5).encloses(r): why = "scrolled out of sight"
+				n = n.get_parent()
+			if why != "": bad.append("%s %s" % [want, why])
+		if not found: bad.append(want + " missing")
+	return "" if bad.is_empty() else "  (" + "; ".join(bad) + ")"
+
+## A page's foot buttons (UIKit.foot) shorter than UIKit.FOOT_H.
+func _short_foot(root: Node, tag: String) -> Array:
+	var out: Array = []
+	for f in root.find_children("Foot", "VBoxContainer", true, false):
+		if not _live(f) or not (f as Control).visible: continue
+		for b in f.find_children("*", "Button", true, false):
+			if _live(b) and (b as Control).get_combined_minimum_size().y < UIKit.FOOT_H - 0.5:
+				out.append("%s: %s (%.0f)" % [tag, String((b as Button).text), (b as Control).get_combined_minimum_size().y])
+	return out
+
+## The labels (by their text, or its start) that are missing or not wholly in view: off the screen or scrolled out of
+## a scroll area around them.
+func _labels_out_of_view(root: Control, starts: Array) -> Array:
+	var vr := root.get_viewport_rect().grow(0.5)
+	var bad: Array = []
+	for want in starts:
+		var seen := false
+		for l in root.find_children("*", "Label", true, false):
+			if not _live(l) or not (l as Control).is_visible_in_tree() or not String(l.text).begins_with(want): continue
+			var r := (l as Control).get_global_rect()
+			var inside := vr.encloses(r)
+			var n := l.get_parent()
+			while n != null and inside:
+				if n is ScrollContainer and not (n as Control).get_global_rect().grow(0.5).encloses(r): inside = false
+				n = n.get_parent()
+			if inside: seen = true
+		if not seen: bad.append(want)
+	return bad
+
+func _texts(root: Node, cls: String) -> Array:
+	var out: Array = []
+	for c in root.find_children("*", cls, true, false):
+		out.append(String(c.text))
+	return out
+
+# ================================================================= 0.10.0 alpha
+## Counts the engine's errors and warnings while it is attached (the main.tscn flow must raise none). The
+## headless dummy renderer keeps no materials and logs "material is null" whenever a mesh with a surface
+## override material is freed: that is the stand-in renderer talking, not the game, so it is counted apart.
+class ErrCount extends Logger:
+	var n := 0
+	var dummy := 0
+	var seen: Array = []
+	func _log_error(_function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, _error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if file.contains("servers/rendering/dummy/"):
+			dummy += 1
+			return
+		n += 1
+		if seen.size() < 6: seen.append("%s:%d %s" % [file.get_file(), line, rationale if rationale != "" else code])
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
+
+## 0.10.0-alpha: solid props (the foe guard, no tunnelling, chunk-edge spill, a tide that moves no solid, the
+## same run on Low and High through trims), the rigs' fades, the game's own flow (intro, menu, heroes, a run,
+## pause, back to the menu) with no error and nothing left behind, VoiceBank's clip timing and stop_all, the
+## Emberwitch's contagion at 400 foes, the three prop synergies, Rift Echoes, the safe-mode sentinel, the
+## story's data and the menus' touch targets.
+func _alpha10_tests() -> void:
+	print("== 0.10.0 alpha")
+	# ---- determinism primitives: SplitMix64 against its reference values (tools: Python)
+	ok(PropLayout.splitmix(1) == 6238072747940578789 and PropLayout.splitmix(12345) == -906084347102765743 and PropLayout.splitmix(-7) == -2622165800321222925,
+		"PropLayout.splitmix matches the SplitMix64 reference (64-bit wrapping, logical shifts)")
+	ok(PropLayout.seed_of(Vector2i(3, -2), 1) == PropLayout.seed_of(Vector2i(3, -2), 1) and PropLayout.seed_of(Vector2i(3, -2), 1) != PropLayout.seed_of(Vector2i(-2, 3), 1),
+		"chunk seeds are stable and tell mirrored chunks apart")
+	# ---- the foe guard: beside impassable ground a prop never shoves a foe off its feet
+	var gw := _world({"mode": "campaign", "stage": 2, "hero": 0, "seed": 41})
+	var T := gw.terrain
+	var edges: Array = []
+	for cy in range(-60, 61):
+		for cx in range(-60, 61):
+			var q := Vector2(cx * Terrain.CELL + 8.0, cy * Terrain.CELL + 8.0)
+			if not T.passable(q) and T.passable(q + Vector2(Terrain.CELL, 0)): edges.append(q + Vector2(Terrain.CELL, 0))
+			if edges.size() >= 60: break
+		if edges.size() >= 60: break
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 7
+	var bad := 0
+	var trials := 0
+	for e in edges:
+		for k in 6:
+			var p0: Vector2 = e + Vector2(rr.randf_range(0.0, 10.0), rr.randf_range(-8.0, 8.0))
+			if not T.passable(p0): continue
+			T.set_test_props(PackedFloat32Array([p0.x + rr.randf_range(4.0, 22.0), p0.y + rr.randf_range(-12.0, 12.0), rr.randf_range(10.0, 22.0), 0.0]))
+			var np0 := p0 + Vector2(rr.randf_range(-8.0, 8.0), rr.randf_range(-8.0, 8.0))
+			var r0 := T.foe_move(p0, np0, 12.0)
+			trials += 1
+			if not T.passable(r0): bad += 1
+	ok(trials >= 100 and bad == 0, "foe_move beside impassable ground never ends a foe off it (%d of %d moves)" % [bad, trials])
+	# ---- anti-tunnelling: a 35-unit step never carries a body through an r 14 trunk
+	T.set_test_props(PackedFloat32Array([0.0, 0.0, 14.0, 0.0]))
+	var tun := 0
+	for mover in ["move", "foe_move"]:
+		var p1 := Vector2(-60.0, 0.0)
+		for k in 6:
+			var n1: Vector2 = T.move(p1, p1 + Vector2(35.0, 0.0), 6.0) if mover == "move" else T.foe_move(p1, p1 + Vector2(35.0, 0.0), 6.0)
+			if n1.x > 0.0 or n1.length() < 14.0 + 6.0 - 0.01: tun += 1
+			p1 = n1
+	ok(tun == 0, "a 35 unit/tick step never tunnels through an r 14 trunk, walking or as a foe (%d tunnelled)" % tun)
+	T.props_on = true
+	T._prop_test_on = false
+	# ---- chunk-edge spill: a circle centred in one chunk is seen from the next
+	T._prop_chunk(Vector2i(1, 0))
+	T._prop_chunks[Vector2i(0, 0)] = PackedFloat32Array([636.0, 100.0, 20.0, 1.0])
+	T._prop_tags[Vector2i(0, 0)] = PackedByteArray([PropLayout.TAG_STONE])
+	T._prop_cells.clear()
+	T._prop_cell_tags.clear()
+	var spill := false
+	var nb := T.props_near(Vector2(650.0, 100.0))
+	for j in range(0, nb.size(), 4):
+		if is_equal_approx(nb[j], 636.0) and is_equal_approx(nb[j + 1], 100.0): spill = true
+	ok(spill and T.props_clear(Vector2(650.0, 100.0), 10.0) == false, "props_near sees a wall that spills over a chunk edge (MAX_SPILL), and it blocks there")
+	# ---- Act V: the tide rises 40 and no solid moves
+	var w5 := _world({"mode": "campaign", "stage": 4, "hero": 0, "seed": 9})
+	var cs := [Vector2i(0, 0), Vector2i(1, 1), Vector2i(-2, 1), Vector2i(2, -1)]
+	var before: Array = []
+	for c in cs: before.append([PropLayout.chunk(c, 4, w5.terrain, 1.0, false).solids, PropLayout.solid_tags(c, 4, w5.terrain)])
+	w5.terrain.level += 40.0
+	w5.terrain._chunks.clear()
+	var same := true
+	for k in cs.size():
+		var c2: Vector2i = cs[k]
+		if PropLayout.chunk(c2, 4, w5.terrain, 1.0, false).solids != before[k][0] or PropLayout.solid_tags(c2, 4, w5.terrain) != before[k][1]: same = false
+	ok(same, "Act V: the liquid 40 units higher leaves every solid and its tag where it was (placement reads level0)")
+	var tags_ok := true
+	var woods := 0
+	for c3 in cs:
+		var lay := PropLayout.chunk(c3, 0, gw.terrain, 1.0, false)
+		var tg: PackedByteArray = lay.solid_tags
+		if tg.size() * 4 != (lay.solids as PackedFloat32Array).size(): tags_ok = false
+		for t in tg:
+			if t > PropLayout.TAG_ARCH: tags_ok = false
+			if t == PropLayout.TAG_WOOD: woods += 1
+	ok(tags_ok and woods > 0, "every solid carries a tag (WOOD, STONE or ARCH), parallel to the circles (%d wood)" % woods)
+	# ---- the same run on Low and on High, one of them trimming its caches all the way
+	var sv: Node = get_node("/root/Save")
+	var gfx0: int = int(sv.data.options.gfx)
+	var sigs: Array = []
+	for tier in [1, 3]:
+		sv.data.options.gfx = tier
+		var dw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 77})
+		dw.stats.set_source("t", [["max_hp", "add", 1e6]]); dw.hp = 1e6
+		for k in 1800:
+			if tier == 1 and k % 300 == 150: dw.terrain.trim(dw.pp, 1)
+			dw.step(1.0 / 60.0)
+		var hsh := 0
+		for i in dw.sw.n: hsh = hash([hsh, roundi(dw.sw.pos[i].x * 8.0), roundi(dw.sw.pos[i].y * 8.0)])
+		sigs.append([dw.sw.n, dw.kills, roundi(dw.pp.x * 8.0), roundi(dw.pp.y * 8.0), hsh])
+	sv.data.options.gfx = gfx0
+	ok(sigs[0] == sigs[1], "1,800 ticks on Low (trimming its prop caches) and on High end identical (%s)" % str(sigs[0]))
+	# ---- rigs: a boss's light dies with it; a standing cast gives way to a roll, a jump or death
+	var bo := BossRig.new()
+	add_child(bo)
+	bo.build("tyrant", Color.RED, "tyrant")
+	var e0 := bo.light.light_energy
+	var total := bo.death_time() + WorldView3D.BOSS_SINK
+	var dtb := 1.0 / 60.0
+	var tb := 0.0
+	while tb < total + 0.1:
+		bo.animate({"pos": Vector2(500, 500), "face": Vector2.RIGHT, "hp_frac": 0.0, "flash": 0.0, "t": tb, "dt": dtb, "attack": false, "phase": 0,
+			"dead": true, "fade": clampf((total - tb) / total, 0.0, 1.0)})
+		if bo.anim != null: bo.anim.advance(dtb)
+		tb += dtb
+	ok(e0 > 0.0 and bo.light.light_energy <= 0.001 and not bo.light.visible, "a dying boss's light fades from %.2f to 0 over its death and sink (%.4f)" % [e0, bo.light.light_energy])
+	bo.queue_free()
+	var aborted: Array = []
+	for how in ["roll", "jump", "dead"]:
+		var hh := HeroRig.new()
+		add_child(hh)
+		hh.build("warden", Color.WHITE)
+		if hh.tree == null:
+			hh.queue_free()
+			continue
+		var st := {"pos": Vector2.ZERO, "face": Vector2.RIGHT, "cast_dir": Vector2.RIGHT, "cast_age": 9.0, "mv": 0.0, "vel": 0.0,
+			"roll": -1.0, "hit": 0.0, "dead": false, "t": 0.0, "ph": 0.0, "jump": -1.0}
+		for k in 10:
+			hh.animate(st, dtb); hh.tree.advance(dtb)
+		st.cast_age = 0.0
+		hh.animate(st, dtb); hh.tree.advance(dtb)
+		var on := bool(hh.tree.get("parameters/cast_full/active"))
+		match how:
+			"roll": st.roll = 0.3
+			"jump": st.jump = 0.3
+			"dead": st.dead = true
+		for k in 30:
+			st.cast_age = float(st.cast_age) + dtb
+			hh.animate(st, dtb); hh.tree.advance(dtb)
+		if on and not bool(hh.tree.get("parameters/cast_full/active")): aborted.append(how)
+		hh.queue_free()
+	ok(aborted == ["roll", "jump", "dead"], "a standing cast fades out on a roll, a jump and death (%s)" % str(aborted))
+	# ---- the game itself: intro -> main menu -> heroes -> a run -> pause -> main menu, no error, nothing left
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	Diag.crashed_last = false
+	var orph0 := Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)
+	var errs := ErrCount.new()
+	OS.add_logger(errs)
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var steps: Array = []
+	if mn.intro != null and mn.state == "intro": steps.append("intro")
+	mn.intro.skip()
+	if mn.intro == null and mn.state == "menu" and mn.screens.page == "menu": steps.append("menu")
+	mn._on_act("heroes", null)
+	sv.data.hero = 1                                  # what the Sparkcaller's tile does before it acts
+	mn._on_act("hero", 1)
+	if mn.screens.page == "sub" and int(sv.data.hero) == 1 and VoiceBank.current != null and VoiceBank.current.active_id() == "spark_intro_0": steps.append("heroes")
+	mn.back()
+	if mn.screens.page == "menu": steps.append("back")
+	mn._on_act("campaign", 0)
+	for k in 30: mn._process(1.0 / 60.0)
+	if mn.state == "play" and mn.world != null and mn.world.t > 0.0: steps.append("run")
+	mn._pause()
+	if mn.state == "pause" and mn.screens.page == "pause": steps.append("pause")
+	mn._on_act("build", null)
+	mn.back()
+	if mn.state == "pause" and mn.screens.page == "pause": steps.append("build")
+	mn.back()
+	if mn.state == "play": steps.append("resume")
+	mn._pause()
+	mn.screens.confirm("Leave this run?", "", "Leave", "leave")
+	mn._on_act("leave", null)
+	var speaking := VoiceBank.current != null and VoiceBank.current.is_speaking()
+	if mn.state == "menu" and mn.world == null and mn.screens.page == "menu" and not speaking: steps.append("main menu")
+	mn.free()
+	await get_tree().process_frame                     # pages cleared with queue_free go at the end of a frame
+	await get_tree().process_frame
+	OS.remove_logger(errs)
+	var orph := Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT) - orph0
+	ok(steps == ["intro", "menu", "heroes", "back", "run", "pause", "build", "resume", "main menu"] and errs.n == 0 and orph == 0,
+		"main.tscn: intro, main menu, heroes, Back, a run, pause, Build & Stats, resume, Main Menu: %s, %d errors%s (%d from the headless dummy renderer), %d orphan nodes left" % [str(steps), errs.n, (" " + str(errs.seen)) if errs.n > 0 else "", errs.dummy, int(orph)])
+	VoiceBank.stop_all()
+	sv.data = keep
+	# ---- VoiceBank: a clip times its line; stop_all is immediate and gives Music and SFX back their 0 dB
+	var vb := _voice_bank()
+	var ln: Dictionary = vb.entries["narrator_act_0_0"]
+	ln.file = "res://tests/fixtures/voice_probe.ogg"
+	var probe: AudioStream = load(ln.file)
+	var rp := vb.say("narrator", "act_0", 0)
+	ok(bool(rp.using_pack) and absf(float(rp.duration) - probe.get_length()) < 0.001 and absf(vb.duration_of("narrator", "act_0", 0) - probe.get_length()) < 0.001
+		and is_equal_approx(VoiceBank.subtitle_seconds(float(rp.duration)), probe.get_length() + 0.35),
+		"a clip times its line: %.2f s played, the same from duration_of, its subtitle up %.2f s (length + 0.35)" % [float(rp.duration), VoiceBank.subtitle_seconds(float(rp.duration))])
+	vb.queue_free()
+	var cur := VoiceBank.current
+	var mus := AudioServer.get_bus_index("Music")
+	var sfx := AudioServer.get_bus_index("SFX")
+	if cur != null:
+		cur.say("warden", "boss_spawn", 0)
+		cur.step(0.5)
+		var ducked := AudioServer.get_bus_volume_db(mus) < -3.0 and AudioServer.get_bus_volume_db(sfx) < -1.0
+		VoiceBank.stop_all()
+		ok(ducked and not cur.is_speaking() and is_zero_approx(AudioServer.get_bus_volume_db(mus)) and is_zero_approx(AudioServer.get_bus_volume_db(sfx)),
+			"stop_all stops the line at once and returns Music (%.1f dB) and SFX (%.1f dB) to 0 dB" % [AudioServer.get_bus_volume_db(mus), AudioServer.get_bus_volume_db(sfx)])
+	var eb := _voice_bank()
+	var picks := {}
+	for k in 40:
+		var rk := eb.say("ember", "kill_streak")
+		if bool(rk.played): picks[int(rk.variant)] = true
+		eb.stop_now()
+		eb.step(11.0)
+	ok(not picks.has(eb.escalation_variant("ember", "burning_12")) and eb.escalation_variant("ember", "burning_12") >= 0 and eb.escalation_variant("warden", "hp_30") >= 0
+		and eb.escalation_variant("spark", "ricochet_2") >= 0 and eb.escalation_variant("storm", "conduct") >= 0,
+		"the four escalation lines resolve, and the frenzy line never comes up as an ordinary streak bark (%s)" % str(picks.keys()))
+	eb.queue_free()
+	# ---- the Emberwitch's contagion: 400 foes, three clusters 0 / 55 / 110 from the strike, a tree and a boulder beside it
+	var cw := _world({"mode": "campaign", "stage": 0, "hero": 2, "seed": 21})
+	cw.stats.set_source("t", [["max_hp", "add", 1e6]]); cw.hp = 1e6
+	cw.need = 1e12
+	var cp := Vector2(400, 0)
+	cw.pp = cp + Vector2(-90, 0)
+	var tree_at := cp + Vector2(30, 70)
+	cw.terrain.set_test_props(PackedFloat32Array([tree_at.x, tree_at.y, 16.0, 0.0, cp.x - 60.0, cp.y - 70.0, 18.0, 1.0]))
+	var power := float(Content.WEAPONS.nova.lv[0].dmg) * cw._dmg_scale("nova")
+	var crng := RandomNumberGenerator.new()
+	crng.seed = 5
+	var cluster3: Array = []
+	var nfoe := 0
+	var hp_min := INF
+	while cw.sw.n < 400:
+		var g := 3 if nfoe >= 150 else nfoe % 3
+		var at: Vector2
+		if g < 3:
+			at = cp + Vector2([0.0, 55.0, 110.0][g], 0.0) + Vector2(crng.randf_range(-8, 8), crng.randf_range(-26, 26))
+		else:
+			at = cp + Vector2.from_angle(crng.randf() * TAU) * crng.randf_range(150.0, 320.0)
+		var fi := cw.spawn_foe(Content.E.GRUNT, at, 0, 0, 1.0)
+		if fi < 0: break
+		var fh := Contagion.DETONATE_K * power * crng.randf_range(3.0, 16.0)      # every foe >= 3x the detonation
+		cw.sw.mhp[fi] = fh; cw.sw.hp[fi] = fh; cw.sw.spd[fi] = 0.0
+		hp_min = minf(hp_min, fh)
+		if g == 2: cluster3.append(cw.sw.uid[fi])
+		nfoe += 1
+	cw.grid.build(cw.sw)
+	cw.contagion.cast_at(cp, power)
+	cw.weapons.nova.t = 0.0
+	var c3_gen := -1
+	var t_us := 0
+	for k in 600:
+		var t0 := Time.get_ticks_usec()
+		cw.step(1.0 / 60.0)
+		t_us += Time.get_ticks_usec() - t0
+		if c3_gen < 0:
+			for u in cluster3:
+				var j := cw.sw.index_of(u)
+				if j >= 0 and cw.sw.burn_stacks[j] > 0:
+					c3_gen = cw.sw.burn_gen[j]
+					break
+	var m := cw.metrics
+	var avg_ms := t_us / 600.0 / 1000.0
+	var wood_only := true
+	for b in cw.contagion.beacons:
+		if (b.pos as Vector2).distance_to(tree_at) > 0.5: wood_only = false
+	ok(hp_min >= 3.0 * Contagion.DETONATE_K * power and c3_gen >= 1, "the cluster 110 out (beyond the strike) catches through contagion, generation %d" % c3_gen)
+	ok(cw.kills >= 30 and int(m.ember_spreads) >= 20 and int(m.ember_conflagrations) >= 5 and int(m.ember_beacons) >= 1 and wood_only,
+		"400 foes, 10 s: %d slain, %d spreads, %d conflagrations, %d beacons (the tree only, never the boulder)" % [cw.kills, int(m.ember_spreads), int(m.ember_conflagrations), int(m.ember_beacons)])
+	ok(avg_ms < 4.0, "and the whole tick averages %.2f ms (under 4 ms)" % avg_ms)
+	ok(int(m.ember_ignitions) > 0 and cw.contagion.burning >= 0 and Contagion.MAX_BURN_STACKS == 5 and Contagion.MAX_GEN == 4, "Burn caps at 5 stacks and generation 4")
+	# ---- the Warden's vault slam
+	var vw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 3})
+	vw.weapons.clear()
+	vw.stats.set_source("t", [["max_hp", "add", 1e6]]); vw.hp = 1e6
+	vw.terrain.set_test_props(PackedFloat32Array([100.0, 0.0, 18.0, 1.0]))
+	var vfoes: Array = []
+	for k in 5:
+		var vi := vw.spawn_foe(Content.E.GRUNT, Vector2(200, 0) + Vector2.from_angle(TAU * k / 5.0) * 45.0, 0, 0, 1.0)
+		vw.sw.spd[vi] = 0.0
+		vfoes.append(vw.sw.uid[vi])
+	vw._jump(Vector2.RIGHT)
+	var vaulted := vw.jump_vaulted
+	for k in 50: vw.step(1.0 / 60.0)
+	var hurt := 0
+	for u in vfoes:
+		var j2 := vw.sw.index_of(u)
+		if j2 < 0 or vw.sw.hp[j2] < vw.sw.mhp[j2]: hurt += 1
+	vw._jump(Vector2.UP)                                # over open ground
+	var plain := not vw.jump_vaulted
+	ok(vaulted and int(vw.metrics.get("warden_vaults", 0)) == 1 and hurt >= 4 and plain,
+		"the Warden's jump over a boulder lands in a crater (%d of 5 foes hit); a jump over open ground does not" % hurt)
+	# ---- the Sparkcaller's ricochet off stone
+	var sw2 := _world({"mode": "campaign", "stage": 0, "hero": 1, "seed": 4})
+	sw2.weapons.clear()
+	sw2.terrain.set_test_props(PackedFloat32Array([100.0, 0.0, 18.0, 1.0, 100.0, 200.0, 18.0, 0.0]))
+	var rics: Array = []
+	sw2.moment.connect(func(k: String, info: Dictionary) -> void: if k == "ricochet": rics.append(int(info.bounces)))
+	var bolt: World.Proj = sw2._new_proj()
+	bolt.pos = Vector2(60, 0); bolt.vel = Vector2(440, 0); bolt.life = 5.0; bolt.r = 5.0; bolt.dmg = 10.0; bolt.wid = "bolt"
+	sw2.projs.append(bolt)
+	for k in 12: sw2._step_projs(1.0 / 60.0)
+	var first := bolt.bounces == 1 and bolt.vel.x < 0.0 and is_equal_approx(bolt.dmg, 12.5)
+	bolt.pos = Vector2(60, 0); bolt.vel = Vector2(440, 0)
+	for k in 12: sw2._step_projs(1.0 / 60.0)
+	var second := bolt.bounces == 2 and is_equal_approx(bolt.dmg, 15.625) and rics == [2]
+	bolt.pos = Vector2(60, 0); bolt.vel = Vector2(440, 0)
+	for k in 12: sw2._step_projs(1.0 / 60.0)
+	var third_dead := bolt.dead                        # read before the pool hands the same Proj out again
+	var wood: World.Proj = sw2._new_proj()
+	wood.pos = Vector2(60, 200); wood.vel = Vector2(440, 0); wood.life = 5.0; wood.r = 5.0; wood.dmg = 10.0; wood.wid = "bolt"
+	sw2.projs.append(wood)
+	for k in 20: sw2._step_projs(1.0 / 60.0)
+	ok(first and second and third_dead and wood.bounces == 0 and wood.pos.x > 130.0,
+		"a Rime Bolt glances off stone twice (x1.25 each: %.2f), the third stone shatters it, and wood lets it through" % 15.625)
+	# ---- the Stormwright's conduction: shallow water (Act V) and rift crystals
+	var stw := _world({"mode": "campaign", "stage": 4, "hero": 3, "seed": 8})
+	var ST := stw.terrain
+	var wet := Vector2.INF
+	var dry := Vector2.INF
+	for r2 in range(200, 3000, 32):
+		for k in 24:
+			var q2 := Vector2.from_angle(TAU * k / 24.0) * r2
+			if wet == Vector2.INF and ST.type_at(q2) == Terrain.SHALLOW and not ST.is_frozen(q2): wet = q2
+			if dry == Vector2.INF and ST.type_at(q2) == Terrain.LAND and ST.crystals_near(q2, 80.0) == 0: dry = q2
+		if wet != Vector2.INF and dry != Vector2.INF: break
+	var crys := Vector2.INF
+	for cy2 in range(-2, 3):
+		for cx2 in range(-2, 3):
+			var cc := PropLayout.chunk(Vector2i(cx2, cy2), 4, ST, 1.0, false).crystals as PackedVector2Array
+			if crys == Vector2.INF and not cc.is_empty(): crys = cc[0]
+	var cond_ok := wet != Vector2.INF and stw.conducts(wet) and dry != Vector2.INF and not stw.conducts(dry) and (crys == Vector2.INF or stw.conducts(crys + Vector2(30, 0)))
+	var ci := stw.spawn_foe(Content.E.GRUNT, wet, 0, 0, 1.0)
+	var near_i := stw.spawn_foe(Content.E.GRUNT, wet + Vector2(50, 0), 0, 0, 1.0)
+	var out_i := stw.spawn_foe(Content.E.GRUNT, wet + Vector2(150, 0), 0, 0, 1.0)
+	stw.grid.build(stw.sw)
+	var h_near := stw.sw.hp[near_i]
+	var h_out := stw.sw.hp[out_i]
+	var arcs0 := stw.fx.filter(func(f): return f.k == "arc").size()
+	stw._conduct(ci, 34.0, 20.0, 1 << Content.El.LIGHT)
+	ok(cond_ok and stw.sw.hp[near_i] < h_near and stw.sw.hp[out_i] < h_out and stw.fx.filter(func(f): return f.k == "arc").size() > arcs0
+		and int(stw.metrics.get("storm_conducts", 0)) == 1,
+		"Skyfall conducts through shallow water and beside a crystal (not on dry land): twice the radius, and an arc branches to a foe outside it")
+	# ---- Rift Echoes: two per act, placed by rule (the same run seed: the same spots), on open ground beside
+	# the act's arches; touching one surges and speaks
+	var ea := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 1})
+	var eb2 := _world({"mode": "campaign", "stage": 0, "hero": 2, "seed": 1})
+	var ec2 := _world({"mode": "campaign", "stage": 0, "hero": 1, "seed": 999})
+	var same_e := ea.rift_echoes.size() == 2 and eb2.rift_echoes.size() == 2 and ec2.rift_echoes.size() == 2
+	for k in mini(ea.rift_echoes.size(), eb2.rift_echoes.size()):
+		if (ea.rift_echoes[k].pos as Vector2).distance_to(eb2.rift_echoes[k].pos) > 0.01: same_e = false
+	for wq in [ea, ec2]:
+		for e in (wq as World).rift_echoes:
+			if (e.pos as Vector2).length() < World.ECHO_MIN or not (wq as World).terrain.passable(e.pos): same_e = false
+	var heard: Array = []
+	ea.moment.connect(func(k: String, info: Dictionary) -> void: if k == "echo": heard.append(int(info.k)))
+	ea.pp = ea.rift_echoes[0].pos
+	ea._step_echoes()
+	ok(same_e and bool(ea.rift_echoes[0].taken) and ea.buffs.has("rift_surge") and is_equal_approx(ea.buffs.remaining("rift_surge"), Story.ECHO_SURGE_S)
+		and heard == [0] and (sv.data.rift_echoes as Array).has(Story.echo_key(0, 0)),
+		"two Echo Shards per act beside its arches (the same run seed: the same spots); touching one gives a 10 s Rift Surge, the exchange and the Codex page")
+	# ---- the safe-mode sentinel (Options > Renderer and the crash fallback), on a scratch file
+	var keep_path := Quality.override_path
+	var keep_api: int = int(sv.data.options.get("gfx_api", 0))
+	Quality.override_path = "user://test_override.cfg"
+	sv.set_opt("gfx_api", Quality.API_VULKAN)
+	var armed: bool = Quality.arm_sentinel(true) and Quality.read_api().gl and Quality.read_api().sentinel
+	Quality.disarm_sentinel()
+	var disarmed := not FileAccess.file_exists(Quality.override_path)
+	Quality.arm_sentinel(true)
+	var fell: bool = Quality.check_sentinel() and int(sv.opt("gfx_api")) == Quality.API_GL and Quality.read_api().gl and not Quality.read_api().sentinel and Quality.safe_fell_back
+	Quality.set_api(Quality.API_VULKAN)
+	var back_v := not FileAccess.file_exists(Quality.override_path)
+	Quality.override_path = keep_path
+	Quality.safe_fell_back = false
+	sv.set_opt("gfx_api", keep_api)
+	ok(armed and disarmed and fell and back_v, "the crash sentinel: armed on Vulkan, disarmed by a clean end, a crash falls back to OpenGL Safe Mode, Options switches back")
+	# ---- the story's data
+	var story_ok := Story.ACTS.size() == Content.STAGES.size() and Story.HEROES.size() == 4
+	for a in Story.ACTS:
+		for k in ["title", "subtitle", "intro_lines", "boss_name", "boss_taunt", "victory_note", "echoes"]:
+			if not a.has(k): story_ok = false
+		if (a.echoes as Array).size() != 2: story_ok = false
+	for i in Content.STAGES.size():
+		if String(Story.ACTS[i].boss_name) != String(Content.STAGES[i].boss): story_ok = false
+	ok(story_ok, "The Shattering of the Veil: 5 acts (title, subtitle, lore, boss and taunt, victory note, 2 Rift Echoes each), 4 exiles")
+	# ---- the menus: every button at least 48 units tall, in landscape and in portrait
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	var mm: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mm)
+	var small: Array = []
+	var pages := 0
+	var sizes: Array = []
+	var root_size := get_tree().root.size
+	var root_scale := get_tree().root.content_scale_factor
+	# main rescales the canvas from the OS window on every resize, and headless cannot report a phone's: the
+	# test plays that part itself, with main's handler detached until it is done
+	var on_resize := Callable(mm, "_on_resize")
+	if get_tree().root.size_changed.is_connected(on_resize): get_tree().root.size_changed.disconnect(on_resize)
+	for orient in [Vector2i(1280, 720), Vector2i(720, 1280)]:
+		get_tree().root.size = orient
+		await get_tree().process_frame                 # main's resize handler runs first (it sets the scale from the window)
+		# what main._ui_scale does on a portrait phone (headless cannot report the window): the canvas scaled
+		# so the 1280 x 720 design base becomes a 720-unit-wide portrait page
+		get_tree().root.content_scale_factor = 1.0 if orient.x > orient.y else float(orient.y) / float(orient.x)
+		await get_tree().process_frame
+		sizes.append(mm.screens.get_viewport_rect().size)
+		if mm.world != null: mm._on_act("leave", null)
+		pages += _menu_pages(mm, small)
+	get_tree().root.size = root_size
+	get_tree().root.content_scale_factor = root_scale
+	get_tree().root.size_changed.connect(on_resize)
+	var portrait_seen: bool = sizes.size() == 2 and (sizes[1] as Vector2).x < 820.0 and (sizes[0] as Vector2).x >= 820.0
+	mm.free()
+	VoiceBank.stop_all()
+	sv.data = keep
+	ok(pages == 14 and small.is_empty() and portrait_seen, "every button on the main menu, Heroes, Codex, Options (4 tabs), Pause, Build & Stats and a confirmation is at least %d tall, landscape and portrait (%s)%s" % [UIKit.MIN_TOUCH, str(sizes), ("" if small.is_empty() else ": " + str(small.slice(0, 4)))])
+
+## Every page _alpha10_tests checks for touch targets, in the current window; returns how many were shown.
+func _menu_pages(mm: Node, small: Array) -> int:
+	var pages := 0
+	for page in ["menu", "heroes", "codex", "options", "pause", "build", "confirm"]:
+		match page:
+			"menu": mm.screens.show_menu()
+			"heroes": mm.screens.show_heroes()
+			"codex": mm.screens.show_codex("menu")
+			"options":
+				for tab in 4:
+					mm.screens._opt_tab = tab
+					mm.screens.show_options("menu")
+					small.append_array(_small_buttons(mm.screens, "options %d" % tab))
+				mm.screens._opt_tab = 0
+				pages += 1
+				continue
+			"pause":
+				mm._on_act("campaign", 0)
+				mm._pause()
+			"build": mm._on_act("build", null)
+			"confirm": mm.screens.confirm("Leave this run?", "", "Leave", "leave")
+		small.append_array(_small_buttons(mm.screens, page))
+		pages += 1
+	mm._on_act("leave", null)
+	return pages
+
+func _small_buttons(root: Node, label: String) -> Array:
+	var out: Array = []
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Button and (n as Control).visible:
+			var h := maxf((n as Control).custom_minimum_size.y, (n as Control).get_combined_minimum_size().y)
+			if h < UIKit.MIN_TOUCH: out.append("%s: %s (%d)" % [label, (n as Button).text, int(h)])
+		stack.append_array(n.get_children())
+	return out
+
+## 0.10.3: the voice pack is in. Every manifest line has its clip, imported and never looping, and VoiceBank plays
+## each from the pack at the clip's own length (a speaker's chime is now only for a clip that goes missing).
+func _pack_tests() -> void:
+	print("== 0.10.3 voice pack")
+	var vb := _voice_bank()
+	var missing: Array = []
+	var looping: Array = []
+	var not_played: Array = []
+	var total := 0.0
+	for id in vb.entries:
+		var e: Dictionary = vb.entries[id]
+		if not ResourceLoader.exists(String(e.file)):
+			missing.append(id)
+			continue
+		var st := load(String(e.file)) as AudioStreamOggVorbis
+		if st == null or st.loop: looping.append(id)
+		vb.stop_now()
+		vb.step(60.0)                                   # past every cooldown and the gap between lines
+		var r := vb.say(String(e.speaker), String(e.cue), int(e.variant))
+		if not bool(r.played) or not bool(r.using_pack) or st == null or absf(float(r.duration) - st.get_length()) > 0.001:
+			not_played.append("%s (%s)" % [id, r.get("reason", "chime") if not bool(r.get("using_pack", false)) else "length"])
+		else:
+			total += float(r.duration)
+	vb.stop_now()
+	vb.queue_free()
+	ok(missing.is_empty() and looping.is_empty(), "all %d lines have their clip, imported as Ogg Vorbis that never loops%s" % [vb.entries.size(),
+		("  (missing: " + ", ".join(missing.slice(0, 6)) + ")") if not missing.is_empty() else (("  (looping: " + ", ".join(looping) + ")") if not looping.is_empty() else "")])
+	ok(not_played.is_empty(), "each plays from the pack at its own length: %.0f s of speech in all%s" % [total, ("  (" + ", ".join(not_played.slice(0, 6)) + ")") if not not_played.is_empty() else ""])
+
+## 0.10.4 performance: each optimised hot loop is checked against the plain definition of what it computes.
+func _perf_tests() -> void:
+	print("== 0.10.4 performance")
+	var w := _world({"mode": "rift", "hero": 3, "gr": 1, "seed": 5})
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	while w.sw.n < 400:                               # a packed crowd: about 13 foes to every 64-unit square
+		w.spawn_foe(Content.E.GRUNT + w.sw.n % 4, w.pp + Vector2(rng.randf_range(-200, 200), rng.randf_range(-150, 150)), 0, 0, 50.0)
+	var a := _sep_check(w)
+	# two boss-sized bodies in the crowd: their pushes come from separation's own pass for big bodies
+	for k in 2:
+		w.sw.add(Content.E.GRUNT, w.pp + Vector2(60.0 - 120.0 * k, 20.0), 1000.0, 0.0, [36.0, 44.0][k], 0.0, 0.0, Swarm.F_BOSS, 0)
+	var b := _sep_check(w)
+	ok(a[1] == 0 and b[1] == 0 and a[0] > 500 and b[2] > 10, "separation on its own fine grid matches the all-pairs definition for every swarm foe: %d pushes, then %d with two bosses in the crowd (%d of them by a boss); %d and %d differ by over 1e-3" % [a[0], b[0], b[2], a[1], b[1]])
+	# the swarm's terrain step, inlined: bit-identical to 0.10.3's foe_move on moves through Act I's forest
+	var fw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 41})
+	var T := fw.terrain
+	var frng := RandomNumberGenerator.new()
+	frng.seed = 7
+	var moves := 0
+	var fdiff := 0
+	var pushed_by_props := 0
+	var cases: Array = []
+	for k in 6000:
+		var p0 := fw.pp + Vector2(frng.randf_range(-1400, 1400), frng.randf_range(-1400, 1400))
+		var step := Vector2.from_angle(frng.randf() * TAU) * (frng.randf_range(0.5, 3.0) if k % 5 != 0 else frng.randf_range(8.0, 40.0))
+		var br := frng.randf_range(7.0, 18.0)
+		cases.append([p0, p0 + step, br])
+	for c in cases:
+		var ref := _foe_move_ref(T, c[0], c[1], c[2])
+		if T.props_resolve(c[1], c[2]) != c[1]: pushed_by_props += 1
+		var got: Vector2 = T.foe_move(c[0], c[1], c[2])
+		moves += 1
+		if got != ref: fdiff += 1
+	# Act V with its tide risen 20 units: cells reclassify live, shallows slow and deep water blocks
+	var tw := _world({"mode": "campaign", "stage": 4, "hero": 0, "seed": 41})
+	var TT := tw.terrain
+	TT.level = TT.level0 + 20.0
+	var wet := 0
+	for c in cases:
+		var p5: Vector2 = tw.pp + (c[0] - fw.pp)
+		var n5: Vector2 = tw.pp + (c[1] - fw.pp)
+		if TT.is_liquid(p5): wet += 1
+		if TT.foe_move(p5, n5, c[2]) != _foe_move_ref(TT, p5, n5, c[2]): fdiff += 1
+		moves += 1
+	ok(fdiff == 0 and pushed_by_props > 100 and TT.tide > 0.0 and wet > 200, "foe_move, one-step case and cell lookup inlined: identical to 0.10.3's on %d moves through Act I's forest and Act V under a risen tide (%d pushed by a prop, %d starting in water), %d differ" % [moves, pushed_by_props, wet, fdiff])
+	if OS.get_environment("PERF_BENCH") != "":
+		var tb := INF
+		var tr := INF
+		for round in 5:
+			var t0 := Time.get_ticks_usec()
+			for c in cases: T.foe_move(c[0], c[1], c[2])
+			var t1 := Time.get_ticks_usec()
+			for c in cases: _foe_move_ref(T, c[0], c[1], c[2])
+			var t2 := Time.get_ticks_usec()
+			tb = minf(tb, (t1 - t0) / float(cases.size()))
+			tr = minf(tr, (t2 - t1) / float(cases.size()))
+		print("  PERF foe_move: %.2f us a move (0.10.3: %.2f us)" % [tb, tr])
+	if OS.get_environment("PERF_BENCH") != "":     # timing on the frozen crowd: best of 7 rounds of 60 calls
+		var best := INF
+		for round in 7:
+			var t0 := Time.get_ticks_usec()
+			for k in 60: w.sw.cpu_separation(w.grid, k % 2, w.pp, INF)
+			best = minf(best, (Time.get_ticks_usec() - t0) / 60000.0)
+		print("  PERF separation, %d foes: %.3f ms a call" % [w.sw.n, best])
+
+## The 3D view's per-frame foe instance writer, optimised in 0.10.4, against the 0.10.3 code on a real frame: a
+## campaign run through main.tscn with a mixed crowd (elites, a charging Ramshard, frozen, burning, poisoned).
+func _perf_view_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	await get_tree().process_frame
+	mn.start({"mode": "campaign", "stage": 0})
+	var w: World = mn.world
+	w.stats.set_source("t", [["max_hp", "add", 1e6]])
+	w.hp = 1e6
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for k in 160:
+		var kind: int = [Content.E.GRUNT, Content.E.RUNNER, Content.E.BRUTE, Content.E.SPITTER, Content.E.CHARGER][k % 5]
+		var i := w.spawn_foe(kind, w.pp + Vector2(rng.randf_range(-400, 400), rng.randf_range(-260, 260)), 1 if k % 11 == 0 else 0)
+		if i < 0: continue
+		match k % 7:
+			1: w.sw.set_freeze(i, 2.0)
+			2: w.sw.set_burn(i, 3, 5.0, 1, 3.0)
+			3: w.sw.pois[i] = 4.0
+			4: w.sw.set_ai(i, 2, 0.4)
+	for f in 6: await get_tree().process_frame
+	var V: WorldView3D = mn.view3d
+	var diff := 0
+	var written := 0
+	for k in V._foe_mm.size():
+		var size: int = (V._start[k + 1] - V._start[k]) * WorldView3D.FOE_STRIDE
+		if size == 0: continue
+		var a := PackedFloat32Array()
+		a.resize(size)
+		var b := PackedFloat32Array()
+		b.resize(size)
+		var na: int = V._write_foes(a, k, w.sw, V.hero_p)
+		var nb: int = _write_foes_ref(V, b, k, w.sw, V.hero_p)
+		written += na
+		if na != nb or a != b: diff += 1
+	ok(diff == 0 and written > 100, "the 3D view's foe instances, swarm arrays read through locals: the same buffers as 0.10.3's writer for every kind (%d foes written, %d kinds differ)" % [written, diff])
+	# O7: the level-up cards are dealt one a frame; the screen is complete within four frames, and closed mid-deal
+	# it adds nothing more
+	w.pending = 1
+	mn._on_level()
+	var cards_now: int = mn.screens.find_children("*", "Button", true, false).size()
+	for f in 4: await get_tree().process_frame
+	var btns: Array = mn.screens.find_children("*", "Button", true, false)
+	var arsenal: bool = mn.screens.find_children("*", "Label", true, false).any(func(l): return String((l as Label).text).to_lower().contains("arsenal"))
+	ok(mn.state == "levelup" and cards_now >= 1 and btns.size() >= cards_now + 2 and arsenal,
+		"the level-up deals its cards a frame each: %d card on the first frame, %d buttons and the arsenal after four" % [cards_now, btns.size()])
+	mn.screens.close()
+	mn.state = "play"
+	w.pending = 1
+	mn._on_level()
+	mn.screens.close()
+	mn.state = "play"
+	w.pending = 0
+	for f in 4: await get_tree().process_frame
+	ok(mn.screens.get_child_count() == 0, "closed mid-deal, the level-up screen builds nothing more (%d children)" % mn.screens.get_child_count())
+	ok(Diag.startup.begins_with("startup: the engine up at") and Diag.report_text().contains(Diag.startup),
+		"a launch records when its first frames were drawn, and Copy report carries it (%s)" % Diag.startup.trim_prefix("startup: "))
+	mn._free_world()                                  # the run's World holds reference cycles: dispose of it
+	mn.queue_free()
+	sv.data = keep
+
+## 0.10.4 streaming (docs/OPTIMIZATION.md O6): what a chunk crossing costs the 3D view. The hero walks east
+## through 8 chunks of Act I (the world ticking between crossings, as walking does), and each crossing frame's
+## prop cells (WorldView3D._props) and terrain textures (_terrain_tex) are timed; PERF_BENCH=1 prints them.
+func _stream_tests() -> void:
+	print("== 0.10.4 streaming")
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	await get_tree().process_frame
+	mn.start({"mode": "campaign", "stage": int(OS.get_environment("STREAM_ACT")) if OS.get_environment("STREAM_ACT") != "" else 0})
+	var w: World = mn.world
+	w.stats.set_source("t", [["max_hp", "add", 1e6]])
+	w.hp = 1e6
+	for f in 4: await get_tree().process_frame
+	var V: WorldView3D = mn.view3d
+	mn.set_process(false)                       # the walk below drives the world and the view itself
+	V.set_process(false)
+	var T := w.terrain
+	var rows: Array = []
+	while not V._prop_queue.is_empty(): V._props()     # the start's outer ring (the first frames build it)
+	var gen0 := T.generated
+	for k in 8:
+		var x := (k + 1) * Terrain.CHUNK + 8.0
+		# the walk up to the border: 90 ticks inside the chunk before (the world prefetches as it goes)
+		w.pp = Vector2(x - Terrain.CHUNK * 0.5, 40.0)
+		w.prev_pp = w.pp
+		for i in 90: w.step(FixedStep.STEP)
+		w.pp = Vector2(x, 40.0)
+		w.prev_pp = w.pp
+		var g := T.generated
+		var t0 := Time.get_ticks_usec()
+		V._terrain_tex(FixedStep.STEP)              # the frame's order: _camera (the textures), then _props
+		var t1 := Time.get_ticks_usec()
+		V._props()
+		var t2 := Time.get_ticks_usec()
+		# and the frames after it, while the crossing's queued cells are built (the worst of them)
+		var after := 0.0
+		for f in 8:
+			var f0 := Time.get_ticks_usec()
+			V._terrain_tex(FixedStep.STEP)
+			V._props()
+			after = maxf(after, (Time.get_ticks_usec() - f0) / 1000.0)
+		rows.append([(t2 - t1) / 1000.0, (t1 - t0) / 1000.0, T.generated - g, after])
+	# then back west over the same ground: the cells come from the cache (only their nodes are made)
+	var back := 0.0
+	for k in 4:
+		var x := (7 - k) * Terrain.CHUNK - 8.0
+		w.pp = Vector2(x + Terrain.CHUNK * 0.5, 40.0)
+		w.prev_pp = w.pp
+		for i in 30: w.step(FixedStep.STEP)
+		w.pp = Vector2(x, 40.0)
+		w.prev_pp = w.pp
+		for f in 9:
+			var f0 := Time.get_ticks_usec()
+			V._terrain_tex(FixedStep.STEP)
+			V._props()
+			back = maxf(back, (Time.get_ticks_usec() - f0) / 1000.0)
+	var props := 0.0
+	var tex := 0.0
+	var worst := 0.0
+	var worst_after := 0.0
+	var gen_in := 0
+	for r in rows:
+		props += r[0]
+		tex += r[1]
+		worst = maxf(worst, r[0] + r[1])
+		worst_after = maxf(worst_after, r[3])
+		gen_in += int(r[2])
+	if OS.get_environment("PERF_BENCH") != "":
+		print("  STREAM crossings %d: props %.2f ms, terrain textures %.2f ms a crossing (worst crossing %.2f ms; worst frame after one %.2f ms), %d chunks generated in crossing frames (%d in all)" % [
+			rows.size(), props / rows.size(), tex / rows.size(), worst, worst_after, gen_in, T.generated - gen0])
+		print("  STREAM walking back over 4 crossings: the worst frame %.2f ms (cells from the cache)" % back)
+		print("  STREAM per crossing [props ms, textures ms, chunks generated, worst frame after]: " + str(rows.map(func(r): return [snappedf(r[0], 0.01), snappedf(r[1], 0.01), r[2], snappedf(r[3], 0.01)])))
+	ok(rows.size() == 8 and V._prop_cells.size() == 25 and V._prop_queue.is_empty(), "the hero walks through 8 chunk crossings; 25 prop cells stand around it once the queue drains (%d)" % V._prop_cells.size())
+	var want_cells := 0
+	var cc := Vector2i(floori(w.pp.x / WorldView3D.CHUNK), floori(w.pp.y / WorldView3D.CHUNK))
+	for c in V._prop_cells:
+		if maxi(absi(c.x - cc.x), absi(c.y - cc.y)) <= 2: want_cells += 1
+	ok(want_cells == 25, "and they are the 5 x 5 around the hero's chunk (%d of 25)" % want_cells)
+	# a teleport (a run's start, a portal) builds the hero's chunk and its ring at once, the outer ring after
+	w.pp = Vector2(50.0 * Terrain.CHUNK + 300.0, 7.0 * Terrain.CHUNK + 300.0)
+	w.prev_pp = w.pp
+	for dy in range(-3, 4):
+		for dx in range(-3, 4): T.chunk(Vector2i(50 + dx, 7 + dy))
+	V._terrain_tex(FixedStep.STEP)
+	V._props()
+	var core := 0
+	for c in V._prop_cells:
+		if maxi(absi(c.x - 50), absi(c.y - 7)) <= 1: core += 1
+	ok(core == 9 and V._prop_queue.size() == 16, "a teleport: the 3 x 3 around the hero at once (%d), the outer 16 queued (%d)" % [core, V._prop_queue.size()])
+	# cell_parts writes upright props straight into the buffers: the same as dress_chunk's transforms, batched
+	# as 0.10.3's _build_cell did (rotation within float rounding, positions exact), on chunks of every act
+	var worst_d := 0.0
+	var bad := 0
+	var inst := 0
+	for k in 12:
+		var c := Vector2i(50 + (k % 3) - 1, 7 + (k / 3) % 3 - 1)
+		var got := V.cell_parts(c)
+		var want := _cell_parts_ref(V, c)
+		if got.size() != want.size():
+			bad += 1
+			continue
+		for i in got.size():
+			var a: PackedFloat32Array = got[i][3]
+			var b2: PackedFloat32Array = want[i][3]
+			if got[i][0] != want[i][0] or got[i][4] != want[i][4] or got[i][2] != want[i][2] or a.size() != b2.size():
+				bad += 1
+				continue
+			inst += int(got[i][4])
+			for j in a.size():
+				var d := absf(a[j] - b2[j])
+				if j % 4 == 3:
+					if d != 0.0: bad += 1               # the origin column: exact
+				else: worst_d = maxf(worst_d, d)
+	ok(bad == 0 and worst_d == 0.0 and inst > 1000, "prop cells as one buffer a batch: the same batches and transforms as 0.10.3's per-instance writes (%d instances, %d differ)" % [inst, bad])
+	var cached: Array = V._cell_data(Vector2i(50, 7))
+	var again: Array = V._cell_data(Vector2i(50, 7))
+	var fresh := V.cell_parts(Vector2i(50, 7))
+	var same := cached == again and cached.size() == fresh.size()
+	for i in mini(cached.size(), fresh.size()):
+		if cached[i][3] != fresh[i][3] or cached[i][0] != fresh[i][0]: same = false
+	ok(same and V._cell_cache.size() <= WorldView3D.CELL_CACHE, "a cached cell is the one cell_parts builds; the cache holds at most %d (%d)" % [WorldView3D.CELL_CACHE, V._cell_cache.size()])
+	# chunk generation: every act's heights and types, the same as 0.10.3's _raw (its profile read per sample)
+	var gdiff := 0
+	var gen_us := 1e9
+	for act in 5:
+		var TT := Terrain.new(act, 77 + act, Content.TERRAIN[act])
+		var t0 := Time.get_ticks_usec()
+		for k in 6:
+			var c := Vector2i(k - 3, (k * 7) % 5 - 2)
+			var ch: Array = TT.chunk(c)
+			var B := Terrain.CN + 2
+			var x0 := c.x * Terrain.CHUNK - Terrain.CELL * 0.5
+			var y0 := c.y * Terrain.CHUNK - Terrain.CELL * 0.5
+			var hs: PackedFloat32Array = ch[0]
+			for j in Terrain.CN:
+				for i in Terrain.CN:
+					var want := PackedFloat32Array([_raw_ref(TT, x0 + (i + 1) * Terrain.CELL, y0 + (j + 1) * Terrain.CELL)])[0]
+					if hs[j * Terrain.CN + i] != want: gdiff += 1
+		gen_us = minf(gen_us, float(Time.get_ticks_usec() - t0))
+	ok(gdiff == 0, "terrain chunks of all five acts: heights identical to 0.10.3's (%d cells differ)" % gdiff)
+	# O7: the prefetch builds a chunk in two slices of rows; the result is the chunk built at once
+	var sdiff := 0
+	var first_ms: Array = []
+	var last_ms: Array = []
+	var whole_ms: Array = []
+	for act in 5:
+		var TA := Terrain.new(act, 501 + act, Content.TERRAIN[act])
+		var TB := Terrain.new(act, 501 + act, Content.TERRAIN[act])
+		var at := Vector2(3.2, -1.7) * Terrain.CHUNK
+		var guard := 0
+		while guard < 400:
+			var n0 := TB.generated
+			var q0 := Time.get_ticks_usec()
+			TB.prefetch(at, 2, 1)
+			var ms := (Time.get_ticks_usec() - q0) / 1000.0
+			(last_ms if TB.generated > n0 else first_ms).append(ms)
+			guard += 1
+			if TB.generated == 25: break
+		for c in TB._chunks:
+			var w0 := Time.get_ticks_usec()
+			var a2: Array = TA.chunk(c)
+			whole_ms.append((Time.get_ticks_usec() - w0) / 1000.0)
+			var b2: Array = TB._chunks[c]
+			if a2[0] != b2[0] or a2[1] != b2[1]: sdiff += 1
+		if TB.generated != 25 or not TB._gen.is_empty(): sdiff += 100
+	ok(sdiff == 0, "the prefetch builds each chunk in three slices, identical to one built at once (25 chunks a terrain, all five acts; %d differ)" % sdiff)
+	if OS.get_environment("PERF_BENCH") != "":
+		var pct := func(xs: Array, q: float) -> float:
+			var ys := xs.duplicate()
+			ys.sort()
+			return ys[clampi(int(q * ys.size()), 0, ys.size() - 1)] if not ys.is_empty() else 0.0
+		print("  PREFETCH a chunk at once: median %.2f ms, p95 %.2f | its first slices: median %.2f, p95 %.2f | its last (and the types): median %.2f, p95 %.2f" % [
+			pct.call(whole_ms, 0.5), pct.call(whole_ms, 0.95), pct.call(first_ms, 0.5), pct.call(first_ms, 0.95), pct.call(last_ms, 0.5), pct.call(last_ms, 0.95)])
+	if OS.get_environment("STREAM_PARTS") != "":         # one cell's build, in parts (best of 3 rounds of 10 chunks, terrain ready)
+		var best := [1e9, 1e9, 1e9, 1e9]
+		var items := 0
+		for c in range(40, 50):
+			for dy in range(2, 5):
+				for dx in range(-1, 2): T.chunk(Vector2i(c + dx, dy))
+		for round in 3:
+			var us := [0.0, 0.0, 0.0, 0.0]
+			items = 0
+			for k in 10:
+				var c := Vector2i(40 + k, 3)
+				var a0 := Time.get_ticks_usec()
+				var lay := PropLayout.chunk(c, w.stage, T, Quality.prop_density())
+				var a1 := Time.get_ticks_usec()
+				var lists := V.dress_chunk(c)
+				var a2 := Time.get_ticks_usec()
+				var parts := V.cell_parts(c)
+				var a3 := Time.get_ticks_usec()
+				var cell := V._build_cell(c)
+				var a4 := Time.get_ticks_usec()
+				us[0] += a1 - a0
+				us[1] += a2 - a1
+				us[2] += a3 - a2
+				us[3] += a4 - a3
+				items += lay.items.size()
+				cell.free()
+			for i in 4: best[i] = minf(best[i], us[i])
+		print("  STREAM a cell (best of 3 x 10 fresh chunks): PropLayout.chunk %.2f ms, dress_chunk (layout + transforms) %.2f ms, cell_parts (+ batches, buffers) %.2f ms, _build_cell (all of it) %.2f ms, %d items" % [
+			best[0] / 10000.0, best[1] / 10000.0, best[2] / 10000.0, best[3] / 10000.0, items / 10])
+	# O7: the act's tyrant is loaded on a thread 45 s before it comes, and a pinnacle run's Herald from its start
+	var tyr := Models.find_asset("bosses", "tyrant_%d" % w.stage)
+	if tyr == "": tyr = Models.find_asset("bosses", "tyrant")
+	V._preload_step()
+	var early := V.ahead.has(tyr)
+	w.t = Content.STAGE_TIME - 40.0
+	var frames := 0
+	while frames < 600:
+		V._preload_step()
+		if V.ahead.get(tyr) != null: break
+		await get_tree().process_frame
+		frames += 1
+	ok(not early and V.ahead.get(tyr) is PackedScene, "the act's tyrant is not loaded at the start, and is loaded on a thread 45 s before it comes (%d frames)" % frames)
+	var b0 := Time.get_ticks_usec()
+	var probe := BossRig.new()
+	V.add_child(probe)
+	probe.build("tyrant", Color.WHITE, tyr.get_file().get_basename())
+	var build_ms := (Time.get_ticks_usec() - b0) / 1000.0
+	probe.free()
+	if OS.get_environment("PERF_BENCH") != "": print("  PRELOAD a tyrant rig with its model preloaded: %.1f ms to build" % build_ms)
+	# a rogue exile's three possible models from 30 s (Medium and High), the two it did not pick let go once it comes
+	var cands: Array = WorldView3D.EXILE_MODELS.values().map(func(h): return Models.find_asset("heroes", h))
+	w.t = 31.0
+	frames = 0
+	while frames < 900:
+		V._preload_step()
+		if cands.all(func(c): return V.ahead.get(c) != null): break
+		await get_tree().process_frame
+		frames += 1
+	var all_in := cands.all(func(c): return V.ahead.get(c) is PackedScene)
+	w.bosses.spawn_exile(false)
+	w.director.exile_spawned = true
+	V._preload_step()
+	var picked := Models.find_asset("heroes", WorldView3D.EXILE_MODELS.get(w.bosses.exile_weapon, "warden"))
+	var kept: Array = cands.filter(func(c): return V.ahead.has(c))
+	ok(Quality.tier() == 0 or (all_in and kept == [picked]), "a rogue exile's three possible models load from 30 s (%d frames), and once it comes only its own is kept (%s)" % [frames, ", ".join(kept.map(func(c): return String(c).get_file()))])
+	var e0 := Time.get_ticks_usec()
+	var er := HeroRig.new()
+	V.add_child(er)
+	er.build(WorldView3D.EXILE_MODELS.get(w.bosses.exile_weapon, "warden"), Color("4a2a2a"))
+	var exile_ms := (Time.get_ticks_usec() - e0) / 1000.0
+	er.free()
+	if OS.get_environment("PERF_BENCH") != "": print("  PRELOAD a rogue exile's rig with its model preloaded: %.1f ms to build (tier %d)" % [exile_ms, Quality.tier()])
+	mn._free_world()
+	mn.start({"mode": "pinnacle"})
+	w = mn.world
+	w.stats.set_source("t", [["max_hp", "add", 1e6]])
+	var her := Models.find_asset("bosses", "herald")
+	ok(not V.ahead.has(tyr), "a new run lets the last run's preloaded models go")
+	frames = 0
+	while frames < 600:
+		V._preload_step()
+		if V.ahead.get(her) != null: break
+		await get_tree().process_frame
+		frames += 1
+	ok(V.ahead.get(her) is PackedScene, "a pinnacle run loads the Herald on a thread from its start (%d frames; it comes at 90 s)" % frames)
+	# the Emberwitch's fire loops ship baked (tools/bake_loops.sh): loading them is not synthesizing 10 s of audio
+	var sfx := get_node("/root/Sfx")
+	for spec in [["fire_crackle", 4.0, false], ["fire_rumble", 6.0, true]]:
+		sfx.streams.erase(spec[0])
+		var f0 := Time.get_ticks_usec()
+		var st: AudioStream = sfx._fire_loop(spec[0], spec[1], spec[2])
+		var ms := (Time.get_ticks_usec() - f0) / 1000.0
+		ok(st is AudioStreamOggVorbis and (st as AudioStreamOggVorbis).loop and absf(st.get_length() - float(spec[1])) < 0.05 and ms < 25.0,
+			"the %s loop is the baked file, looping, %.2f s, loaded in %.1f ms" % [spec[0], st.get_length() if st != null else 0.0, ms])
+	mn._free_world()
+	mn.queue_free()
+	sv.data = keep
+
+## 0.10.3's prop batching (_build_cell: dress_chunk's transforms, grass by quarter), as [kind, mesh, AABB, buffer, n].
+func _cell_parts_ref(V: WorldView3D, c: Vector2i) -> Array:
+	var out := []
+	var lists := V.dress_chunk(c)
+	for kind in lists:
+		var list: Array = lists[kind]
+		if list.is_empty(): continue
+		var mesh := Models.prop_mesh(kind, V.w.stage)
+		if mesh == null: continue
+		var parts := [list]
+		var boxes := [AABB(Vector3(c.x * WorldView3D.CHUNK, -200.0, c.y * WorldView3D.CHUNK), Vector3(WorldView3D.CHUNK, 600.0, WorldView3D.CHUNK))]
+		if WorldView3D.NEAR_ONLY.has(kind):
+			parts = [[], [], [], []]
+			boxes = []
+			var half := WorldView3D.CHUNK * 0.5
+			for q in 4:
+				boxes.append(AABB(Vector3(c.x * WorldView3D.CHUNK + (q % 2) * half, -200.0, c.y * WorldView3D.CHUNK + (q / 2) * half), Vector3(half, 600.0, half)))
+			for t in list:
+				var o: Vector3 = (t as Transform3D).origin
+				var qx := 1 if o.x - c.x * WorldView3D.CHUNK >= half else 0
+				var qz := 1 if o.z - c.y * WorldView3D.CHUNK >= half else 0
+				parts[qz * 2 + qx].append(t)
+		for pi in parts.size():
+			if (parts[pi] as Array).is_empty(): continue
+			out.append([kind, mesh, boxes[pi], WorldView3D.tbuf(parts[pi]), (parts[pi] as Array).size()])
+	return out
+
+## 0.10.3's Terrain._raw: the act profile read per sample (the reference for the hoisted one).
+func _raw_ref(T: Terrain, x: float, y: float) -> float:
+	var prof := T.prof
+	var amp: float = prof.get("amp", 80.0)
+	var b := clampf(T._base.get_noise_2d(x, y) * 1.6, -1.0, 1.0)
+	var h := b * amp
+	var steps := int(prof.get("terraces", 0))
+	if steps > 0:
+		var u := (b * 0.5 + 0.5) * steps
+		var f := u - floorf(u)
+		var w := lerpf(0.035, 0.42, clampf(T._ramp.get_noise_2d(x, y) * 1.4 + 0.5, 0.0, 1.0))
+		var s := smoothstep(0.5 - w, 0.5 + w, f)
+		h = ((floorf(u) + s) / steps * 2.0 - 1.0) * amp
+	var rw: float = prof.get("river", 0.0)
+	if rw > 0.0:
+		var rv := absf(T._river.get_noise_2d(x, y))
+		var carve := smoothstep(rw, rw * 0.35, rv)
+		h = lerpf(h, T.level0 - float(prof.get("river_depth", 26.0)), carve)
+	h += T._detail.get_noise_2d(x, y) * float(prof.get("detail", 4.0))
+	var d := sqrt(x * x + y * y)
+	if d < T.flat_r + 220.0:
+		h = lerpf(h, T.flat_h, smoothstep(T.flat_r + 220.0, T.flat_r, d))
+	return h
+
+## 0.10.3's WorldView3D._write_foes, kept as the reference the optimised one must match bit for bit.
+func _write_foes_ref(V: WorldView3D, buf: PackedFloat32Array, k: int, sw: Swarm, pp: Vector2) -> int:
+	var c := V._kind_col[k]
+	var vc: PackedFloat32Array = V._vc[k]
+	var authored := not vc.is_empty()
+	var unit := V._foe_unit[k] if k < V._foe_unit.size() else 1.0
+	var n := 0
+	# the ground height goes into the instance transform (foe.gdshader does no terrain lookup): ground_y's
+	# window lookup inlined, through locals, since this runs for every foe on screen every frame
+	var hd := V._hd
+	var hn := V._hn
+	var hox := V._hox
+	var hoz := V._hoz
+	for v in range(V._start[k], V._start[k + 1]):
+		var i := V._order[v]
+		var p := V._ipos[i]
+		var dpl := p.distance_to(pp)
+		var f := sw.flags[i]
+		var dir := (pp - p) / maxf(0.001, dpl)
+		if (f & Swarm.F_GOBLIN) != 0: dir = -dir
+		elif k == Content.E.CHARGER and sw.ai_s[i] == 2: dir = sw.dir[i]
+		elif (f & Swarm.F_ALLY) != 0 and sw.dir[i] != Vector2.ZERO: dir = sw.dir[i]
+		var gy := 0.0
+		var fx := (p.x - hox) * WorldView3D.INV_CELL - 0.5
+		var fz := (p.y - hoz) * WorldView3D.INV_CELL - 0.5
+		if hn > 0 and fx >= 0.0 and fz >= 0.0 and fx < hn - 1 and fz < hn - 1:
+			var ix := int(fx)
+			var iz := int(fz)
+			var kk := iz * hn + ix
+			var ga := lerpf(hd[kk], hd[kk + 1], fx - ix)
+			gy = lerpf(ga, lerpf(hd[kk + hn], hd[kk + hn + 1], fx - ix), fz - iz)
+		else:
+			gy = V.ground_y(p)
+		var o := n * WorldView3D.FOE_STRIDE
+		var s := sw.rad[i] * unit
+		# basis columns: x = (dir.x, 0, dir.y) * s (model +X faces the heading), y = up * s, z = (-dir.y, 0, dir.x) * s
+		buf[o] = dir.x * s; buf[o + 1] = 0.0; buf[o + 2] = -dir.y * s; buf[o + 3] = p.x
+		buf[o + 4] = 0.0; buf[o + 5] = s; buf[o + 6] = 0.0; buf[o + 7] = gy
+		buf[o + 8] = dir.y * s; buf[o + 9] = 0.0; buf[o + 10] = dir.x * s; buf[o + 11] = p.y
+		# per-instance colour and custom data reach the GPU as 16-bit halves (exact integers only to
+		# 2048): the seed rides in the colour's alpha, flags alone in custom.w, and the walk phase is
+		# wrapped to whole cycles (it used to grow with time, and flag+256*seed decoded as random elite
+		# and ally bits: the swarm sparkled with their rim glows)
+		buf[o + 12] = c.r; buf[o + 13] = c.g; buf[o + 14] = c.b; buf[o + 15] = float(sw.uid[i] % 64) / 63.0
+		var moving := 0.0 if sw.freeze_t[i] > 0.0 else 1.0
+		var ph := fposmod(V.time * (4.0 + sw.spd[i] * 0.05) * moving + float(sw.uid[i]) * 1.37, TAU * 8.0)
+		if not authored:
+			buf[o + 16] = ph
+		else:
+			# authored clips (vertex animation texture): spawn, then attack, then a flinch, else the walk
+			# cycle; the value is the frame row, which the shader blends with the next one
+			var age := V.w.t - sw.born[i]
+			var ta := V.w.t - sw.atk_t[i]
+			var th := V.w.t - sw.hit_at[i]
+			if vc[13] > 0.0 and age * vc[14] < vc[13] - 1.0:
+				buf[o + 16] = vc[12] + age * vc[14]
+			elif vc[4] > 0.0 and ta * vc[5] < vc[4] - 1.0:
+				buf[o + 16] = vc[3] + ta * vc[5]
+			elif vc[7] > 0.0 and th * vc[8] * 1.6 < vc[7] - 1.0:
+				buf[o + 16] = vc[6] + th * vc[8] * 1.6
+			else:
+				buf[o + 16] = vc[0] + fposmod(ph / TAU, 1.0) * vc[1]
+		buf[o + 17] = maxf(0.0, sw.flash[i])
+		buf[o + 18] = V._status_code(i)
+		# the Emberwitch's Burn stacks ride over the flag bits (flags + 256 x stacks <= 1535, exact as a half);
+		# foe.gdshader reads them back as burn_norm = stacks / 5 for the ember crust
+		buf[o + 19] = float(f & 0xff) + 256.0 * float(sw.burn_stacks[i])
+		n += 1
+	return n
+
+
+## 0.10.3's Terrain.foe_move, from the terrain's public helpers: the reference the inlined one must match.
+func _foe_move_ref(T: Terrain, p: Vector2, np: Vector2, body_r: float) -> Vector2:
+	var cp := T.cell_of(p)
+	var t := T.cell_type(cp.x, cp.y)
+	if t == Terrain.SHALLOW and not T.frozen.has(cp):
+		np = p + (np - p) * 0.65
+	if body_r <= 0.0 or not T.props_on:
+		return np if T.cell_of(np) == cp else T._move_cells(p, np)
+	var d := np - p
+	if d.length_squared() <= body_r * body_r: return _foe_step_ref(T, p, np, body_r)
+	var n := ceili(d.length() / body_r)
+	var at := p
+	for k in n:
+		var q := _foe_step_ref(T, at, at + d / n, body_r)
+		if q == at: break
+		at = q
+	return at
+
+func _foe_step_ref(T: Terrain, p: Vector2, np: Vector2, body_r: float) -> Vector2:
+	var q := np if T.cell_of(np) == T.cell_of(p) else T._move_cells(p, np)
+	var r := T.props_resolve(q, body_r)
+	if r != q and not T.passable(r) and T.passable(q): return p
+	return r
+
+## [pushes compared, pushes differing by over 1e-3, swarm foes a boss overlaps] for both parities, with and without
+## the visibility cull, against the all-pairs definition (bosses ignore their own push, so only swarm foes count).
+func _sep_check(w: World) -> Array:
+	var sw := w.sw
+	var compared := 0
+	var differ := 0
+	var by_boss := 0
+	for par in [0, 1]:
+		for vis in [INF, 160.0]:
+			var ref := sw.sep.duplicate()
+			var start: int = par
+			for i in range(start, sw.n, 2):
+				var p := sw.pos[i]
+				if p.distance_squared_to(w.pp) > vis * vis:
+					ref[i] = Vector2.ZERO
+					continue
+				var push := Vector2.ZERO
+				for j in sw.n:
+					if j == i: continue
+					var dd := p.distance_squared_to(sw.pos[j])
+					var rr := sw.rad[i] + sw.rad[j]
+					if dd < rr * rr and dd > 0.0001:
+						var dl := sqrt(dd)
+						push += (p - sw.pos[j]) / dl * (rr - dl)
+						if sw.rad[j] > Swarm.SEP_SMALL_R and par == 0 and vis == INF: by_boss += 1
+				ref[i] = push * 6.0
+			sw.cpu_separation(w.grid, par, w.pp, vis)
+			for i in sw.n:
+				if sw.rad[i] > Swarm.SEP_SMALL_R: continue
+				if sw.sep[i].distance_to(ref[i]) > 1e-3: differ += 1
+				elif ref[i] != Vector2.ZERO: compared += 1
+	return [compared, differ, by_boss]
+
+## 0.10.4 voice pacing (docs/OPTIMIZATION.md O5): a cast bark at most once a minute per exile, a streak bark every 30 s,
+## no line of priority 0-2 again within 90 s (an escalation line within 180 s), story lines (priority 3) always.
+func _pacing_tests() -> void:
+	print("== 0.10.4 voice pacing")
+	var vb := _voice_bank()
+	var cd := float(vb.line("spark", "cast", 0).cooldown_s)
+	# random cast barks, each tried just after the cue's cooldown: no line twice within REPEAT_S
+	var said: Array = []
+	var twice := 0
+	for k in 8:
+		var r := vb.say("spark", "cast")
+		if bool(r.played):
+			for e in said:
+				if e[1] == String(r.id) and vb.now - float(e[0]) < VoiceBank.REPEAT_S: twice += 1
+			said.append([vb.now, String(r.id)])
+		vb.stop_now()
+		vb.step(cd + 1.0)
+	ok(cd >= 60.0 and twice == 0 and said.size() >= 6, "cast barks: a %.0f s cooldown, and in %d plays over %.0f s none repeats within %.0f s" % [cd, said.size(), vb.now, VoiceBank.REPEAT_S])
+	# an escalation line (the Sparkcaller's second ricochet): once, then not again for 2 x REPEAT_S
+	var esc := vb.escalation_variant("spark", "ricochet_2")
+	vb.stop_now()
+	vb.step(VoiceBank.REPEAT_S * 2.0 + 1.0)
+	var e1 := vb.say("spark", "cast", esc)
+	vb.stop_now()
+	vb.step(cd + 1.0)
+	var e2 := vb.say("spark", "cast", esc)
+	vb.stop_now()
+	vb.step(VoiceBank.REPEAT_S * 2.0)
+	var e3 := vb.say("spark", "cast", esc)
+	ok(esc >= 0 and bool(e1.played) and not bool(e2.played) and String(e2.get("reason", "")) == "repeat" and bool(e3.played),
+		"an escalation line plays, is refused as a repeat %.0f s later, and plays again after %.0f s" % [cd + 1.0, VoiceBank.REPEAT_S * 2.0])
+	# story lines are never held back as repeats: an exile's intro twice in a row
+	vb.stop_now()
+	var i1 := vb.say("ember", "intro", 0)
+	vb.stop_now()
+	var i2 := vb.say("ember", "intro", 0)
+	ok(bool(i1.played) and bool(i2.played), "story lines (priority 3) always play: the Emberwitch's intro twice in a row")
+	vb.stop_now()
+	vb.queue_free()
+
+## How often the voices speak in a real run: bot-played campaign acts (8 minutes, the boss at the end) for each
+## exile, with the game's VoiceDirector and VoiceBank on the run's clock. Prints, per run, lines a minute by cue,
+## the share of the time someone is speaking, the same line again within a minute, and the longest silence.
+func _voice_sim() -> void:
+	print("== voice frequency (bot-played acts)")
+	var dt := 1.0 / 60.0
+	for hero in 4:
+		var w := _world({"mode": "campaign", "stage": hero % 3, "hero": hero, "seed": 300 + hero})
+		var vb := _voice_bank()
+		var vd := VoiceDirector.new()
+		vd.manual_clock = true
+		vd.bank = vb
+		add_child(vd)
+		vd.bind(w)
+		var log: Array = []
+		vb.line_started.connect(func(info): log.append([vb.now, String(info.id), String(info.cue), String(info.speaker), float(info.duration)]))
+		var bot := Bot.new(w, 11 + hero)
+		while not w.over and w.t < 480.0:
+			bot.think()
+			w.step(dt)
+			vd.step(dt)
+			vb.step(dt)
+			if not w.whisper_offer.is_empty(): w.accept_bargain(Bot.bargain(w.whisper_offer, hero))
+			while w.pending > 0: w.apply_choice(Bot.pick(w.make_choices(), w))
+		var mins := maxf(0.01, w.t / 60.0)
+		var by := {}
+		var talk := 0.0
+		var again := 0
+		var last_at := {}
+		var gap := 0.0
+		var prev_end := 0.0
+		for e in log:
+			by[e[2]] = int(by.get(e[2], 0)) + 1
+			talk += e[4]
+			if last_at.has(e[1]) and e[0] - float(last_at[e[1]]) < 60.0:
+				again += 1
+				if OS.get_environment("VOICE_SIM_REPEATS") != "": print("    repeat %s after %.0f s" % [e[1], e[0] - float(last_at[e[1]])])
+			last_at[e[1]] = e[0]
+			gap = maxf(gap, e[0] - prev_end)
+			prev_end = e[0] + e[4]
+		gap = maxf(gap, w.t - prev_end)
+		print("  %s, act %d, %.1f min%s: %d lines, %.1f a minute, speaking %.0f%% of the time, %d repeats within a minute, longest silence %.0f s" % [
+			Content.HEROES[hero].name, w.stage + 1, mins, (" (died)" if w.over and not w.won else ""), log.size(), log.size() / mins, 100.0 * talk / maxf(1.0, w.t), again, gap])
+		print("    by cue: " + ", ".join(by.keys().map(func(k): return "%s %.1f/min" % [k, by[k] / mins])))
+		vd.unbind()
+		vd.queue_free()
+		vb.queue_free()
+
+## The gate's drop-in check (tools/gate_check.py): a clip encoded by tools/gen_voices.py at a real line's path
+## (narrator act_0), imported by Godot, must play instead of the chime at its own length, never looping.
+func _voice_dropin_tests() -> void:
+	print("== voice drop-in")
+	var vb := _voice_bank()
+	var ln := vb.line("narrator", "act_0", 0)
+	var r := vb.say("narrator", "act_0", 0)
+	var st: AudioStream = vb.active_player().stream if vb.active_player() != null else null
+	ok(bool(r.using_pack) and st is AudioStreamOggVorbis and absf(float(r.duration) - st.get_length()) < 0.001 and not (st as AudioStreamOggVorbis).loop,
+		"%s plays instead of the chime at its real length (%.2f s; the estimate is %.1f s), never looping" % [ln.get("file", "?"), float(r.duration), float(ln.get("duration_fallback_s", 0.0))])
+	vb.step(float(r.duration) + 0.01)
+	ok(not vb.is_speaking(), "and the line ends when the clip does")
+	vb.queue_free()
+
+func _height_tests() -> void:
+	print("== heights in the 3D view")
+	var w := _world({"mode": "campaign", "stage": 1, "hero": 0, "seed": 41})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	var T := w.terrain
+	# a walkable spot with real hills around it: the height spans more than 40 units within 300
+	var spot := w.pp
+	var best := 0.0
+	for r in range(0, 3000, 150):
+		for a in 12:
+			var c := Vector2.from_angle(TAU * a / 12.0) * r
+			if not T.passable(c): continue
+			var lo := INF
+			var hi := -INF
+			for k in 16:
+				var h := T.height(c + Vector2.from_angle(TAU * k / 16.0) * 300.0)
+				lo = minf(lo, h); hi = maxf(hi, h)
+			if hi - lo > best:
+				best = hi - lo
+				spot = c
+		if best > 40.0: break
+	w.pp = spot
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	v._process(1.0 / 60.0)                 # composes the height window around the hero
+	var rng := RandomNumberGenerator.new(); rng.seed = 5
+	var worst := 0.0
+	var lo2 := INF
+	var hi2 := -INF
+	var pts := PackedVector2Array()
+	for k in 3000:
+		var p := spot + Vector2(rng.randf_range(-1400, 1400), rng.randf_range(-1400, 1400))
+		pts.append(p)
+		var hb := T.height(p)
+		worst = maxf(worst, absf(v.ground_y(p) - hb))
+		lo2 = minf(lo2, hb); hi2 = maxf(hi2, hb)
+	ok(worst < 0.01 and hi2 - lo2 > 40.0, "ground_y() equals Terrain.height() on hilly ground (max difference %.4f over a %.0f-unit height range)" % [worst, hi2 - lo2])
+	var t0 := Time.get_ticks_usec()
+	var acc := 0.0
+	for p in pts: acc += v.ground_y(p)
+	var t1 := Time.get_ticks_usec()
+	for p in pts: acc += T.height(p)
+	var t2 := Time.get_ticks_usec()
+	print("  ground_y %.2f us a call, Terrain.height %.2f us a call" % [float(t1 - t0) / pts.size(), float(t2 - t1) / pts.size()])
+	ok(t1 - t0 < t2 - t1, "and is cheaper than asking the simulation")
+	# foes: the ground height is in each instance's transform (row-major 3x4: element 7 is the y origin)
+	for k in 60: w.spawn_foe(Content.E.GRUNT + k % 5, spot + Vector2.from_angle(k * 0.7) * (90.0 + 4.0 * k), 0, 0, 50.0)
+	for k in 30: w.add_gem(spot + Vector2.from_angle(k * 1.3) * (60.0 + 7.0 * k), 1.0)
+	for k in 90: w.step(1.0 / 60.0)          # the hero's weapons fire; shots, kills, bursts and debris follow
+	for k in 3:                              # and a few shots of each side placed over the slopes
+		var pr := World.Proj.new()
+		pr.pos = spot + Vector2.from_angle(k * 2.1) * 150.0; pr.vel = Vector2(300, 40); pr.life = 2.0
+		w.projs.append(pr)
+		var es := World.Proj.new()
+		es.pos = spot + Vector2.from_angle(k * 2.1 + 1.0) * 170.0; es.vel = Vector2(-200, 60); es.life = 2.0; es.r = 6.0
+		w.eshots.append(es)
+	v._process(1.0 / 60.0)
+	var checked := 0
+	var bad := 0
+	for kind in v._foe_mm.size():
+		if kind >= v._fbk.size(): continue
+		var buf: PackedFloat32Array = v._fbk[kind]
+		for j in range(v._start[kind], v._start[kind + 1]):
+			var o := (j - v._start[kind]) * WorldView3D.FOE_STRIDE
+			checked += 1
+			if absf(buf[o + 7] - v.ground_y(w.sw.pos[v._order[j]])) > 0.01: bad += 1
+	ok(checked >= 20 and bad == 0, "every drawn foe stands at ground_y() (%d checked, %d off)" % [checked, bad])
+	var fx := v.fx
+	var pn := mini(w.projs.size(), 800)
+	var pbad := 0
+	for k in pn:
+		if absf(fx._pb[k * 20 + 7] - (v.ground_y(w.projs[k].pos) + 16.0)) > 0.01: pbad += 1
+	ok(pn > 0 and pbad == 0, "hero shots fly 16 above the ground under them (%d shots)" % pn)
+	var ebad := 0
+	for j in w.eshots.size():                # the shot layer (FX3D.esh_mm): one quad per enemy shot
+		if absf(fx._eb[j * 20 + 7] - (v.ground_y(w.eshots[j].pos) + 14.0)) > 0.01: ebad += 1
+	ok(w.eshots.size() > 0 and ebad == 0, "enemy shots fly 14 above the ground under them (%d shots)" % w.eshots.size())
+	var gbad := 0
+	var gn := 0
+	for i in w.gem_n:
+		if w.gem_pos[i].distance_to(w.pp) > w.view_r + 40.0: continue
+		var y := fx._gemb[gn * 20 + 7] - v.ground_y(w.gem_pos[i])
+		if y < 7.4 or y > 12.6: gbad += 1
+		gn += 1
+	ok(gn > 0 and gbad == 0, "XP crystals bob 7.5 to 12.5 above the ground (%d crystals)" % gn)
+	# debris: thrown, it lands and rests on the ground under it, never inside a slope
+	var dpos := spot + Vector2(40, 0)
+	for k in 12:
+		fx._debris(Vector3(dpos.x, v.ground_y(dpos) + 20.0, dpos.y), Vector3(randf_range(-1, 1), 1.2, randf_range(-1, 1)) * 200.0, Color.GRAY, 5.0, 1.5)
+	var dbad := 0
+	for f in 60:
+		fx._sim_debris(1.0 / 60.0)
+		for i in fx.d_n:
+			var p3: Vector3 = fx.d_pos[i]
+			if p3.y < v.ground_y(Vector2(p3.x, p3.z)) + fx.d_size[i] * 0.3 - 0.01: dbad += 1
+	ok(fx.d_n > 0 and dbad == 0, "debris never sinks below the ground under it (%d chips, 60 frames)" % fx.d_n)
+	# sparks from a hit burst start 10 above the ground there; lights are world positions
+	var bp := spot + Vector2(-70, 30)
+	var s0 := fx.s_n
+	w.bursts.append([bp, Color(1, 0.5, 0.2), 3, 100.0])
+	fx._consume_feed()
+	ok(fx.s_n > s0 and absf(fx.s_pos[fx.s_n - 1].y - (v.ground_y(bp) + 10.0)) < 0.01, "hit sparks start 10 above the ground at the hit")
+	var lbad := 0
+	var cands := fx.light_candidates()
+	for c in cands:
+		var lp: Vector3 = c[0]
+		if lp.y < v.ground_y(Vector2(lp.x, lp.z)) - 0.01: lbad += 1
+	ok(lbad == 0, "dynamic light candidates are above the ground (%d candidates)" % cands.size())
+	v.queue_free()
+
+## Drawing between ticks: World snapshots positions at the start of each tick, Main hands the view
+## FixedStep.alpha(), and the view draws prev.lerp(now, alpha).
+func _interp_tests() -> void:
+	print("== interpolation between ticks")
+	var w := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 51})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	var i := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(300, 0), 0, 0, 50.0)
+	ok(w.sw.prev[i] == w.sw.pos[i], "a new foe starts with its previous position where it spawned")
+	w.in_move = Vector2.RIGHT
+	for k in 20: w.step(FixedStep.STEP)
+	var before := w.pp
+	var fpos := w.sw.pos[i]
+	w.step(FixedStep.STEP)
+	ok(w.prev_pp == before and w.pp != before, "each tick keeps where the hero stood at its start")
+	ok(w.sw.prev[i] == fpos, "and where each foe stood")
+	# removing a foe moves the last one into its slot, previous position included
+	var j := w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(-300, 40), 0, 0, 50.0)
+	w.step(FixedStep.STEP)
+	var lastp := w.sw.prev[w.sw.n - 1]
+	var last_uid := w.sw.uid[w.sw.n - 1]
+	w.sw.remove(i)
+	var moved := w.sw.index_of(last_uid)
+	ok(j >= 0 and w.sw.prev[moved] == lastp, "a foe moved to another slot keeps its previous position")
+	# the view's lerp, and its teleport guard
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	v.alpha = 0.5
+	v._process(1.0 / 60.0)
+	ok(v.hero_p.distance_to((w.prev_pp + w.pp) * 0.5) < 0.001, "at alpha 0.5 the hero is drawn halfway between the last two ticks")
+	ok(v.lerp_pos(Vector2.ZERO, Vector2(500, 0)) == Vector2(500, 0), "a jump of 500 in one tick is drawn where it landed (teleport)")
+	# a 120 Hz display: one tick every other frame. Drawn at the latest tick, the walking hero stood still on
+	# every other frame; drawn between ticks it moves an even amount every frame
+	var m := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 52})
+	m.stats.set_source("t", [["max_hp", "add", 1e6]]); m.hp = 1e6
+	m.in_move = Vector2.RIGHT
+	for k in 30: m.step(FixedStep.STEP)              # up to full walking speed
+	var clock := FixedStep.new()
+	var last_drawn := m.pp
+	var last_raw := m.pp
+	var steps_drawn: Array[float] = []
+	var steps_raw: Array[float] = []
+	for f in 120:
+		var n := clock.advance(1.0 / 120.0)
+		for k in n: m.step(FixedStep.STEP)
+		var drawn := m.prev_pp.lerp(m.pp, clock.alpha())
+		steps_drawn.append(drawn.x - last_drawn.x)
+		steps_raw.append(m.pp.x - last_raw.x)
+		last_drawn = drawn
+		last_raw = m.pp
+	steps_drawn = steps_drawn.slice(4)
+	steps_raw = steps_raw.slice(4)
+	var still_raw := steps_raw.filter(func(d): return absf(d) < 0.001).size()
+	var still_drawn := steps_drawn.filter(func(d): return absf(d) < 0.001).size()
+	ok(still_raw >= 50 and still_drawn == 0 and steps_drawn.max() < steps_drawn.min() * 1.3,
+		"at 120 Hz the drawn hero moves every frame (%d of %d frames stood still at the latest tick, %d between ticks; per-frame step %.2f to %.2f)" % [still_raw, steps_raw.size(), still_drawn, steps_drawn.min(), steps_drawn.max()])
+	v.queue_free()
+
+## Packed vertex animation (tools/vat_pack.py, SVA3): every foe kind and act variant loads, with all five
+## clips inside its rows and played at 12 fps or more (the spawn clips were baked at 6 and stay so); the
+## positions are RGBA8 texels that decode (as foe.gdshader's vat_p does) to points inside their box.
+func _vat_tests() -> void:
+	print("== packed vertex animation")
+	var files := 0
+	var bad: Array[String] = []
+	var d := DirAccess.open("res://models/foes")
+	for f in d.get_files():
+		if not f.ends_with(".vat"): continue
+		files += 1
+		var kind := f.get_basename()
+		var parts := kind.split("_")
+		var vat := Models.foe_vat(parts[0], int(parts[1]) if parts.size() > 1 else -1)
+		if vat.is_empty():
+			bad.append(kind + ": did not load"); continue
+		var rows: int = vat.rows
+		var tex: ImageTexture = vat.pos
+		if tex.get_width() != int(vat.verts) or tex.get_height() != rows: bad.append(kind + ": texture size")
+		var img := tex.get_image()
+		var vmin: Vector3 = vat.vmin
+		var vext: Vector3 = vat.vext
+		if img.get_format() != Image.FORMAT_RGBA8 or (vat.nrm as ImageTexture).get_image().get_format() != Image.FORMAT_RG8: bad.append(kind + ": texture formats")
+		# the box spans every clip: at least most of the standing mesh, at most three of its heights (a spawn
+		# rises from up to a body and a half below the ground: the KayKit skeletons' grave rise is 2.4)
+		var mh := Models.foe_mesh(parts[0], int(parts[1]) if parts.size() > 1 else -1).get_aabb().size.y
+		if vext.y < mh * 0.7 or vext.y > mh * 3.0: bad.append(kind + ": box height %.2f for a mesh %.2f tall" % [vext.y, mh])
+		var lo_y := INF
+		var hi_y := -INF
+		for k in 64:
+			var c8 := img.get_pixel(int(k * 37) % img.get_width(), int(k * 11) % rows)
+			var a := roundi(c8.a * 255.0)
+			var q := Vector3(roundi(c8.r * 255.0) * 4 + (a & 3), roundi(c8.g * 255.0) * 4 + ((a >> 2) & 3), roundi(c8.b * 255.0) * 4 + (a >> 4))
+			var p := vmin + q / 1023.0 * vext
+			lo_y = minf(lo_y, p.y); hi_y = maxf(hi_y, p.y)
+			if p.x < vmin.x - 1e-4 or p.x > vmin.x + vext.x + 1e-4 or p.z < vmin.z - 1e-4 or p.z > vmin.z + vext.z + 1e-4: bad.append(kind + ": texel outside its box")
+		if hi_y - lo_y < vext.y * 0.2: bad.append(kind + ": sampled points span %.2f of %.2f" % [hi_y - lo_y, vext.y])
+		var c: PackedFloat32Array = vat.clips
+		for si in Models.VAT_SLOTS.size():
+			var first := c[si * 3]; var n := c[si * 3 + 1]; var fps := c[si * 3 + 2]
+			var slot: String = Models.VAT_SLOTS[si]
+			if n < 2 or first + n + 1 > rows: bad.append("%s %s: rows %d..%d of %d" % [kind, slot, first, first + n, rows])
+			if fps < (5.9 if slot == "spawn" else 11.9): bad.append("%s %s: %.1f fps" % [kind, slot, fps])
+	ok(files >= 11 and bad.is_empty(), "all %d foe animations load, five clips each, at 12 fps or more%s" % [files, ("  " + "; ".join(bad)) if not bad.is_empty() else ""])
+
+## Every world _world() makes, disposed before the runner quits: a World's bosses and director point back at
+## it, so one left undisposed (and its terrain, swarm and generators) outlives the run as a reference cycle.
+var _worlds: Array[World] = []
+func _world(cfg: Dictionary) -> World:
+	cfg["headless"] = true
+	cfg["season"] = cfg.get("season", "")
+	var w := World.new()
+	w.setup(cfg)
+	_worlds.append(w)
+	return w
+
+# ================================================================= the Camp (0.11.0)
+## docs/superpowers/specs/2026-11-25-camp-tutorial-crafting-design.md: materials, the Weaponsmith, the Salvager's
+## bench, the Fusion Furnace (gear and weapon pairs), the Trader, and the run's ore.
+func _camp_item(d: Dictionary, slot: String, r: int, ilvl: int, rng: RandomNumberGenerator) -> Dictionary:
+	var it := Items.make(slot, r, ilvl, rng)
+	d.stash.append(it)
+	return it
+
+func _camp_tests() -> void:
+	print("== the Camp")
+	var rng := RandomNumberGenerator.new(); rng.seed = 77
+	var d: Dictionary = Save.defaults()
+	ok(d.has("materials") and int(d.materials.scrap) == 0 and int(d.materials.ore) == 0, "a new profile holds no scrap or ore")
+	ok((d.temper as Dictionary).is_empty() and (d.kindled as Array).is_empty() and (d.locked as Array).is_empty(), "nothing tempered, kindled or locked")
+	ok(bool(d.tutorial.on) and (d.tutorial.done as Array).is_empty(), "the tutorial starts on, no step done")
+	# ---- materials and costs
+	Camp.add_mat(d, "scrap", 5)
+	ok(Camp.mat(d, "scrap") == 5, "materials add up")
+	d.gold = 100
+	ok(Camp.can_pay(d, {"gold": 100, "scrap": 5}) and not Camp.can_pay(d, {"gold": 101}), "can_pay checks every part of a cost")
+	ok(not Camp.can_pay(d, {"ore": 1}) and not Camp.can_pay(d, {"divine": 1}), "can_pay checks ore and crafting shards")
+	Camp.pay(d, {"gold": 40, "scrap": 2})
+	ok(int(d.gold) == 60 and Camp.mat(d, "scrap") == 3, "pay takes gold and scrap")
+	ok(Camp.cost_text({"gold": 120, "ore": 1, "scrap": 6}).contains("120") and Camp.cost_text({"gold": 120, "ore": 1, "scrap": 6}).contains("Ore"), "a cost reads as text")
+	# ---- the Weaponsmith
+	d.gold = 0
+	ok(Camp.temper_rank(d, "bolt") == 0, "an untouched weapon is rank 0")
+	ok(Camp.temper(d, "bolt") != "" and Camp.temper_rank(d, "bolt") == 0, "tempering without the cost is refused and changes nothing")
+	ok(Camp.temper(d, "lance") != "", "a locked weapon cannot be tempered (lance is earned first)")
+	d.gold = 100000; d.materials.ore = 100; d.materials.scrap = 1000
+	var g0 := int(d.gold)
+	ok(Camp.temper(d, "bolt") == "" and Camp.temper_rank(d, "bolt") == 1, "tempering raises the rank")
+	ok(int(d.gold) == g0 - int(Camp.TEMPER_COST[0].gold), "rank 1 costs its gold")
+	for k in 6: Camp.temper(d, "bolt")
+	ok(Camp.temper_rank(d, "bolt") == Camp.TEMPER_MAX, "ranks stop at %d" % Camp.TEMPER_MAX)
+	ok(Camp.temper_cost(d, "bolt").is_empty() and Camp.temper(d, "bolt") != "", "a masterwork has no next rank")
+	var st := Stats.new()
+	st.set_source("temper", Camp.temper_mods(5))
+	ok(absf(st.value("damage", 1.0) - 1.4 * 1.1) < 0.001, "rank 5: +40%% damage and a further 10%% more (%.3f)" % st.value("damage", 1.0))
+	ok(absf(st.value("cooldown", 1.0) - 0.92) < 0.001, "rank 3 and up: 8% faster")
+	ok(absf(Camp.temper_hit("bolt", 0) - 9.0) < 0.001 and absf(Camp.temper_hit("bolt", 5) - 9.0 * 1.4 * 1.1) < 0.001, "the smith's preview: Rime Bolt hits 9.0 untempered, 13.9 as a masterwork")
+	var st2 := Stats.new()
+	st2.set_source("temper", Camp.temper_mods(2))
+	ok(absf(st2.value("damage", 1.0) - 1.16) < 0.001 and absf(st2.value("cooldown", 1.0) - 1.0) < 0.001, "rank 2: +16% damage only")
+	# a run applies the ranks to the weapon's own stats: the hero's starting weapon and any taken later
+	Save.data.temper = {"bolt": 3, "nova": 1}
+	var w := _world({"mode": "campaign", "hero": 1, "seed": 31})
+	var start_w: String = Content.HEROES[1].weapon
+	if Save.data.temper.has(start_w):
+		ok(w.wlocal[start_w].value("damage", 1.0) > 1.0, "the starting weapon carries its temper")
+	w.apply_choice({"kind": "w", "id": "nova"})
+	ok(absf(w.wlocal["nova"].value("damage", 1.0) - 1.08) < 0.001, "a weapon taken in the run carries its temper (%.3f)" % w.wlocal["nova"].value("damage", 1.0))
+	ok(String(w.choice_text({"kind": "w", "id": "nova"}).tag).ends_with(Camp.RANK_NAME[1]), "its level-up card names its temper (%s)" % w.choice_text({"kind": "w", "id": "nova"}).tag)
+	w.apply_choice({"kind": "w", "id": "orbit"})
+	ok(absf(w.wlocal["orbit"].value("damage", 1.0) - 1.0) < 0.001, "an untempered weapon is unchanged")
+	var wd := _world({"mode": "campaign", "hero": 0, "seed": 32, "daily": true, "code": "T", "date": "2026-11-25"})
+	wd.apply_choice({"kind": "w", "id": "nova"})
+	ok(absf(wd.wlocal["nova"].value("damage", 1.0) - 1.0) < 0.001, "the Daily Rift ignores tempering (everyone starts equal)")
+	Save.data.temper = {}
+	# ---- the Salvager's bench
+	var dd: Dictionary = Save.defaults()
+	var n1 := _camp_item(dd, "ring", 0, 10, rng)
+	var m1 := _camp_item(dd, "ring", 1, 10, rng)
+	var m2 := _camp_item(dd, "boots", 1, 12, rng)
+	var r1 := _camp_item(dd, "amulet", 2, 14, rng)
+	var l1 := _camp_item(dd, "relic", 3, 20, rng)
+	var y := Camp.salvage_yield(m1)
+	ok(int(y.scrap) == Camp.SCRAP[1] and int(y.augment) == 2, "a Magic item salvages to 4 scrap and 2 Augments")
+	ok(int(Camp.salvage_yield(l1).scrap) == Camp.SCRAP[3] and int(Camp.salvage_yield(n1).transmute) == 1, "Legendary gives 20 scrap, Normal a Transmute")
+	Camp.toggle_lock(dd, m2)
+	ok(Camp.is_locked(dd, m2) and not Camp.is_locked(dd, m1), "items lock by uid")
+	ok(Camp.bulk_list(dd, 1) == [m1], "bulk salvage skips locked items")
+	ok(Camp.bulk_list(dd, 3).is_empty(), "bulk salvage never takes legendaries")
+	dd.equipped.amulet = r1; dd.stash.erase(r1)
+	ok(Camp.bulk_list(dd, 2).is_empty(), "bulk salvage never takes equipped gear")
+	var cur0 := int(dd.currency.augment)
+	var got := Camp.salvage_all(dd, 1)
+	ok(int(got.scrap) == 4 and int(dd.currency.augment) == cur0 + 2 and Camp.mat(dd, "scrap") == 4, "salvage all Magic: the yield is paid")
+	ok(not dd.stash.has(m1) and dd.stash.has(m2), "the salvaged item is gone, the locked one stays")
+	var one := Camp.salvage(dd, n1)
+	ok(int(one.scrap) == 2 and not dd.stash.has(n1), "salvaging one item pays its yield")
+	ok(Camp.salvage(dd, m2).is_empty() and dd.stash.has(m2), "a locked item is not salvaged")
+	Camp.toggle_lock(dd, m2)
+	ok(not Camp.is_locked(dd, m2), "unlock")
+	# ---- the Fusion Furnace: gear
+	var df: Dictionary = Save.defaults()
+	var a1 := _camp_item(df, "ring", 1, 10, rng)
+	var a2 := _camp_item(df, "ring", 1, 18, rng)
+	var a3 := _camp_item(df, "ring", 1, 12, rng)
+	var b1 := _camp_item(df, "boots", 1, 12, rng)
+	df.gold = 0
+	var gr := Camp.fuse_groups(df)
+	ok(gr.size() == 1 and gr[0].slot == "ring" and int(gr[0].rarity) == 1 and gr[0].items.size() == 3, "three Magic rings make a fusion group")
+	ok(typeof(Camp.fuse_items(df, [a1, a2, a3], rng)) == TYPE_STRING and df.stash.size() == 4, "fusing without the cost is refused, nothing lost")
+	ok(typeof(Camp.fuse_items(df, [a1, a2, b1], rng)) == TYPE_STRING, "fusion needs one slot")
+	ok(typeof(Camp.fuse_items(df, [a1, a2], rng)) == TYPE_STRING, "fusion needs three items")
+	df.gold = 10000; df.materials.scrap = 100
+	Camp.toggle_lock(df, a3)
+	ok(typeof(Camp.fuse_items(df, [a1, a2, a3], rng)) == TYPE_STRING, "a locked item cannot be fused")
+	Camp.toggle_lock(df, a3)
+	var out = Camp.fuse_items(df, [a1, a2, a3], rng)
+	ok(typeof(out) == TYPE_DICTIONARY and int(out.rarity) == 2 and out.slot == "ring" and int(out.ilvl) == 18, "three Magic rings fuse into a Rare ring at the highest item level")
+	ok(df.stash.has(out) and not df.stash.has(a1) and not df.stash.has(a2) and not df.stash.has(a3) and df.stash.size() == 2, "the three go in, the new one comes out")
+	ok(Items.valid(out), "the fused item is valid")
+	var rr: Array = []
+	for k in 3: rr.append(_camp_item(df, "amulet", 2, 20, rng))
+	df.currency.divine = 0
+	ok(typeof(Camp.fuse_items(df, rr, rng)) == TYPE_STRING, "Rare into Legendary needs a Divine Shard")
+	df.currency.divine = 1
+	var lg = Camp.fuse_items(df, rr, rng)
+	ok(typeof(lg) == TYPE_DICTIONARY and int(lg.rarity) == 3 and String(lg.leg) != "" and int(df.currency.divine) == 0, "three Rares and a Divine Shard make a Legendary")
+	var dp: Dictionary = Save.defaults()
+	_camp_item(dp, "ring", 1, 10, rng); _camp_item(dp, "ring", 1, 11, rng); _camp_item(dp, "boots", 2, 12, rng)
+	var lk := _camp_item(dp, "amulet", 1, 12, rng)
+	Camp.toggle_lock(dp, lk)
+	var pa := Camp.fuse_partial(dp)
+	ok(pa.size() == 2 and pa[0] == ["boots", 2, 1] and pa[1] == ["ring", 1, 2], "partial sets list what is being gathered, the rarest first, locked items left out (%s)" % str(pa))
+	var ll: Array = []
+	for k in 3: ll.append(_camp_item(df, "boots", 3, 20, rng))
+	ok(typeof(Camp.fuse_items(df, ll, rng)) == TYPE_STRING, "Legendaries do not fuse")
+	# ---- the Fusion Furnace: weapon pairs
+	var dk: Dictionary = Save.defaults()
+	dk.gold = 0
+	ok(Camp.kindle(dk, "bolt", "nova") != "" and not Camp.kindled(dk, "bolt+nova"), "kindling without the cost is refused")
+	dk.gold = 100000; dk.materials.ore = 100
+	ok(Camp.kindle(dk, "bolt", "bolt") != "", "a weapon cannot be kindled with itself")
+	ok(Camp.kindle(dk, "bolt", "lance") != "", "a locked weapon cannot be kindled")
+	var c1 := Camp.kindle_cost(dk)
+	ok(Camp.kindle(dk, "nova", "bolt") == "" and Camp.kindled(dk, "bolt+nova"), "kindling a pair records its sorted key")
+	ok(int(Camp.kindle_cost(dk).gold) > int(c1.gold), "each kindled pair costs more than the last")
+	ok(Camp.kindle(dk, "bolt", "nova") != "", "a pair is kindled once")
+	Save.data.kindled = ["bolt+nova"]
+	var wk := _world({"mode": "campaign", "hero": 0, "seed": 33})
+	for id in ["bolt", "nova"]:
+		wk.weapons[id] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
+		wk.wlocal[id] = Stats.new()
+	var fz := wk.make_choices().filter(func(c): return c.kind == "fuse")
+	ok(fz.size() == 1 and fz[0].id == "bolt+nova", "a kindled pair offers its fusion at level 5, unevolved")
+	wk.apply_choice(fz[0])
+	ok(absf(wk.wlocal["bolt"].value("damage", 1.0) - Camp.KINDLED_MORE) < 0.001, "a kindled fusion deals 35% more damage")
+	var wr := _world({"mode": "campaign", "hero": 0, "seed": 39})
+	var toasts: Array = []
+	wr.toast.connect(func(t, _c): toasts.append(t))
+	wr.weapons["nova"] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
+	wr.wlocal["nova"] = Stats.new()
+	wr.weapons["bolt"] = {"lv": 4, "evo": false, "t": 0.0, "gems": []}
+	wr.wlocal["bolt"] = Stats.new()
+	wr.apply_choice({"kind": "w", "id": "bolt"})
+	ok(toasts.any(func(t): return String(t).begins_with("Kindled pair ready")), "the kindled pair's second weapon at level 5 says the fusion is ready (%s)" % str(toasts))
+	var wu := _world({"mode": "campaign", "hero": 0, "seed": 34})
+	for id in ["bolt", "orbit"]:
+		wu.weapons[id] = {"lv": 5, "evo": false, "t": 0.0, "gems": []}
+		wu.wlocal[id] = Stats.new()
+	ok(wu.make_choices().filter(func(c): return c.kind == "fuse").is_empty(), "an unkindled pair still needs both evolved")
+	Save.data.kindled = []
+	# ---- the Trader
+	var dt: Dictionary = Save.defaults()
+	var s1 := Camp.trader_stock(dt, "2026-11-25")
+	ok(s1.size() == Camp.TRADER_SLOTS, "the trader shows %d items" % Camp.TRADER_SLOTS)
+	var s1b := Camp.trader_stock(dt, "2026-11-25")
+	ok(JSON.stringify(s1) == JSON.stringify(s1b), "the same day keeps the same stock")
+	var ok_items := true
+	for e in s1:
+		if not Items.valid(e.it) or int(e.price) <= 0 or int(e.it.rarity) < 1: ok_items = false
+	ok(ok_items, "stock items are valid, priced, and Magic or better")
+	var s2 := Camp.trader_stock(dt, "2026-11-26")
+	ok(JSON.stringify(s1) != JSON.stringify(s2), "a new day brings new stock")
+	dt.gold = 0
+	ok(Camp.trader_buy(dt, 0, "2026-11-26") != "" and dt.stash.is_empty(), "buying without the gold is refused")
+	dt.gold = 100000
+	var price := int(Camp.trader_stock(dt, "2026-11-26")[0].price)
+	ok(Camp.trader_buy(dt, 0, "2026-11-26") == "" and dt.stash.size() == 1 and int(dt.gold) == 100000 - price, "buying moves the item to the stash for its price")
+	ok(Camp.trader_stock(dt, "2026-11-26").size() == Camp.TRADER_SLOTS - 1, "a bought item leaves the stock")
+	var g1 := int(dt.gold)
+	ok(Camp.restock(dt, "2026-11-26") == "" and Camp.trader_stock(dt, "2026-11-26").size() == Camp.TRADER_SLOTS and int(dt.gold) < g1, "a paid restock refills the stock")
+	var rc2 := Camp.restock_cost(dt)
+	ok(rc2 > Camp.RESTOCK_COST, "each restock costs more the same day")
+	var a0 := int(dt.currency.augment)
+	ok(Camp.buy_shard(dt, "augment") == "" and int(dt.currency.augment) == a0 + 1, "the trader sells crafting shards")
+	ok(Camp.buy_shard(dt, "exalt") != "", "but not every shard")
+	# ---- a full stash: the weakest unlocked find below Legendary is salvaged at Nim's rates, never a locked one
+	var keep_d: Dictionary = Save.data
+	Save.data = Save.defaults()
+	var sd: Dictionary = Save.data
+	var wst := _world({"mode": "campaign", "hero": 0, "seed": 38})
+	for k in World.STASH_CAP - 1:
+		var lm := Items.make(Content.SLOTS[k % 4], Content.Rarity.MAGIC, 10, rng)
+		sd.stash.append(lm)
+		Camp.toggle_lock(sd, lm)
+	var junk := Items.make("ring", Content.Rarity.NORMAL, 5, rng)
+	sd.stash.append(junk)
+	var nm := Items.make("boots", Content.Rarity.MAGIC, 12, rng)
+	wst.stash_add(nm)
+	ok(sd.stash.size() == World.STASH_CAP and not sd.stash.has(junk) and sd.stash.has(nm) and Camp.mat(sd, "scrap") == Camp.SCRAP[0], "full: the unlocked Normal ring is salvaged for its scrap, the new find kept")
+	var nm2 := Items.make("relic", Content.Rarity.MAGIC, 3, rng)
+	Camp.toggle_lock(sd, nm)
+	wst.stash_add(nm2)
+	ok(sd.stash.size() == World.STASH_CAP and not sd.stash.has(nm2) and Camp.mat(sd, "scrap") == Camp.SCRAP[0] + Camp.SCRAP[1], "everything locked: the new Magic find is salvaged instead, nothing locked is lost")
+	var lg2 := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
+	wst.stash_add(lg2)
+	ok(sd.stash.has(lg2) and sd.stash.size() == World.STASH_CAP + 1, "a Legendary is never salvaged unasked: the stash goes over the cap for it")
+	Save.data = keep_d
+	# ---- the Wayside Forge: Doran's apprentice hones each weapon carried once a forge, a rank for this run
+	Save.data.temper = {"bolt": 2}
+	var wf := _world({"mode": "campaign", "hero": 1, "seed": 40})
+	var opened := [0]
+	wf.forge_open.connect(func(): opened[0] += 1)
+	wf.weapons["bolt"] = {"lv": 2, "evo": false, "t": 0.0, "gems": []}
+	wf.wlocal["bolt"] = Stats.new()
+	wf.wlocal["bolt"].set_source("temper", Camp.temper_mods(wf.temper_rank("bolt")))
+	ok(wf.hone_weapon("bolt") != "", "no forge, no honing")
+	var fev: Dictionary = wf.director.start("forge")
+	fev.pos = wf.pp + Vector2(30, 0)
+	wf.director._step_forge(fev, 0.1)
+	ok(opened[0] == 1, "stepping to the forge opens it")
+	wf.director._step_forge(fev, 0.1)
+	ok(opened[0] == 1, "once, until the hero steps away")
+	wf.gold = 0
+	var c0 := wf.hone_cost("bolt")
+	ok(c0 == World.HONE_BASE * 3 and wf.hone_weapon("bolt") != "" and wf.temper_rank("bolt") == 2, "honing a rank-2 weapon costs %d run gold, refused without it" % c0)
+	wf.gold = 1000
+	ok(wf.hone_weapon("bolt") == "" and wf.temper_rank("bolt") == 3 and int(wf.gold) == 1000 - c0, "honed: rank 3 for this run, the gold paid")
+	ok(absf(wf.wlocal["bolt"].value("cooldown", 1.0) - Camp.TEMPER_CD) < 0.001, "rank 3's faster cooldown applies at once")
+	ok(wf.hone_weapon("bolt") != "" and wf.temper_rank("bolt") == 3, "once a weapon a forge")
+	ok(Camp.temper_rank(Save.data, "bolt") == 2, "the Camp's rank is untouched: honing lasts the run")
+	ok(String(wf.choice_text({"kind": "w", "id": "bolt"}).tag).ends_with(Camp.RANK_NAME[3]), "the level-up card shows the honed rank")
+	var wfd := _world({"mode": "campaign", "hero": 0, "seed": 41, "daily": true, "code": "T", "date": "2026-11-25"})
+	ok(wfd.temper_rank("bolt") == 0, "the Daily Rift starts every weapon untempered")
+	Save.data.temper = {}
+	var wrift := _world({"mode": "rift", "hero": 0, "gr": 1, "seed": 42})
+	wrift.t = 500.0
+	var rift_forge := false
+	for k in 200:
+		if wrift.director.pick() == "forge": rift_forge = true
+	ok(not rift_forge, "no forge in a Greater Rift")
+	# ---- salvage on the way (Nim's option): finds below the chosen rarity that are no upgrade go straight to scrap
+	var keep_s: Dictionary = Save.data
+	Save.data = Save.defaults()
+	var sa: Dictionary = Save.data
+	var was_eq: bool = bool(sa.options.auto_equip)
+	sa.options.auto_equip = false
+	sa.equipped.ring = Items.make("ring", Content.Rarity.RARE, 30, rng)
+	sa.options.auto_salvage = 1
+	var ws := _world({"mode": "campaign", "hero": 0, "seed": 44})
+	var weak_n := Items.make("ring", Content.Rarity.NORMAL, 2, rng)
+	ws._take_item(weak_n)
+	ok(sa.stash.is_empty() and Camp.mat(sa, "scrap") == Camp.SCRAP[0] and ws.salvaged_run == 1, "on Normal: a weak Normal find goes straight to scrap")
+	var weak_m := Items.make("ring", Content.Rarity.MAGIC, 2, rng)
+	ws._take_item(weak_m)
+	ok(sa.stash.has(weak_m), "a Magic find is kept")
+	var up_n := Items.make("boots", Content.Rarity.NORMAL, 9, rng)
+	ws._take_item(up_n)
+	ok(sa.stash.has(up_n), "an upgrade is never salvaged on the way (an empty slot: anything is)")
+	sa.options.auto_salvage = 2
+	var weak_m2 := Items.make("ring", Content.Rarity.MAGIC, 2, rng)
+	ws._take_item(weak_m2)
+	ok(not sa.stash.has(weak_m2) and ws.salvaged_run == 2, "on Normal and Magic: the weak Magic find is salvaged too")
+	sa.options.auto_salvage = 0
+	var weak_n2 := Items.make("ring", Content.Rarity.NORMAL, 2, rng)
+	ws._take_item(weak_n2)
+	ok(sa.stash.has(weak_n2), "off: every find is kept")
+	sa.options.auto_equip = was_eq
+	Save.data = keep_s
+	# a new profile salvages Normal finds on the way (off, a won Act I's 57-85 finds filled the 80-slot stash); a profile
+	# saved before that default keeps what it had, and a saved choice stays
+	var keep_path: String = Save.path
+	var sal_got: Array = []
+	for opts in [{"sound": false}, {"sound": false, "auto_salvage": 2}]:
+		Save.path = "user://test_auto_salvage_profile.json"
+		var f := FileAccess.open(Save.path, FileAccess.WRITE)
+		f.store_string(JSON.stringify({"gold": 5, "options": opts}))
+		f.close()
+		Save.load_profile()
+		sal_got.append(int(Save.data.options.auto_salvage))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Save.path))
+	Save.path = keep_path
+	Save.data = keep_s
+	ok(int(Save.defaults().options.auto_salvage) == 1 and sal_got == [0, 2], "salvage on the way: Normal finds for a new profile; an older profile keeps off, a saved choice stays (%s)" % str(sal_got))
+	# ---- the run's ore
+	var wo := _world({"mode": "campaign", "hero": 0, "seed": 35})
+	wo.kills = 900; wo.champions_slain = 2
+	ok(Camp.ore_for_run(wo, true) == 2 + 3 + 2, "ore: 1 a champion, 3 for the tyrant, 1 per 400 kills (%d)" % Camp.ore_for_run(wo, true))
+	wo.kills = 100000; wo.champions_slain = 40
+	ok(Camp.ore_for_run(wo, true) == Camp.ORE_CAP, "at most %d ore a run" % Camp.ORE_CAP)
+	var wo2 := _world({"mode": "campaign", "hero": 0, "seed": 36, "daily": true, "code": "T", "date": "2026-11-25"})
+	wo2.kills = 900; wo2.champions_slain = 2
+	ok(Camp.ore_for_run(wo2, true) == 0, "no ore from the Daily Rift")
+	var ore0 := Camp.mat(Save.data, "ore")
+	var wo3 := _world({"mode": "campaign", "hero": 0, "seed": 37})
+	wo3.kills = 800; wo3.champions_slain = 1
+	wo3.end_run(false, true)
+	ok(Camp.mat(Save.data, "ore") == ore0 + 3 and wo3.ore_run == 3, "a run banks its ore (%d)" % wo3.ore_run)
+	# ---- the profile keeps the camp
+	var sv := Save.defaults()
+	sv.temper = {"bolt": 2.0}; sv.materials = {"scrap": 3.0, "ore": 1.0}; sv.locked = [5.0]; sv.kindled = ["bolt+nova"]
+	var keep: Dictionary = Save.data
+	Save.data = Save.defaults()
+	Save._merge(Save.data, JSON.parse_string(JSON.stringify(sv)))
+	Save._normalise()
+	ok(int(Save.data.temper.bolt) == 2 and typeof(Save.data.temper.bolt) == TYPE_INT, "temper ranks survive a save as ints")
+	ok(Camp.mat(Save.data, "scrap") == 3 and int(Save.data.locked[0]) == 5 and typeof(Save.data.locked[0]) == TYPE_INT, "materials and locks survive a save")
+	ok(Save.data.kindled == ["bolt+nova"], "kindled pairs survive a save")
+	var bad := Save.defaults()
+	bad.temper = {"bolt": 99, "nope": 2}
+	Save.data = Save.defaults()
+	Save._merge(Save.data, JSON.parse_string(JSON.stringify(bad)))
+	Save._normalise()
+	ok(int(Save.data.temper.bolt) == Camp.TEMPER_MAX and not Save.data.temper.has("nope"), "a bad save's ranks are clamped and unknown weapons dropped")
+	var old_save := Save.defaults()
+	old_save.erase("tutorial")
+	old_save.stats.runs = 5
+	Save.data = Save.defaults()
+	ok(Save.import_text(Save.encode_save(old_save)) == "" and not bool(Save.data.tutorial.on), "a pasted save from before the coach, with runs played, starts with the tips off")
+	var fresh_save := Save.defaults()
+	fresh_save.erase("tutorial")
+	ok(Save.import_text(Save.encode_save(fresh_save)) == "" and bool(Save.data.tutorial.on), "one with no runs keeps them on")
+	Save.data = keep
+
+## The first-run coach (Coach): which runs it rides, the drill's order, contextual steps taking the stage, a
+## step finished by doing it, an ignored prompt stepping aside, and the profile keeping what was taught.
+func _coach_tests() -> void:
+	print("== the coach")
+	var keep: Dictionary = Save.data
+	Save.data = Save.defaults()
+	var d: Dictionary = Save.data
+	ok(Coach.active_for({"mode": "campaign", "stage": 0}, d), "a fresh profile's campaign run gets the coach")
+	ok(not Coach.active_for({"mode": "campaign", "daily": true}, d) and not Coach.active_for({"mode": "rift"}, d), "the Daily Rift and Greater Rifts do not")
+	d.tutorial.on = false
+	ok(not Coach.active_for({"mode": "campaign"}, d), "nor any run with the tips off")
+	d.tutorial.on = true
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 51})
+	var c := Coach.new()
+	c.bind(w, null)
+	c.tick(0.5)
+	ok(c.active == "", "the first prompt waits a moment")
+	c.tick(2.0)
+	ok(c.active == "move", "then teaches moving first")
+	w.pp += Vector2(80, 0); c.tick(0.1)
+	ok(c.active == "move", "a short step is not enough")
+	w.pp += Vector2(120, 0); c.tick(0.1)
+	ok(c.active == "" and (d.tutorial.done as Array).has("move"), "moving 160 units finishes it, and the profile keeps it")
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "fight", "then: the weapons fire on their own")
+	w.kills += 8; c.tick(0.1)
+	ok((d.tutorial.done as Array).has("fight"), "eight kills finish that")
+	w.hp = w.max_hp * 0.5
+	w.flasks[0].c = 40.0
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "flask", "hurt with a full flask: the flask takes the stage")
+	w.flasks[0].c = 50.0; c.tick(0.1)
+	ok(c.active == "flask", "kills refilling the flask are not a drink")
+	w.flasks[0].c = 30.0; c.tick(0.1)
+	ok((d.tutorial.done as Array).has("flask") and c.active == "", "drinking finishes it")
+	w.hp = w.max_hp
+	w.ult = 100.0
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "ult", "a charged ultimate takes the stage")
+	w.ult = 0.0; c.tick(0.1)
+	ok((d.tutorial.done as Array).has("ult"), "using it finishes it")
+	# flask 2: a different utility flask each run, a bare "2" on touch; once flask 1 is learnt Brask names it and rings it
+	c.tick(Coach.GAP + 0.1)
+	var f2id := String(w.flasks[1].id)
+	var f2 := Coach.prompt("flask2", true, w)
+	var f2k := Coach.prompt("flask2", false, w)
+	ok(c.active == "flask2" and Coach.STEPS.flask2.ring == "f1" and f2.contains(String(Content.FLASK_NAME[f2id]).trim_suffix(" Flask")) and f2.contains(String(Content.FLASK_EFFECT[f2id]))
+		and f2.ends_with("Tap 2 to drink it.") and f2k.ends_with("Press 2 to drink it."), "with flask 1 learnt and flask 2 charged, Brask names it and what it does, ringing its button (%s)" % f2)
+	var toasts: Array = []
+	w.toast.connect(func(t, _c): toasts.append(t))
+	w.use_flask(1)
+	c.tick(0.1)
+	ok((d.tutorial.done as Array).has("flask2") and c.active == "" and toasts.has("%s: %s" % [Content.FLASK_NAME[f2id], Content.FLASK_EFFECT[f2id]]),
+		"drinking it finishes the step, and a toast says which flask it was and what it did (%s)" % str(toasts))
+	# the goal follows the first fight: survive the clock, then the boss (the run never said it); it informs, then is done
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "goal" and String(Coach.STEPS.goal.touch).contains("0:00") and String(Coach.STEPS.goal.touch).contains("boss"),
+		"after the first fight Brask states the goal: survive until 0:00, then beat the boss (%s)" % c.active)
+	c.tick(Coach.INFO_T + 0.1)
+	ok((d.tutorial.done as Array).has("goal") and c.active == "", "it informs for %d s, then is done" % int(Coach.INFO_T))
+	# an ignored prompt steps aside, then comes back
+	w.gem_n = maxi(w.gem_n, 1)
+	c.tick(Coach.GAP + 0.1)
+	var ign := c.active
+	ok(ign == "shards", "with shards on the ground: gather them (%s)" % ign)
+	c.tick(Coach.SHOW_MAX + 0.1)
+	ok(c.active == "" and c.snooze.has(ign) and not (d.tutorial.done as Array).has(ign), "ignored for %d s it steps aside, not done" % int(Coach.SHOW_MAX))
+	Coach.mark(d, "roll")
+	w.t = 60.0
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "jump", "and the next ready step takes its place (%s)" % c.active)
+	w.jump_t = 0.4
+	c.tick(0.1)
+	w.jump_t = 0.0
+	ok((d.tutorial.done as Array).has("jump"), "a jump finishes it")
+	c.tick(Coach.GAP + 0.1)
+	ok(c.active == "", "the snoozed step waits out its %d s" % int(Coach.SNOOZE))
+	c.tick(Coach.SNOOZE)
+	c.tick(0.1)
+	ok(c.active == "shards", "then comes back")
+	# a Rift Gate opens: banking the hoard takes the stage (a hoard not banked is lost on death); a bank finishes it
+	c.active = ""; c.gap = 0.0
+	var gate_before := c.gate_open()
+	c.tick(0.1)
+	var no_gate := c.active != "gate"
+	w.director.objects.append({"pos": w.pp + Vector2(200, 0), "kind": "gate", "id": "gate", "life": 22.0})
+	c.active = ""; c.gap = 0.0
+	c.tick(0.1)
+	var gate_on := c.active == "gate" and String(Coach.STEPS.gate.touch).contains("Rift Gate") and String(Coach.STEPS.gate.touch).contains("lost")
+	w.metrics.banked = int(w.metrics.get("banked", 0)) + 1
+	c.tick(0.1)
+	ok(not gate_before and no_gate and gate_on and (d.tutorial.done as Array).has("gate"),
+		"a Rift Gate opening teaches banking the hoard (it waits for a gate), and banking finishes it (%s %s %s)" % [not gate_before, no_gate, gate_on])
+	w.director.objects = w.director.objects.filter(func(o): return String(o.kind) != "gate")
+	# the found item
+	c.active = ""; c.gap = 0.0
+	for k in Coach.ORDER: if k != "loot": Coach.mark(d, k)
+	c._on_item({}, false)
+	c.tick(0.1)
+	ok(c.active == "loot", "a find teaches the loot")
+	var ae0 := bool(Save.opt("auto_equip"))
+	Save.set_opt("auto_equip", true)
+	var p_on := Coach.prompt("loot", true)
+	Save.set_opt("auto_equip", false)
+	var p_off := Coach.prompt("loot", true)
+	Save.set_opt("auto_equip", ae0)
+	ok(p_on == Coach.LOOT_AUTO and p_on.begins_with("Better gear equips itself") and p_off.begins_with("Gear found. Equip it"),
+		"with Auto-equip on (the default) the loot prompt says better gear equips itself; off, it says to equip it (%s | %s)" % [p_on, p_off])
+	var banners: Array = []
+	w.banner.connect(func(t, _s, _c): banners.append(t))
+	c.tick(Coach.INFO_T + 0.1)
+	ok((d.tutorial.done as Array).has("loot") and banners.has("Drills done"), "and with the drills done, Brask says so")
+	ok(Coach.remaining(d) == [Coach.LEVELUP], "only the level-up page's lesson is left")
+	c.unbind()
+	c.free()
+	Save.data = keep
+
+## The Camp's pages (CampPages): the title's bar opens the hub; each NPC's card opens their station, which keeps
+## Back on screen sideways and upright, with every button touch-sized, and returns to the hub (Back, and Android
+## Back via main.back); each station's main action works through its button; the end of a run offers the Camp.
+## Not on a page that is being replaced (UIKit.clear frees a page's root at the end of the frame).
+func _live(n: Node) -> bool:
+	while n != null:
+		if n.is_queued_for_deletion(): return false
+		n = n.get_parent()
+	return true
+
+func _btn(root: Node, txt: String) -> Button:
+	for b in root.find_children("*", "Button", true, false):
+		if String(b.text) == txt and (b as Control).is_visible_in_tree() and _live(b): return b
+	return null
+
+## The title's gold actions: a tile whose title is gold (the selected PLAY / CONTINUE) and a bar button lit because
+## something waits there.
+func _gold_actions(root: Node) -> Array:
+	var out: Array = []
+	for b in root.find_children("*", "Button", true, false):
+		if not _live(b) or not (b as Control).is_visible_in_tree() or (b as BaseButton).disabled: continue
+		if b.has_meta("title_label"):
+			var tl: Label = b.get_meta("title_label")
+			if tl.get_theme_color("font_color").is_equal_approx(UIKit.GOLD): out.append(String(tl.text))
+		elif (b as Control).has_theme_color_override("font_color") and (b as Button).get_theme_color("font_color").is_equal_approx(Color("ffd27a")):
+			out.append(String((b as Button).text))
+	return out
+
+func _tile_titles(root: Node) -> Array:
+	var out: Array = []
+	for b in root.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("title_label"): out.append(String((b.get_meta("title_label") as Label).text))
+	return out
+
+func _tile(root: Node, title: String) -> Button:
+	for b in root.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("title_label") and String((b.get_meta("title_label") as Label).text) == title: return b
+	return null
+
+## A tile's subline (UIKit.tile: the label under its title).
+func _tile_sub(t: Button) -> String:
+	for l in t.find_children("*", "Label", true, false):
+		if l != t.get_meta("title_label"): return String(l.text)
+	return ""
+
+func _npc_card(root: Node, id: String) -> Button:
+	for b in root.find_children("*", "Button", true, false):
+		if b.has_meta("npc") and String(b.get_meta("npc")) == id and _live(b): return b
+	return null
+
+func _press(root: Node, txt: String) -> bool:
+	var b := _btn(root, txt)
+	if b == null or b.disabled: return false
+	b.pressed.emit()
+	return true
+
+func _camp_ui_tests() -> void:
+	print("== the Camp pages")
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	win.size = Vector2i(2340, 1080)
+	await get_tree().process_frame
+	mn._menu()
+	ok(_btn(mn.screens, "Camp") != null and _btn(mn.screens, "Gear") == null, "the title's bar has Camp in place of Gear")
+	# a new profile's title: one gold action, PLAY (it showed CONTINUE with nothing to continue, a gold Camp, and New
+	# Campaign starting the very same run); the Daily Rift locked until Act I is cleared
+	var gold0 := _gold_actions(mn.screens)
+	var tiles0 := _tile_titles(mn.screens)
+	var daily0 := _tile(mn.screens, "Daily Rift")
+	ok(gold0 == ["PLAY"] and not tiles0.has("New Campaign") and not tiles0.has("Replay Act I") and daily0 != null and daily0.disabled and _tile_sub(daily0) == "Clear Act I to unlock",
+		"a new profile's title has exactly one gold action, PLAY, no second way into the same run, and the Daily Rift locked (%s; %s)" % [str(gold0), _tile_sub(daily0) if daily0 != null else "no Daily tile"])
+	_press(mn.screens, "Camp")
+	await get_tree().process_frame
+	var n_cards := 0
+	for id in CampPages.NPC_ORDER:
+		if _npc_card(mn.screens, id) != null: n_cards += 1
+	ok(n_cards == CampPages.NPC_ORDER.size(), "the hub shows the %d friendly NPCs (%d)" % [CampPages.NPC_ORDER.size(), n_cards])
+	ok(not bool(sv.data.camp_seen), "a visit before any run is not remembered: the end of the first run still points to the Camp")
+	# after a run: CONTINUE, Replay Act I (what New Campaign did), the Camp lit until visited; the Daily opens with Act I
+	sv.data.stats.runs = 1
+	mn._menu()
+	var gold1 := _gold_actions(mn.screens)
+	var tiles1 := _tile_titles(mn.screens)
+	var daily1 := _tile(mn.screens, "Daily Rift")
+	var locked1: bool = daily1 != null and daily1.disabled
+	sv.data.cleared[0] = true
+	mn._menu()
+	var daily2 := _tile(mn.screens, "Daily Rift")
+	var open2: bool = daily2 != null and not daily2.disabled and _tile_sub(daily2).contains(Daily.today().code)
+	sv.data.cleared[0] = false
+	ok(gold1.has("CONTINUE") and gold1.has("Camp") and gold1.size() == 2 and tiles1.has("Replay Act I") and locked1 and open2,
+		"after a run the title shows CONTINUE, Replay Act I and a lit Camp; the Daily Rift opens once Act I is cleared (%s %s %s)" % [str(gold1), locked1, open2])
+	CampPages.show_camp(mn.screens)
+	await get_tree().process_frame
+	ok(bool(sv.data.camp_seen), "the first visit after a run is remembered")
+	var rng := RandomNumberGenerator.new(); rng.seed = 9
+	sv.data.gold = 20000; sv.data.materials = {"scrap": 200, "ore": 40}
+	for k in 3: sv.data.stash.append(Items.make("ring", Content.Rarity.MAGIC, 12, rng))
+	for k in 2: sv.data.stash.append(Items.make("boots", Content.Rarity.NORMAL, 8, rng))
+	var nav := ""
+	var small: Array = []
+	for id in ["smith", "kiln", "nim", "sella", "brask"]:
+		var card := _npc_card(mn.screens, id)
+		if card == null:
+			nav += "  (%s: no card)" % id
+			continue
+		card.pressed.emit()
+		await get_tree().process_frame
+		if mn.screens.parent_page != "camp": nav += "  (%s: not a camp station)" % id
+		nav += await _off_screen(mn.screens, ["Back"])
+		small.append_array(_small_buttons(mn.screens, id))
+		mn.back()                                          # Android Back: to the hub, not the title
+		await get_tree().process_frame
+		if _npc_card(mn.screens, "smith") == null: nav += "  (%s: Back did not return to the Camp)" % id
+	ok(nav == "", "each station opens from its card, keeps Back on screen sideways and Android Back returns to the Camp%s" % nav)
+	# the Chronicler and the Cartographer open the Codex and Modes; their Back returns to the Camp too
+	var back_nav := ""
+	for id in ["chronicler", "cartographer"]:
+		var cc := _npc_card(mn.screens, id)
+		if cc == null:
+			back_nav += "  (%s: no card)" % id
+			continue
+		cc.pressed.emit()
+		await get_tree().process_frame
+		if not _press(mn.screens, "Back"): back_nav += "  (%s: no Back)" % id
+		await get_tree().process_frame
+		if _npc_card(mn.screens, "smith") == null: back_nav += "  (%s: Back did not return to the Camp)" % id
+	ok(back_nav == "", "the Chronicler's Codex and Wend's Modes return to the Camp with Back%s" % back_nav)
+	# the stations' actions, through their buttons
+	CampPages.show_smith(mn.screens)
+	ok(_press(mn.screens, "Temper") and Camp.temper_rank(sv.data, "bolt") == 1, "the smith's first Temper tempers Rime Bolt")
+	CampPages.show_bench(mn.screens)
+	var b_ok := _press(mn.screens, "Salvage all")                    # Normal: one tap
+	var normals_gone := Camp.bulk_list(sv.data, 0).is_empty()
+	CampPages.show_bench(mn.screens)
+	var buttons: Array = mn.screens.find_children("*", "Button", true, false).filter(func(b): return String(b.text) == "Salvage all" and _live(b) and not b.disabled)
+	var armed_ok := false
+	if not buttons.is_empty():
+		buttons[0].pressed.emit()                                    # Magic: the first tap arms
+		armed_ok = Camp.bulk_list(sv.data, 1).size() == 3 and _btn(mn.screens, "Tap to confirm") != null
+	var confirm_ok := _press(mn.screens, "Tap to confirm") and Camp.bulk_list(sv.data, 1).is_empty()
+	ok(b_ok and normals_gone and armed_ok and confirm_ok, "the bench salvages Normal in one tap and asks twice for Magic (%s %s %s %s)" % [b_ok, normals_gone, armed_ok, confirm_ok])
+	for k in 3: sv.data.stash.append(Items.make("amulet", Content.Rarity.MAGIC, 16, rng))
+	CampPages._furnace_tab = 0
+	CampPages.show_furnace(mn.screens)
+	var n0: int = sv.data.stash.size()
+	var fused := _press(mn.screens, "Fuse")
+	var rare_amulet := false
+	for it in sv.data.stash:
+		if it.slot == "amulet" and int(it.rarity) == Content.Rarity.RARE: rare_amulet = true
+	ok(fused and rare_amulet and sv.data.stash.size() == n0 - 2, "the furnace's Fuse turns three Magic amulets into a Rare one")
+	CampPages._furnace_tab = 1
+	CampPages._pick = ["orbit", "bolt"]
+	CampPages.show_furnace(mn.screens)
+	ok(_press(mn.screens, "Kindle") and Camp.kindled(sv.data, "bolt+orbit"), "the furnace kindles the picked pair")
+	CampPages.show_trader(mn.screens)
+	var s0: int = sv.data.stash.size()
+	ok(_press(mn.screens, "Buy") and sv.data.stash.size() == s0 + 1, "the trader's Buy puts the item in the stash")
+	CampPages.show_drill(mn.screens)
+	var how := _texts(mn.screens, "Label")
+	ok(how.has("The goal") and how.has("Rift Gates"), "Brask's How to play names the goal and the Rift Gates")
+	var tips0 := bool(sv.data.tutorial.on)
+	_press(mn.screens, "Tutorial tips: On")
+	var tips1 := bool(sv.data.tutorial.on)
+	sv.data.tutorial.done = ["move"]
+	_press(mn.screens, "Replay tutorial")
+	ok(tips0 and not tips1 and bool(sv.data.tutorial.on) and (sv.data.tutorial.done as Array).is_empty(), "the drillmaster turns the tips off, and Replay turns them back on from the start")
+	# upright: every station keeps Back on screen, every button touch-sized
+	win.size = Vector2i(1080, 2340)
+	await get_tree().process_frame
+	var up := ""
+	for id in ["smith", "kiln", "nim", "sella", "brask"]:
+		CampPages.show(mn.screens, id)
+		var r_up := await _off_screen(mn.screens, ["Back"])
+		if r_up != "":
+			var widest := ""
+			var ww := 0.0
+			for c in mn.screens.find_children("*", "Control", true, false):
+				if _live(c) and (c as Control).get_combined_minimum_size().x > ww and not (c is ScrollContainer) and (c as Control).get_parent() is VBoxContainer:
+					ww = (c as Control).get_combined_minimum_size().x
+					widest = "%s %s" % [c.get_class(), (c as Control).name]
+			up += "  [%s: widest %s %.0f]%s" % [id, widest, ww, r_up]
+		small.append_array(_small_buttons(mn.screens, id + " upright"))
+	CampPages.show_camp(mn.screens)
+	small.append_array(_small_buttons(mn.screens, "camp upright"))
+	ok(up == "", "held upright, every station keeps Back on screen%s" % up)
+	ok(small.is_empty(), "every Camp button is at least %d tall%s" % [UIKit.MIN_TOUCH, ("" if small.is_empty() else ": " + str(small.slice(0, 4)))])
+	win.size = Vector2i(2340, 1080)
+	await get_tree().process_frame
+	# the Wayside Forge's page: Hone through its button, Leave resumes the run
+	sv.data.tutorial = {"on": false, "done": []}
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	var fw: World = mn.world
+	var sw0: String = fw.weapons.keys()[0]
+	var fe: Dictionary = fw.director.start("forge")
+	fe.pos = fw.pp
+	fw.gold = 5000
+	fw.director._step_forge(fe, 0.1)
+	await get_tree().process_frame
+	var on_page: bool = mn.state == "forge" and _btn(mn.screens, "Leave") != null
+	var r0 := fw.temper_rank(sw0)
+	var honed := _press(mn.screens, "Hone  \u00b7  %d gold" % fw.hone_cost(sw0)) and fw.temper_rank(sw0) == r0 + 1
+	small = _small_buttons(mn.screens, "forge")
+	var left: bool = _press(mn.screens, "Leave") and mn.state == "play"
+	ok(on_page and honed and left and small.is_empty(), "the forge opens its page, Hone hones, Leave resumes (%s %s %s %s)" % [on_page, honed, left, str(small)])
+	# Android Back on the run's NPC pages leaves them (it did nothing): the forge and the merchant resume the run, the
+	# Whisperer's bargain is refused
+	var fe2: Dictionary = fw.director.start("forge")
+	fe2.pos = fw.pp
+	fw.director._step_forge(fe2, 0.1)
+	await get_tree().process_frame
+	var fb_on: bool = mn.state == "forge"
+	mn.back()
+	var fb: bool = fb_on and mn.state == "play"
+	fw.merchant_open.emit()
+	var mb_on: bool = mn.state == "merchant"
+	mn.back()
+	var mb: bool = mb_on and mn.state == "play"
+	fw.whisper_offer = ["blood_price", "long_night"]
+	fw.whisper_open.emit()
+	var wb_on: bool = mn.state == "whisper"
+	mn.back()
+	var wb: bool = wb_on and mn.state == "play" and fw.bargains.is_empty()
+	ok(fb and mb and wb, "Android Back leaves the Wayside Forge and the Merchant and refuses the Whisperer's bargain (%s %s %s)" % [fb, mb, wb])
+	mn._on_act("leave", null)
+	# the Daily Rift's Back returns to the page that opened it: the title, or Modes
+	sv.data.cleared[0] = true
+	mn._menu()
+	var dt1 := _tile(mn.screens, "Daily Rift")
+	if dt1 != null: dt1.pressed.emit()
+	var on_daily := _btn(mn.screens, "Enter today's rift") != null
+	_press(mn.screens, "Back")
+	var to_title: bool = mn.screens.page == "menu"
+	mn._on_act("endgame", null)
+	var dt2 := _tile(mn.screens, "Daily Rift")
+	if dt2 != null: dt2.pressed.emit()
+	var on_daily2 := _btn(mn.screens, "Enter today's rift") != null
+	_press(mn.screens, "Copy code")                       # a redraw of the page keeps where Back goes
+	_press(mn.screens, "Back")
+	var to_modes: bool = _tile(mn.screens, "Atlas of Falls") != null and mn.screens.page != "menu"
+	sv.data.cleared[0] = false
+	mn._menu()
+	ok(on_daily and to_title and on_daily2 and to_modes, "the Daily Rift's Back returns to the title when opened there, and to Modes from Modes (%s %s %s %s)" % [on_daily, to_title, on_daily2, to_modes])
+	# the coach rides a fresh profile's campaign run, teaches the level-up page there, and stays out of the Daily Rift
+	sv.data.tutorial = {"on": true, "done": []}
+	VoiceBank.stop_all()
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	var rides: bool = mn.coach.w == mn.world
+	var t_only: bool = mn.hud.banner_t.text != "" and mn.hud.banner_s.text == ""
+	var no_line: bool = VoiceBank.current == null or VoiceBank.current.active_id() != "narrator_act_0_0"
+	ok(t_only and no_line, "a new exile's first run opens on the act's title alone, the narrator's act line held back, so Brask's first prompt is the only text (%s %s)" % [t_only, no_line])
+	mn.world.pending = 1
+	mn._on_level()
+	for k in 6: await get_tree().process_frame
+	var tip := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if String(l.text).begins_with("Captain Brask: \u201cPick one") and _live(l): tip = true
+	var ch: Array = mn.world.make_choices()
+	mn._on_act("pick", ch[0])
+	ok(rides and tip and (sv.data.tutorial.done as Array).has(Coach.LEVELUP), "the coach rides the campaign run and teaches the level-up page (%s %s)" % [rides, tip])
+	mn._on_act("leave", null)
+	sv.data.tutorial.done.append("move")
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	# the banner's line is the act's short subtitle (its lore, 108-122 characters in 3.5 s, read at 31-35 a second, stays
+	# in the Codex), up long enough to read at 15 characters a second
+	var sub_line: String = Story.act(0).subtitle
+	var full: bool = mn.hud.banner_s.text == sub_line and mn.hud.banner_dur >= VoiceBank.read_seconds(sub_line) - 0.01 and (VoiceBank.current == null or VoiceBank.current.active_id() == "narrator_act_0_0")
+	ok(full, "once moving is learnt, a run opens with the act's place in the story (%d characters, %.1f s) and the narrator's line again" % [sub_line.length(), mn.hud.banner_dur])
+	mn._on_act("leave", null)
+	mn._on_act("daily_go", Daily.today())
+	await get_tree().process_frame
+	ok(mn.coach.w == null, "the Daily Rift runs without the coach")
+	mn._on_act("leave", null)
+	# the Gear page: finds from runs are marked NEW on the next visit only; the stash shows how full it is
+	sv.data.stash = []
+	sv.data.new_items = []
+	sv.data.locked = []
+	var gw := _world({"mode": "campaign", "hero": 0, "seed": 43})
+	for k in 3: gw.stash_add(Items.make(Content.SLOTS[k], Content.Rarity.MAGIC, 10, rng))
+	ok((sv.data.new_items as Array).size() == 3, "finds added in a run are marked new (%d)" % (sv.data.new_items as Array).size())
+	CampPages.show_camp(mn.screens)
+	var hub_new := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).contains("3 new"): hub_new = true
+	mn.screens.parent_page = "camp"
+	mn.screens.show_stash(false)
+	var news := 0
+	var count_line := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if not _live(l): continue
+		if String(l.text).contains("NEW"): news += 1
+		if String(l.text).contains("3 / %d" % World.STASH_CAP): count_line = true
+	var cleared := (sv.data.new_items as Array).is_empty()
+	mn.screens.show_stash(false)                   # a redraw on the same visit keeps the marks
+	var news2 := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).contains("NEW"): news2 += 1
+	CampPages.show_camp(mn.screens)
+	mn.screens.show_stash(false)                   # the next visit: seen, no marks
+	var news3 := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).contains("NEW"): news3 += 1
+	ok(hub_new and news == 3 and count_line and cleared and news2 == 3 and news3 == 0,
+		"the hub counts new finds, the Gear page marks them NEW with the stash count, keeps the marks while it is open and drops them after (%s %d %s %s %d %d)" % [hub_new, news, count_line, cleared, news2, news3])
+	# the Gear page: what cannot be undone takes two taps (salvaging any item, extracting a power, applying a shard);
+	# one tap leaves the stash as it was; a duplicate power cannot be extracted for nothing
+	sv.data.stash = []
+	sv.data.codex = []
+	sv.data.locked = []
+	var rare := Items.make("ring", Content.Rarity.RARE, 20, rng)
+	var rare2 := Items.make("ring", Content.Rarity.RARE, 20, rng)
+	var leg := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
+	var magic := Items.make("boots", Content.Rarity.MAGIC, 20, rng)
+	for it in [rare, rare2, leg, magic]: sv.data.stash.append(it)
+	sv.data.currency.chaos = 2
+	mn.screens.parent_page = "camp"
+	var at := func(it: Dictionary) -> int:
+		var gl: Array = mn.screens._gear_list()
+		for k in gl.size():
+			if int(gl[k].it.uid) == int(it.uid): return k
+		return -1
+	mn.screens._sel_item = at.call(rare)
+	mn.screens.show_stash(false)
+	var g0: int = sv.data.stash.size()
+	var s1: bool = _press(mn.screens, "Salvage") and sv.data.stash.size() == g0 and (sv.data.stash as Array).has(rare) and _btn(mn.screens, "Tap to confirm") != null
+	var s2: bool = _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(rare)
+	mn.screens._sel_item = at.call(leg)
+	mn.screens.show_stash(false)
+	var x1: bool = _press(mn.screens, "Extract power") and (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).is_empty()
+	var x2: bool = _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(leg) and (sv.data.codex as Array).has(String(leg.leg))
+	var dup := Items.make("amulet", Content.Rarity.LEGENDARY, 20, rng)
+	dup.leg = leg.leg
+	sv.data.stash.append(dup)
+	mn.screens._sel_item = at.call(dup)
+	mn.screens.show_stash(false)
+	var pk := _btn(mn.screens, "Power known")
+	var known_ok: bool = pk != null and pk.disabled and _btn(mn.screens, "Extract power") == null
+	mn.screens._sel_item = at.call(rare2)
+	mn.screens.show_stash(false)
+	var aff0 := JSON.stringify(rare2.affixes)
+	var ch0 := int(sv.data.currency.chaos)                 # the Rare salvaged above gave one more
+	await get_tree().process_frame
+	var sc0: ScrollContainer = mn.screens._body_sc
+	sc0.scroll_vertical = 100000                           # down to the craft grid, as a thumb would
+	var at_sv := sc0.scroll_vertical
+	var c1: bool = _press(mn.screens, "%s  %d" % [Content.CURRENCY.chaos.name, ch0]) and int(sv.data.currency.chaos) == ch0 and JSON.stringify(rare2.affixes) == aff0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var kept: bool = absi(mn.screens._body_sc.scroll_vertical - at_sv) <= 2         # the redraw keeps the page where it was
+	var told := false
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).begins_with("%s: %s" % [Content.CURRENCY.chaos.name, Content.CURRENCY.chaos.d]): told = true
+	var c2: bool = _press(mn.screens, "Tap to apply") and int(sv.data.currency.chaos) == ch0 - 1
+	mn.screens._sel_item = at.call(magic)
+	mn.screens.show_stash(false)
+	# a Magic (or Normal) item takes two taps too: Salvage sits 6 dp from Equip, and one stray tap lost the item
+	var m1: bool = _press(mn.screens, "Salvage") and (sv.data.stash as Array).has(magic) and _press(mn.screens, "Tap to confirm") and not (sv.data.stash as Array).has(magic)
+	ok(s1 and s2 and x1 and x2 and known_ok and c1 and told and c2 and m1 and kept,
+		"Gear: one tap on Salvage (any rarity), Extract power or a shard leaves the stash unchanged and the second applies it; a shard's first tap shows its effect, the page staying where it was (scrolled %d); a known power cannot be extracted (%s %s %s %s %s %s %s %s %s %s)" % [at_sv, s1, s2, x1, x2, known_ok, c1, told, c2, m1, kept])
+	# "What's new": due once after an update to a profile that has played; never for a new one
+	var dw: Dictionary = Save.defaults()
+	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "a new profile never gets What's new")
+	dw.stats.runs = 3
+	ok(WhatsNew.due(dw, "0.11.2-alpha"), "a profile that has played, updated from before 0.11.0, does")
+	dw.seen_version = "0.11.2-alpha"
+	ok(not WhatsNew.due(dw, "0.11.2-alpha"), "once seen, not again")
+	ok(WhatsNew.key("0.11.2-alpha") > WhatsNew.key("0.11.1-alpha") and WhatsNew.key("0.11.0") > WhatsNew.key("0.10.6-alpha"), "versions order by number")
+	var sn := WhatsNew.since("0.11.0-alpha")
+	ok(sn.size() >= 2 and sn[0][0] == WhatsNew.since("")[0][0] and sn[sn.size() - 1][0] == "0.11.1", "since 0.11.0: every newer version, newest first (%s)" % str(sn.map(func(e): return e[0])))
+	sv.data.seen_version = "0.11.0-alpha"
+	mn.screens.show_whats_new()
+	var wn_ok := _btn(mn.screens, "Continue") != null and String(sv.data.seen_version) == Diag.version()
+	var wn_sections := 0
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).begins_with("ALPHA 0.11."): wn_sections += 1
+	ok(wn_ok and wn_sections >= 1, "the page lists what changed since the version seen, and marks this one seen (%s %d)" % [wn_ok, wn_sections])
+	_press(mn.screens, "Continue")
+	# a campaign win with the next act open leads with "Next: Act II", which starts Act II; a loss, or the last act, has none
+	sv.data.cleared = [false, false, false, false, false]
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(true, true)
+	mn.screens.show_end(mn.world)
+	var foot_first := ""
+	var nb := _btn(mn.screens, "Next: Act II")
+	if nb != null and nb.get_parent() != null: foot_first = String((nb.get_parent().get_child(0) as Button).text)
+	var next_ok: bool = _press(mn.screens, "Next: Act II") and mn.world != null and int(mn.world.stage) == 1 and mn.state == "play"
+	mn._on_act("leave", null)
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	var none_on_loss := _btn(mn.screens, "Next: Act II") == null and _btn(mn.screens, "Play again") != null
+	mn._on_act("leave", null)
+	sv.data.cleared = [true, true, true, true, false]
+	mn._on_act("campaign", 4)
+	await get_tree().process_frame
+	mn.world.end_run(true, true)
+	mn.screens.show_end(mn.world)
+	var none_last := true
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and String(b.text).begins_with("Next:"): none_last = false
+	mn._on_act("leave", null)
+	sv.data.cleared = [false, false, false, false, false]
+	ok(foot_first == "Next: Act II" and next_ok and none_on_loss and none_last, "a campaign win leads with Next: Act II, which starts Act II; a loss and the last act offer none (%s %s %s %s)" % [foot_first, next_ok, none_on_loss, none_last])
+	# the end of a run offers the Camp, which frees the run
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	ok(_press(mn.screens, "Camp") and mn.world == null and mn.state == "menu" and _npc_card(mn.screens, "kiln") != null, "the end of a run's Camp button frees the run and opens the Camp")
+	# after a first run (the review's tour: 404 gold, 1 ore, no scrap, three Magic finds of one slot) the hub said "1 fusion
+	# ready" for a 500 Gold + 10 Scrap fusion, the end tip sent the exile to Doran, and his six Temper buttons were disabled
+	var d0: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.gold = 404
+	sv.data.materials = {"scrap": 0, "ore": 1}
+	var rng2 := RandomNumberGenerator.new(); rng2.seed = 4
+	for k in 3: sv.data.stash.append(Items.make("ring", Content.Rarity.MAGIC, 8, rng2))
+	var kiln0 := CampPages._status(sv.data, "kiln")
+	var next0: Array = CampPages.next_station(sv.data)
+	CampPages.show_smith(mn.screens)
+	await get_tree().process_frame
+	var note0 := false
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("nim_note"): note0 = true
+	sv.data.gold = 900
+	sv.data.materials = {"scrap": 12, "ore": 1}
+	var kiln1 := CampPages._status(sv.data, "kiln")
+	var next1: Array = CampPages.next_station(sv.data)
+	CampPages.show_smith(mn.screens)
+	await get_tree().process_frame
+	var note1 := false
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("nim_note"): note1 = true
+	sv.data = d0
+	ok(not kiln0.contains("ready") and kiln0.begins_with("Needs") and next0[0] == "nim" and note0 and kiln1.begins_with("1 fusion ready") and next1[0] == "smith" and not note1,
+		"the Camp says only what the purse can do: a fusion is ready when it is paid for, the end tip names Nim while there is no scrap, and the smith points to Nim's bench (%s | %s | %s %s; then %s | %s %s)" % [kiln0, next0[0], note0, next0[1], kiln1, next1[0], note1])
+	# a first clear of Act I opens Act II, the Daily Rift, the Atlas, Greater Rifts and Torment I: the end screen named only
+	# the new weapons, below the fold at an S22's scale; Modes was lit only for a prophecy; its Torment tile's tap did
+	# nothing; the season, the sky and the fragments came first and pushed 4 of its 6 rows below the fold
+	var d1: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.seen_version = Diag.version()
+	sv.data.stats.runs = 1
+	sv.data.options.ui_scale = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	mn._ui_scale()
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.end_run(true)
+	var opened: Array = mn.world.opened
+	mn.screens.show_end(mn.world)
+	await get_tree().process_frame
+	var ul_txt := ""
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and l.has_meta("unlocked"): ul_txt = String(l.text)
+	var ul_hid := _labels_out_of_view(mn.screens, ["Unlocked: "])
+	mn._menu()
+	var lit0 := _gold_actions(mn.screens).has("Modes")
+	mn._on_act("endgame", null)
+	await get_tree().process_frame
+	var modes_hid := _labels_out_of_view(mn.screens, ["Daily Rift", "Atlas of Falls", "Greater Rift", "Normal"])
+	var tt := _tile(mn.screens, "Normal")
+	if tt != null: tt.pressed.emit()
+	var tm1 := int(sv.data.torment)
+	mn._menu()
+	var lit1 := _gold_actions(mn.screens).has("Modes")
+	sv.data = d1
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	ok(opened.has("Daily Rift") and opened.has("Torment I") and ul_txt.contains("Torment I") and ul_txt.contains("Greater Rifts") and ul_hid.is_empty(),
+		"a first clear of Act I names what it opened under the end screen's subtitle, in view at an S22's scale (%s; hidden %s)" % [ul_txt, str(ul_hid)])
+	ok(lit0 and not lit1 and modes_hid.is_empty() and tm1 == 1,
+		"Modes is lit until visited after Act I falls; its Daily Rift, Atlas, Greater Rift and Torment rows are in view at an S22's scale; tapping the Torment tile steps the tier (%s %s hidden %s torment %d)" % [lit0, lit1, str(modes_hid), tm1])
+	# the end of a run's Echoes tile opens the Shard Web (five taps away: Main menu, Upgrades, Shard Web, a node, Take);
+	# Upgrades' Codex tile opens on the powers it names (tab 5 of 7, behind Story)
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	sv.data.echoes = 3
+	mn.world.end_run(false, true)
+	mn.screens.show_end(mn.world)
+	await get_tree().process_frame
+	var eb: Button = null
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if _live(b) and b.has_meta("echoes_web"): eb = b
+	var eb_ok := eb != null and (eb as Control).size.y >= UIKit.MIN_TOUCH
+	if eb != null: eb.pressed.emit()
+	await get_tree().process_frame
+	var web_open := mn.world == null and _btn(mn.screens, "Reset web  (refund all)") != null
+	sv.data.echoes = 0
+	var tab_of := func(back: String) -> int:
+		mn.screens.show_codex(back)
+		for t in mn.screens.find_children("*", "TabContainer", true, false):
+			if _live(t): return (t as TabContainer).current_tab
+		return -1
+	var tab_up: int = tab_of.call("upgrades")
+	var tab_menu: int = tab_of.call("menu")
+	ok(eb_ok and web_open and tab_up == Screens.CODEX_POWERS_TAB and tab_menu == 0,
+		"the end of a run's Echoes tile (%s) opens the Shard Web and frees the run (%s); Upgrades' Codex opens on Powers (tab %d), the title's on Story (%d)" % [eb_ok, web_open, tab_up, tab_menu])
+	# leaving a run loses its unbanked hoard (World.end_run): the confirm said only "You keep the gold and Echoes"
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	mn.world.hoard = 120.0
+	mn.world.hoard_mult = 1.5
+	mn._pause()
+	_press(mn.screens, "Main Menu")
+	await get_tree().process_frame
+	var said := ""
+	for l in mn.screens.find_children("*", "Label", true, false):
+		if _live(l) and String(l.text).begins_with("You keep the gold"): said = String(l.text)
+	mn.world.hoard = 0.0
+	var none := Screens.hoard_loss(mn.world)
+	mn._on_act("leave", null)
+	ok(said.ends_with("Your unbanked hoard (180) is lost.") and none == "", "leaving or restarting a run names the unbanked hoard it loses (%s)" % said)
+	win.size = size0
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
+
+## 0.11.4 readability (iteration 1 of the colour / beginner / shader-feel pass): text sizes measured in sp on a real phone,
+## the phone UI scale, and every page's labels at or over UIKit.MIN_TEXT, with the key buttons still on screen when
+## the UI is scaled up as on a dense phone.
+func _labels_under(root: Node, floor_size: int) -> Array:
+	var out: Array = []
+	for l in root.find_children("*", "Label", true, false):
+		if not _live(l) or not (l as Control).is_visible_in_tree() or String(l.text).strip_edges() == "": continue
+		var fs := (l as Label).get_theme_font_size("font_size")
+		if fs < floor_size: out.append("%s (%d)" % [String(l.text).left(24), fs])
+	return out
+
+## Tech-art review (0.11.4): the lighting and shader constants that regress silently.
+func _look_render_tests() -> void:
+	print("== 0.11.4 look: light, rims, crust, albedo floor")
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 64})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	w.weapons.clear()
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	for k in 3: w.step(1.0 / 60.0)
+	v._process(1.0 / 60.0)
+	for k in 400: v._lighting(1.0 / 60.0)
+	ok(is_equal_approx(v.sky_mat.energy_multiplier, WorldView3D.SKY_ENERGY) and WorldView3D.SKY_ENERGY >= 1.5 and v.env.ambient_light_sky_contribution == 1.0,
+		"the sky's energy is the ambient (%.1f): at full sky contribution ambient_light_energy is ignored" % v.sky_mat.energy_multiplier)
+	ok(absf(v.env.fog_density - WorldView3D.FOG_DENSITY) < 0.00002 and WorldView3D.FOG_DENSITY <= 0.0004 and WorldView3D.FOG_GLOOM <= 0.001
+		and is_equal_approx(v.sun.shadow_opacity, 0.65), "fog %.5f (gloom %.4f), sun shadows at 0.65 opacity" % [v.env.fog_density, WorldView3D.FOG_GLOOM])
+	var mp_ok := true
+	var mp_n := 0
+	for k in Models.FOE_KINDS.size():
+		var mh: float = v._foe_h[k]
+		var sc: float = v.foe_mats[k].get_shader_parameter("mp_scale")
+		mp_ok = mp_ok and is_equal_approx(sc, WorldView3D.mp_scale(mh)) and (mh <= 10.0 or sc * mh < 5.0)
+		if mh > 10.0: mp_n += 1
+	ok(mp_ok and mp_n >= 4, "foe noise scaled per mesh (%d textured kinds): no foe tiles it more than ~2x, so the ember crust stays cracks" % mp_n)
+	ok(v.hero.rim_col == Content.col(String(Content.HEROES[w.hero].col)) and v.hero.rim_col != v.foe_mats[0].get_shader_parameter("rim_col")
+		and WorldView3D.RIM_FOE >= 0.6, "the hero's rim is the hero's colour, not the foes' rim (foe rim %.2f)" % WorldView3D.RIM_FOE)
+	var lifted := false
+	for mi in v.hero.find_children("*", "MeshInstance3D", true, false):
+		var om := (mi as MeshInstance3D).get_surface_override_material(0)
+		if om is BaseMaterial3D and (om as BaseMaterial3D).albedo_texture != null:
+			lifted = (om as BaseMaterial3D).albedo_color.is_equal_approx(Models.albedo_gain_color(v.hero.hero_id))
+			break
+	var kept := true
+	for id in ["grunt", "runner", "brute", "spitter", "charger", "tyrant", "tyrant_4", "herald", "guardian"]: kept = kept and not Models.ALBEDO_GAIN.has(id)
+	ok(lifted and Models.albedo_gain_color("tree").r > 1.0 and kept, "generated heroes and props lifted to the albedo floor (foes and bosses kept: status, flash and telegraph contrast)")
+	var gc: PackedColorArray = Models.prop_mesh("grass").surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+	var gmax := 0.0
+	for c in gc: gmax = maxf(gmax, maxf(c.r, maxf(c.g, c.b)))
+	ok(gc.size() > 0 and gmax <= 0.25, "grass clumps no brighter than the ground (vertex colour max %.2f)" % gmax)
+	v.w = null                                        # the view stops drawing the freed world
+	v.queue_free()
+
+func _look_feel_tests() -> void:
+	print("== 0.11.4 look and feel")
+	var s22: float = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	ok(absf(s22 - 1.127) < 0.01, "an S22 held sideways scales the UI x%.3f (a unit 0.57 sp -> 0.64 sp)" % s22)
+	ok(absf(main_script().phone_ui_scale(Vector2(1080, 2340), 422.0) - s22) < 0.001, "the same held upright")
+	ok(main_script().phone_ui_scale(Vector2(1920, 1200), 224.0) == 1.0, "a 10-inch tablet is left at x1")
+	ok(main_script().phone_ui_scale(Vector2(2340, 1080), 0.0) == 1.0 and main_script().phone_ui_scale(Vector2(0, 0), 400.0) == 1.0, "a bad dpi or window reading changes nothing")
+	ok(main_script().phone_ui_scale(Vector2(2400, 1080), 640.0) == 1.2, "a very dense small phone stops at x1.2")
+	var probe := UIKit.label("x", 12)
+	ok(probe.get_theme_font_size("font_size") == UIKit.MIN_TEXT, "a label asked for 12 units gets the %d floor" % UIKit.MIN_TEXT)
+	probe.free()
+	_colour_literal_tests()
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.stats.runs = 1
+	sv.data.seen_version = Diag.version()
+	var rng := RandomNumberGenerator.new(); rng.seed = 12
+	for k in 6: sv.data.stash.append(Items.make(Content.SLOTS[k % 4], k % 4, 20, rng))
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	win.size = Vector2i(2340, 1080)
+	sv.data.options.ui_scale = 1.15                  # as main.phone_ui_scale gives an S22 (x1.13), a little over
+	mn._ui_scale()
+	await get_tree().process_frame
+	var small: Array = []
+	var off := ""
+	mn._menu()
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	var short: Array = []                          # page foot buttons under UIKit.FOOT_H
+	for page in ["camp", "smith", "kiln", "nim", "sella", "brask"]:
+		CampPages.show(mn.screens, page)
+		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+		short.append_array(_short_foot(mn.screens, page))
+		off += await _off_screen(mn.screens, ["Back"])
+	mn.screens._sel_item = 0
+	mn.screens.show_stash(false)
+	_selected_rarity_tests(mn)
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	short.append_array(_short_foot(mn.screens, "gear"))
+	off += await _off_screen(mn.screens, ["Equip", "Salvage", "Back"])
+	for tab in 4:
+		mn.screens._opt_tab = tab
+		mn.screens.show_options("menu")
+		small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+		short.append_array(_short_foot(mn.screens, "options %d" % tab))
+		if tab == 2: _colourblind_option_tests(mn)
+	mn.screens._opt_tab = 0
+	mn.screens.show_whats_new(true)
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	short.append_array(_short_foot(mn.screens, "what's new"))
+	off += await _off_screen(mn.screens, ["Continue"])
+	for pg in ["daily", "upgrades", "endgame", "codex", "web"]:
+		mn._on_act(pg, null)
+		short.append_array(_short_foot(mn.screens, pg))
+	mn._on_act("campaign", 0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var pb: Button = mn.hud.pause_btn
+	ok(pb.size.x >= Hud.PAUSE_SIDE - 0.5 and pb.size.y >= Hud.PAUSE_SIDE - 0.5 and pb.get_global_rect().end.x <= mn.hud.get_viewport_rect().size.x,
+		"the HUD's pause button is %dx%d, inside the screen (%s)" % [Hud.PAUSE_SIDE, Hud.PAUSE_SIDE, str(pb.size)])
+	_status_colour_tests(mn)
+	mn.world.pending = 1
+	mn._on_level()
+	for k in 6: await get_tree().process_frame
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	mn._on_act("pick", mn.world.make_choices()[0])
+	mn._pause()
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	off += await _off_screen(mn.screens, ["Resume", "Main Menu"])
+	mn._resume()
+	mn.world.end_run(false, true)
+	sv.data.camp_seen = false                      # a new exile's first run: Brask's Camp tip shows
+	mn.screens.show_end(mn.world)
+	small.append_array(_labels_under(mn.screens, UIKit.MIN_TEXT))
+	short.append_array(_short_foot(mn.screens, "end"))
+	off += await _off_screen(mn.screens, ["Play again", "Camp", "Main menu"])
+	ok(short.is_empty(), "every page's foot buttons (Back and its main actions) are %d tall or more%s" % [UIKit.FOOT_H, ("" if short.is_empty() else ": " + str(short.slice(0, 6)))])
+	var hid := _labels_out_of_view(mn.screens, ["GOLD", "ECHOES", "RIFT ORE", "ITEMS", "Captain Brask: \u201c"])
+	ok(hid.is_empty(), "held sideways at an S22's scale, the end of a run shows what it brought home and Brask's tip without scrolling%s" % ("" if hid.is_empty() else ": hidden " + str(hid)))
+	ok(small.is_empty(), "every label on the title, the Camp, Gear, Options, What's new, level-up, pause and the end of a run is %d units or more%s" % [UIKit.MIN_TEXT, ("" if small.is_empty() else ": " + str(small.slice(0, 6)))])
+	ok(off == "", "with the UI scaled x1.15 on an S22 held sideways, every page keeps its main buttons and Back on screen%s" % off)
+	# a one-word button label never breaks inside the word (the pause button's "II" once split in two)
+	var split: Array = []
+	for b in mn.find_children("*", "Button", true, false):
+		if not _live(b) or String(b.text) == "" or String(b.text).contains(" "): continue
+		var f: Font = (b as Button).get_theme_font("font")
+		var fs: int = (b as Button).get_theme_font_size("font_size")
+		var tw := f.get_string_size(String(b.text), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var sb: StyleBox = (b as Button).get_theme_stylebox("normal")
+		var room: float = (b as Control).size.x - (sb.get_content_margin(SIDE_LEFT) + sb.get_content_margin(SIDE_RIGHT) if sb != null else 0.0)
+		if tw > room + 1.0: split.append("%s (%.0f > %.0f)" % [b.text, tw, room])
+	ok(split.is_empty(), "every one-word button label fits on one line, the HUD's pause button too%s" % ("" if split.is_empty() else ": " + str(split.slice(0, 5))))
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	mn._menu()                                     # frees the run's world (World.dispose) before main goes
+	win.size = size0
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
+	await _frame_fit_tests()
+	_evolve_pair_tests()
+	_keystone_deal_tests()
+	_words_tests()
+
+## The frames whose text does not fit: every Button holding an anchored content box (UIKit.tile, the Camp's NPC cards,
+## the level-up cards) whose box needs more room than the frame leaves it inside its insets. The 18-unit text floor
+## (0.11.4) made a tile's title and subline need 55 units where a 62-high tile left 51: the sublines were cut by the
+## frame and, at an S22's scale, wrapped out of the tile ("Veil" under Replay Intro).
+func _frame_overflows(root: Node, tag: String) -> Array:
+	var out: Array = []
+	for b in root.find_children("*", "Button", true, false):
+		if not _live(b) or not (b as Control).is_visible_in_tree(): continue
+		for c in b.get_children():
+			if not (c is Container) or (c as Control).anchor_right < 1.0 or (c as Control).anchor_bottom < 1.0: continue
+			var box := c as Control
+			var room: Vector2 = (b as Control).size - Vector2(box.offset_left - box.offset_right, box.offset_top - box.offset_bottom)
+			var need := box.get_combined_minimum_size()
+			if need.y > room.y + 0.5 or need.x > room.x + 0.5:
+				var nm := ""
+				for l in box.find_children("*", "Label", true, false):
+					if String(l.text) != "":
+						nm = String(l.text).left(28)
+						break
+				out.append("%s '%s' needs %.0fx%.0f, has %.0fx%.0f" % [tag, nm, need.x, need.y, room.x, room.y])
+	return out
+
+## At an S22's own scale (main.phone_ui_scale, x1.13), held sideways and upright, the text of every tile on the title
+## (a new profile's and one that has played), every NPC card in the Camp and every level-up card fits inside its frame:
+## the page's own cards, and one card of every kind and level the run can deal, at the width the page gives a card.
+func _frame_fit_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var keep: Dictionary = sv.data
+	sv.data = sv.defaults()
+	sv.data.options.sound = false
+	sv.data.intro_seen = true
+	sv.data.seen_version = Diag.version()
+	Diag.crashed_last = false
+	var mn: Node = load("res://scenes/main.tscn").instantiate()
+	add_child(mn)
+	var win := get_window()
+	var size0 := win.size
+	var s22: float = main_script().phone_ui_scale(Vector2(2340, 1080), 422.0)
+	sv.data.options.ui_scale = s22                   # on a phone main applies this itself; here Options' scale stands in
+	var bad: Array = []
+	var cards := 0
+	var cw := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 77})
+	var kinds: Array = []                            # one card of every kind and level a level-up can deal
+	for id in Content.WEAPON_IDS:
+		kinds.append({"kind": "w", "id": id, "lv": 0})
+		for lv in range(1, 5): kinds.append({"kind": "w", "id": id, "lv": lv})
+		kinds.append({"kind": "e", "id": id})
+	for id in Content.PERK_IDS:
+		kinds.append({"kind": "p", "id": id})
+	for g in Content.GEM_IDS: kinds.append({"kind": "g", "id": g, "w": "cleave"})          # the longest weapon name
+	for key in Content.FUSIONS: kinds.append({"kind": "fuse", "id": key, "a": String(key).split("+")[0], "b": String(key).split("+")[1]})
+	for k in Content.KEYSTONE_IDS: kinds.append({"kind": "key", "id": k})
+	kinds.append({"kind": "heal", "id": "heal"})
+	for upright in [false, true]:
+		win.size = Vector2i(1080, 2340) if upright else Vector2i(2340, 1080)
+		mn._ui_scale()
+		var tag := "upright" if upright else "sideways"
+		for runs in [0, 1]:
+			sv.data.stats.runs = runs
+			sv.data.cleared = [runs > 0, false, false, false, false]
+			mn._menu()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			bad.append_array(_frame_overflows(mn.screens, "%s title (%d runs)" % [tag, runs]))
+		CampPages.show_camp(mn.screens)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		bad.append_array(_frame_overflows(mn.screens, tag + " Camp"))
+		mn._on_act("campaign", 0)
+		await get_tree().process_frame
+		mn.world.pending = 1
+		mn._on_level()
+		for k in 8: await get_tree().process_frame
+		bad.append_array(_frame_overflows(mn.screens, tag + " level-up"))
+		var real: Button = null
+		for b in mn.screens.find_children("*", "Button", true, false):
+			if _live(b) and (b as Control).get_child_count() > 0 and (b as Control).get_child(0) is VBoxContainer and (b as Control).size.y >= 140.0: real = b
+		ok(real != null, "%s: the level-up page deals its cards" % tag)
+		if real != null:
+			var host := Control.new()
+			mn.screens.add_child(host)
+			# upright: the page's own card width; sideways: the widths of a three-card row and of a four-card row (level 10+)
+			var widths: Array = [real.size.x] if upright else [mn.screens._side_card_w(3), mn.screens._side_card_w(4)]
+			for wd in widths:
+				for c in kinds:
+					if c.kind == "w":
+						cw.weapons.erase(c.id)
+						if int(c.lv) > 0: cw.weapons[c.id] = {"lv": int(c.lv), "evo": false, "t": 0.0, "gems": []}
+					if c.kind == "fuse":
+						for id in [c.a, c.b]: cw.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+					var card: Button = mn.screens._choice_card(cw, c, 0, upright, wd)
+					host.add_child(card)
+					card.size = Vector2(wd, Screens.CARD_UP_H if upright else Screens.CARD_SIDE_H)
+					cards += 1
+			await get_tree().process_frame
+			await get_tree().process_frame
+			bad.append_array(_frame_overflows(host, tag + " card"))
+			if _verbose:                                 # the cards whose text grew them past the base height
+				for cd in host.get_children():
+					if (cd as Control).size.y > (Screens.CARD_UP_H if upright else Screens.CARD_SIDE_H) + 0.5:
+						var nm := ""
+						for l in cd.find_children("*", "Label", true, false):
+							if String(l.text) != "":
+								nm = String(l.text).left(30)
+								break
+						print("    grew: %s %.0fx%.0f %s" % [tag, (cd as Control).size.x, (cd as Control).size.y, nm])
+			host.queue_free()
+		mn._on_act("leave", null)
+		await get_tree().process_frame
+	if _verbose: for b in bad: print("    over: ", b)
+	ok(bad.is_empty(), "at an S22's scale (x%.3f) sideways and upright, every title tile, Camp card and level-up card (%d dealt) fits its text inside its frame%s" % [s22, cards, ("" if bad.is_empty() else ": %d over, %s" % [bad.size(), str(bad.slice(0, 6))])])
+	sv.data.options.ui_scale = 1.0
+	mn._ui_scale()
+	mn._menu()
+	win.size = size0
+	await get_tree().process_frame
+	mn.queue_free()
+	await get_tree().process_frame
+	sv.data = keep
+
+## One word for one thing (the review's "words disagree"): Shock Pulse was a Fire weapon while Shock is lightning's
+## ailment; fire's ailment was "burn" on one card and "ignite" on another; the experience pickups were "blue shards"
+## (shard also names the crafting currency, Shard Scrap and the Shard Web) and their perk "Gem Pull" (gem names the
+## support gems); one currency was a Divine Orb at the furnace and a Divine Shard everywhere else; a prophecy paid
+## "Exalted Shards", the Star Shard's old name. Ids stay (saves keep them); no script says the old words.
+func _words_tests() -> void:
+	var old := ["Shock Pulse", "shock pulse", "Gem Pull", "Divine Orb", "blue shards", "Hits also ignite", "Exalted Shard",
+		"Gear & Crafting", "Gear & Stash", "Gear, Crafting", "Cube: extract", "in the Cube"]      # the Gear page had three names
+	var files: Array = []
+	_collect_sources("res://scripts", files)
+	var hits: Array = []
+	for p in files:
+		var txt := FileAccess.get_file_as_string(p)
+		for o in old:
+			if txt.contains(o): hits.append("%s: %s" % [String(p).get_file(), o])
+	ok(files.size() > 40 and hits.is_empty(), "no script says the old words (%s)%s" % [", ".join(old), ("" if hits.is_empty() else ": " + str(hits))])
+	# the lore fragments are Rift Memories on screen (the currency is Echoes): no string a player reads says "Rift Echo"
+	var lit := RegEx.create_from_string("\"[^\"\\n]*Rift Echo[^\"\\n]*\"")
+	var echo_hits: Array = []
+	for p in files:
+		for m in lit.search_all(FileAccess.get_file_as_string(p)): echo_hits.append("%s: %s" % [String(p).get_file(), m.get_string().left(40)])
+	ok(echo_hits.is_empty() and String(CampPages._status(Save.data, "chronicler")).contains("Rift Memories"), "the lore fragments are Rift Memories wherever a player reads them, apart from the Echoes they spend%s" % ("" if echo_hits.is_empty() else ": " + str(echo_hits)))
+	ok(Content.WEAPONS.nova.name == "Flame Pulse" and Content.WEAPONS.nova.elem == Content.El.FIRE and String(Content.FUSIONS["nova+storm"].d).contains("flame pulse"),
+		"the Emberwitch's fire weapon is the Flame Pulse, and Thunderclap detonates a flame pulse")
+	ok(String(Content.GEMS.inf_fire.d).begins_with("Hits also %s." % Content.EL_STATUS[Content.El.FIRE]) and Content.PERKS.magnet.name == "Crystal Pull",
+		"Fire Infusion applies Burn, the fire ailment's one name; the pickup perk is Crystal Pull")
+	ok(String(Coach.STEPS.shards.touch).contains("crystals") and CampPages.HOW_TO.any(func(e): return e[0] == "Grow" and String(e[1]).contains("blue crystals")), "Brask calls the experience pickups crystals, on a run and in How to play")
+
+## The evolution recipe on the cards: a weapon's card names the perk it evolves with at level 5, a perk's card names the
+## carried weapons it would evolve, and the Codex's Arsenal lists every pair. The pair (Content.WEAPONS[id].pair) was read
+## only by the simulation; Brask's tip spoke of "its paired perk" and no screen said which.
+## Keystone levels (Content.KEYSTONE_LEVELS) deal keystones and Second Wind to skip them; a profile with fewer than three
+## runs is not dealt the keystones that take away the roll, flask healing or regeneration (World.KEYSTONE_NOT_NEW). At
+## level 8 of a first run 58% of the deals had offered Iron Reflexes or Blood Magic, and none could be skipped.
+func _keystone_deal_tests() -> void:
+	var sv: Node = get_node("/root/Save")
+	var runs0 := int(sv.data.stats.get("runs", 0))
+	var res := {}
+	for runs in [0, World.KEYSTONE_NEW_RUNS]:
+		sv.data.stats.runs = runs
+		var hard := 0
+		var skip := 0
+		for k in 200:
+			var w := _world({"mode": "campaign", "stage": 0, "hero": k % 4, "seed": 500 + k})
+			w.lvl = Content.KEYSTONE_LEVELS[0]
+			var ch: Array = w.make_choices()
+			if ch.any(func(c): return c.kind == "key" and World.KEYSTONE_NOT_NEW.has(String(c.id))): hard += 1
+			if ch.any(func(c): return c.kind == "heal" and String(w.choice_text(c).tag) == "Skip the keystone"): skip += 1
+		res[runs] = [hard, skip]
+	sv.data.stats.runs = runs0
+	ok(res[0][0] == 0 and res[0][1] == 200, "a first run's keystone deal holds no roll-, flask- or regen-taking keystone and can be skipped (%d of 200 held one, %d had Second Wind)" % res[0])
+	ok(res[World.KEYSTONE_NEW_RUNS][0] > 0 and res[World.KEYSTONE_NEW_RUNS][1] == 200, "from the third run they are dealt again, still with the skip (%d of 200, %d)" % res[World.KEYSTONE_NEW_RUNS])
+	# a carried weapon below level 5 is in every ordinary deal (it was in 21% of them: eleven perks diluted the pool)
+	var with_w := 0
+	for k in 200:
+		var w2 := _world({"mode": "campaign", "stage": 0, "hero": k % 4, "seed": 900 + k})
+		w2.lvl = 2 + k % 5
+		if w2.make_choices().any(func(c): return c.kind == "w" and w2.weapons.has(c.id)): with_w += 1
+	ok(with_w == 200, "every ordinary level-up deals a level for a carried weapon below level 5 (%d of 200)" % with_w)
+
+func _evolve_pair_tests() -> void:
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 81})
+	var bad: Array = []
+	for id in Content.WEAPON_IDS:
+		var pair := String(Content.PERKS[String(Content.WEAPONS[id].pair)].name)
+		if not String(w.choice_text({"kind": "w", "id": id}).d).contains("Evolves at Lv 5 with %s." % pair): bad.append(id)
+	ok(bad.is_empty(), "every weapon's card names the perk it evolves with at level 5%s" % ("" if bad.is_empty() else ": " + str(bad)))
+	# the numbers under the words: 27 of the 52 level lines had no number at all and none an amount ("More damage.")
+	var dig := RegEx.create_from_string("\\d")
+	var lines := 0
+	var numbered := 0
+	for id in Content.WEAPON_IDS:
+		for lv in range(1, 5):
+			lines += 1
+			if dig.search(World.level_delta(id, lv)) != null: numbered += 1
+	ok(lines == 52 and numbered == lines and World.level_delta("bolt", 1) == "2 bolts · every 0.9→0.8s" and World.level_delta("bolt", 2).begins_with("Damage 9→11"),
+		"every weapon level card says what changes in numbers: %d of %d (Rime Bolt Lv 2: \"%s\")" % [numbered, lines, World.level_delta("bolt", 1)])
+	var held: String = w.weapons.keys()[0]
+	var pk := String(Content.WEAPONS[held].pair)
+	var tag := String(w.choice_text({"kind": "p", "id": pk}).tag)
+	var other := ""
+	for p2 in Content.PERK_IDS:
+		if w.evolved_by(p2).is_empty():
+			other = p2
+			break
+	var tag2 := String(w.choice_text({"kind": "p", "id": other}).tag)
+	w.weapons[held].evo = true
+	var tag3 := String(w.choice_text({"kind": "p", "id": pk}).tag)
+	w.weapons[held].evo = false
+	ok(tag.contains("evolves " + String(Content.WEAPONS[held].name)) and not tag2.contains("evolves") and not tag3.contains("evolves"),
+		"a perk's card says which carried weapon it evolves, and only while that weapon is unevolved (%s | %s | %s)" % [tag, tag2, tag3])
+	var sc := Screens.new()
+	add_child(sc)
+	sc.show_codex("menu")
+	var txts := _texts(sc, "Label")
+	var miss: Array = []
+	for id in Save.weapon_pool():
+		var want := "with %s." % String(Content.PERKS[String(Content.WEAPONS[id].pair)].name)
+		if not txts.any(func(t): return String(t).contains("Evolves into %s at Lv 5 %s" % [Content.WEAPONS[id].evo, want])): miss.append(id)
+	ok(miss.is_empty(), "the Codex's Arsenal lists each weapon's evolution and its perk%s" % ("" if miss.is_empty() else ": missing " + str(miss)))
+	sc.queue_free()
+
+## Colour roles (0.11.4 art-director pass): a status on a foe glows in its element's own swatch, in both palettes. The
+## shaders used to type sRGB numbers in as constants, which Godot reads as linear: vec3(1, .15, .2) rendered #ff6c7b, so
+## Bleed glowed pink while its damage numbers were red. status_cols is a source_color array set from Content.
+func _same_cols(a, b: PackedColorArray) -> bool:
+	if not (a is PackedColorArray) or (a as PackedColorArray).size() != b.size(): return false
+	for i in b.size():
+		if not (a as PackedColorArray)[i].is_equal_approx(b[i]): return false
+	return true
+
+## Every element hue comes from Content (EL_COL via el_col / status_cols / World.el): no script or shader outside
+## content.gd may type an element's hex in again (the old palette's too), so a palette change or the colour-blind option
+## reaches every status glow, damage number, particle and nova. The review found 16 such sites; colours that shared those
+## hexes with another meaning are Content.BETTER / DANGER / LIFE.
+func _colour_literal_tests() -> void:
+	var hexes: Array = []
+	for h in Content.EL_COL + ["ff8a3c", "7dff6b", "ff4a5e", "e6d24a", "7fe6ff"]:
+		if not hexes.has(String(h).to_lower()): hexes.append(String(h).to_lower())
+	var files: Array = []
+	_collect_sources("res://scripts", files)
+	_collect_sources("res://shaders", files)
+	var hits: Array = []
+	for p in files:
+		if p == "res://scripts/data/content.gd": continue
+		var txt := FileAccess.get_file_as_string(p).to_lower()
+		for h in hexes:
+			if txt.contains(h): hits.append("%s: %s" % [String(p).get_file(), h])
+	ok(files.size() > 40 and hits.is_empty(), "no script or shader outside content.gd types an element colour in (%d files read)%s" % [files.size(), ("" if hits.is_empty() else ": " + str(hits.slice(0, 6)))])
+
+func _collect_sources(dir: String, out: Array) -> void:
+	var d := DirAccess.open(dir)
+	if d == null: return
+	for f in d.get_files():
+		if f.ends_with(".gd") or f.ends_with(".gdshader") or f.ends_with(".gdshaderinc"): out.append(dir.path_join(f))
+	for sub in d.get_directories(): _collect_sources(dir.path_join(sub), out)
+
+## Selecting an item keeps its rarity colour: the gold frame shows the selection. UIKit.tile used to turn a selected
+## title gold, so a selected Legendary (or Magic, or Normal) item in the stash read as a Rare.
+func _selected_rarity_tests(mn: Node) -> void:
+	var list: Array = mn.screens._gear_list()
+	var it: Dictionary = list[0].it if not list.is_empty() else {}
+	ok(not it.is_empty() and int(it.rarity) == Content.Rarity.LEGENDARY, "the test stash lists its Legendary first, and it is the selected item")
+	if it.is_empty(): return
+	var want := Content.col(Content.RARITY_COL[Content.Rarity.LEGENDARY]).lightened(0.15)
+	var got := Color(0, 0, 0, 0)
+	for b in mn.screens.find_children("*", "Button", true, false):
+		if not _live(b) or not b.has_meta("title_label"): continue
+		var tl: Label = b.get_meta("title_label")
+		if tl.text == Items.name_of(it): got = tl.get_theme_color("font_color")
+	ok(got.is_equal_approx(want), "a selected Legendary's title stays Legendary orange #%s, not the gold of selection (got #%s)" % [want.to_html(false), got.to_html(false)])
+
+## The colour-blind option is the first row of Options > Game (it was the sixth; a phone held sideways shows four rows),
+## and it stays off by default: the default palette now separates the elements for red-green colour blindness.
+func _colourblind_option_tests(mn: Node) -> void:
+	var first := ""
+	for h in mn.screens.find_children("*", "HBoxContainer", true, false):
+		if not _live(h) or h.get_child_count() < 2 or not (h.get_child(0) is Label): continue
+		if not (h.get_child(1) is Button or h.get_child(1) is HSlider): continue
+		first = String((h.get_child(0) as Label).text)
+		break
+	ok(first == "Colour-blind palette & patterns", "the colour-blind option is the first row of Options > Game (first row: %s)" % first)
+	ok(not bool(get_node("/root/Save").defaults().options.colorblind), "and it is off by default")
+
+func _status_colour_tests(mn: Node) -> void:
+	for p in ["res://shaders/3d/foe.gdshader", "res://shaders/swarm.gdshader"]:
+		var kinds := {}
+		for u in (load(p) as Shader).get_shader_uniform_list(): kinds[String(u.name)] = int(u.type)
+		ok(kinds.get("status_cols", -1) == TYPE_PACKED_COLOR_ARRAY and not kinds.has("colorblind"),
+			"%s takes its status colours as a source_color array (no typed-in constants, no palette switch of its own)" % p.get_file())
+	var sv: Node = get_node("/root/Save")
+	var v3: Node = mn.view3d
+	ok(v3 != null and not v3.foe_mats.is_empty(), "a run in the 3D view has its foe materials")
+	if v3 == null or v3.foe_mats.is_empty(): return
+	var bad := 0
+	for fm in v3.foe_mats:
+		if not _same_cols(fm.get_shader_parameter("status_cols"), Content.status_cols(false)): bad += 1
+	ok(bad == 0, "every foe material glows a status in Content.status_cols(): Bleed #%s, Burn #%s, Chill #%s, Shock #%s, Poison #%s (%d wrong)" % [
+		Content.EL_COL[Content.El.PHYS], Content.EL_COL[Content.El.FIRE], Content.EL_COL[Content.El.COLD], Content.EL_COL[Content.El.LIGHT], Content.EL_COL[Content.El.CHAOS], bad])
+	var cb0: bool = bool(sv.data.options.get("colorblind", false))
+	sv.data.options.colorblind = true
+	mn._on_act("options_changed", null)
+	ok(_same_cols(mn.view3d.foe_mats[0].get_shader_parameter("status_cols"), Content.status_cols(true)), "the colour-blind option switches the foes to the Okabe-Ito status colours")
+	sv.data.options.colorblind = cb0
+	mn._on_act("options_changed", null)
+	ok(_same_cols(mn.view3d.foe_mats[0].get_shader_parameter("status_cols"), Content.status_cols(false)), "and back")
+
+func main_script() -> GDScript:
+	return load("res://scripts/main.gd")
+
+# ================================================================= bot-played runs
+func run_bot(cfg: Dictionary, max_t: float, bot_seed: int) -> Dictionary:
+	var w := _world(cfg)
+	var bot := Bot.new(w, bot_seed)
+	var dt := 1.0 / 60.0
+	var frames := 0
+	var us := 0
+	var worst := 0
+	var hp_low := 1.0
+	var lvl_t := {}
+	while not w.over and w.t < max_t:
+		bot.think()
+		var t0 := Time.get_ticks_usec()
+		w.step(dt)
+		var el := Time.get_ticks_usec() - t0
+		us += el
+		worst = maxi(worst, el)
+		frames += 1
+		hp_low = minf(hp_low, w.hp / w.max_hp)
+		if not w.whisper_offer.is_empty():
+			w.accept_bargain(Bot.bargain(w.whisper_offer, bot_seed))
+		while w.pending > 0:
+			var ch := w.make_choices()
+			w.apply_choice(Bot.pick(ch, w))
+			if not lvl_t.has(w.lvl): lvl_t[w.lvl] = int(w.t)
+	var dps: float = w.metrics.dmg_dealt / maxf(1.0, w.t)
+	var lv := w.lvl
+	var ore := Camp.ore_for_run(w, w.won)               # the Camp's economy (0.11.0): what a run brings back
+	var champs := w.champions_slain
+	var scrap := 0
+	for it in w.loot_run: scrap += int(Camp.salvage_yield(it).scrap)
+	w.dispose()
+	return {"mode": cfg.mode, "hero": Content.HEROES[int(cfg.hero)].name, "won": w.won, "over": w.over, "t": snappedf(w.t, 0.1), "lvl": lv,
+		"kills": w.kills, "killer": w.killer, "hp_low": snappedf(hp_low, 0.01), "dps": int(dps), "reactions": w.metrics.reactions,
+		"react_dropped": w.metrics.react_dropped, "react_by": w.metrics.react_by, "cascade_max": w.metrics.cascade_max,
+		"texts_per_s": snappedf(float(w.metrics.texts) / maxf(1.0, w.t), 0.1), "peak_foes": w.metrics.peak_foes,
+		"perfect": w.metrics.perfect, "events": w.metrics.events, "items": w.metrics.items, "dmg_taken": int(w.metrics.dmg_taken),
+		"ms_avg": snappedf(us / 1000.0 / maxf(1, frames), 0.01), "ms_worst": snappedf(worst / 1000.0, 0.01),
+		"lvl10_t": lvl_t.get(10, -1), "progress": snappedf(w.progress, 0.1), "gold": int(w.gold), "ore": ore, "champions": champs, "scrap": scrap,
+		"light_avg": snappedf(float(w.metrics.get("light_sum", 0.0)) / maxf(1.0, w.t), 0.01), "dark_s": int(w.metrics.get("dark_s", 0.0)), "bargains": w.bargains}
+
+func _sims() -> void:
+	print("== sim (bot-played runs)")
+	Save.data.nemesis = {}            # unit tests end runs in defeat, which raises a nemesis the bots would then meet
+	run_bot({"mode": "campaign", "hero": 0, "seed": 1}, 20.0, 0)     # warm-up: first-use script paths cost ~15 ms once
+	var rows: Array = []
+	for h in 4:
+		rows.append(run_bot({"mode": "campaign", "hero": h, "stage": 0, "seed": 100 + h, "weapons_pool": Content.WEAPON_IDS}, 620.0, h))
+	if OS.get_environment("SIM_ONE") != "":                 # one run, for A/B checks
+		for sd in OS.get_environment("SIM_ONE").split(","):
+			var r1 := run_bot({"mode": "campaign", "hero": 0, "stage": 0, "seed": int(sd), "weapons_pool": Content.WEAPON_IDS}, 620.0, int(sd))
+			print("  ONE seed=%s won=%s t=%s lvl=%d killer=%s hp_low=%s" % [sd, r1.won, r1.t, r1.lvl, r1.killer, r1.hp_low])
+		return
+	if OS.get_environment("SIM_QUICK") != "":
+		rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 3, "seed": 78}, 660.0, 5))
+		for r in rows:
+			print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%5d dps=%5d foes=%3d hp_low=%s killer=%s gold=%d ore=%d champs=%d items=%s scrap=%d" % [r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.peak_foes, r.hp_low, r.killer, r.gold, r.ore, r.champions, str(r.items), r.scrap])
+		return
+	rows.append(run_bot({"mode": "campaign", "hero": 1, "stage": 2, "seed": 77}, 620.0, 5))
+	rows.append(run_bot({"mode": "campaign", "hero": 0, "stage": 4, "seed": 55}, 660.0, 7))      # Act V: rising tide, Tide Bishop
+	var at := Atlas.generate(99)
+	var node: Dictionary = at.nodes[0]
+	rows.append(run_bot({"mode": "atlas", "hero": 2, "node": node, "seed": 55}, 620.0, 6))
+	rows.append(run_bot({"mode": "rift", "hero": 3, "gr": 1, "seed": 31}, 320.0, 7))
+	rows.append(run_bot({"mode": "rift", "hero": 3, "gr": 8, "seed": 32}, 320.0, 8))
+	rows.append(run_bot({"mode": "rift", "hero": 1, "gr": 15, "seed": 33}, 320.0, 10))
+	rows.append(run_bot({"mode": "rift", "hero": 2, "gr": 25, "seed": 34}, 320.0, 11))
+	rows.append(run_bot({"mode": "pinnacle", "hero": 0, "seed": 13}, 300.0, 9))
+	for r in rows:
+		print("  %-8s %-11s won=%-5s t=%6s lvl=%2d kills=%4d dps=%5d react=%4d drop=%3d casc=%d txt/s=%5s foes=%3d ms=%5s/%6s hp_low=%s killer=%s light=%s dark=%ds pact=%s ev=%s" % [
+			r.mode, r.hero, r.won, r.t, r.lvl, r.kills, r.dps, r.reactions, r.react_dropped, r.cascade_max, r.texts_per_s, r.peak_foes, r.ms_avg, r.ms_worst, r.hp_low, r.killer, r.light_avg, r.dark_s, r.bargains, r.events])
+	report["sim"] = rows
+
+# ================================================================= stress benchmark
+func _bench() -> void:
+	print("== bench (full swarm, per-system cost)")
+	var w := _world({"mode": "rift", "hero": 3, "gr": 1, "seed": 5})
+	var cc := CrowdCompute.new()
+	if cc.init():
+		w.crowd = cc
+	report["crowd"] = "gpu" if w.crowd != null else "cpu (" + cc.last_error + ")"
+	print("  crowd separation: ", report["crowd"])
+	for id in ["bolt", "nova", "orbit"]:
+		w.weapons[id] = {"lv": 5, "evo": true, "t": 0.0, "gems": []}
+		w.wlocal[id] = Stats.new()
+	w.weapons.storm.lv = 5
+	w.weapons.storm.evo = true
+	w.stats.set_source("bench", [["apply_fire", "add", 1.0], ["apply_cold", "add", 1.0], ["max_hp", "add", 1e6], ["regen", "add", 1e5]])
+	w.hp = w.stats.value("max_hp", 100.0)
+	while w.sw.n < Swarm.CAP - 40:
+		w.spawn_foe(Content.E.GRUNT, w.pp + Vector2(randf_range(-600, 600), randf_range(-400, 400)), 0, 0, 50.0)
+	var probes := {"grid": 0, "foes": 0, "weapons": 0, "projs": 0, "dots": 0, "react": 0, "total": 0}
+	var dt := 1.0 / 60.0
+	var frames := 240
+	for f in frames:
+		while w.sw.n < Swarm.CAP - 40:
+			w.spawn_foe(Content.E.GRUNT, w.ring_point(), 0, 0, 50.0)
+		var t0 := Time.get_ticks_usec()
+		w.grid.build(w.sw)
+		var t1 := Time.get_ticks_usec()
+		w._step_foes(dt)
+		var t2 := Time.get_ticks_usec()
+		w._step_weapons(dt)
+		var t3 := Time.get_ticks_usec()
+		w._step_projs(dt)
+		var t4 := Time.get_ticks_usec()
+		w._step_dots(dt)
+		var t5 := Time.get_ticks_usec()
+		w._resolve_reactions()
+		var t6 := Time.get_ticks_usec()
+		w._step_feed(dt)
+		w._reap()
+		w.t += dt
+		probes.grid += t1 - t0; probes.foes += t2 - t1; probes.weapons += t3 - t2; probes.projs += t4 - t3; probes.dots += t5 - t4; probes.react += t6 - t5
+		probes.total += Time.get_ticks_usec() - t0
+	var line := "  foes=%d " % w.sw.n
+	var out := {}
+	for k in probes:
+		out[k] = snappedf(probes[k] / 1000.0 / frames, 0.01)
+		line += "%s=%.2fms " % [k, out[k]]
+	print(line)
+	# the foe step's own parts, through the same Swarm calls World._step_foes makes
+	var fp := {"timers": 0, "separation": 0, "move": 0, "move_no_terrain": 0}
+	var shots: Array = []
+	for f in frames:
+		w.grid.build(w.sw)
+		var a0 := Time.get_ticks_usec()
+		w.sw.tick_timers(dt)
+		var a1 := Time.get_ticks_usec()
+		w.sw.cpu_separation(w.grid, f % 2, w.pp, w.view_r + 40.0)
+		var a2 := Time.get_ticks_usec()
+		shots.clear()
+		w.sw.step_move(dt, w.pp, shots, 1.0, w.terrain)
+		var a3 := Time.get_ticks_usec()
+		shots.clear()
+		w.sw.step_move(dt, w.pp, shots, 1.0, null)
+		var a4 := Time.get_ticks_usec()
+		fp.timers += a1 - a0; fp.separation += a2 - a1; fp.move += a3 - a2; fp.move_no_terrain += a4 - a3
+	if OS.get_environment("BENCH_EXP") != "":
+		var vr2 := (w.view_r + 40.0) * (w.view_r + 40.0)
+		var inside := 0
+		for i in w.sw.n:
+			if w.sw.pos[i].distance_squared_to(w.pp) <= vr2: inside += 1
+		var e0 := Time.get_ticks_usec()
+		for f in 60:
+			shots.clear(); w.sw.step_move(dt, w.pp, shots, 1.0, w.terrain)
+		var e1 := Time.get_ticks_usec()
+		w.terrain.props_on = false
+		for f in 60:
+			shots.clear(); w.sw.step_move(dt, w.pp, shots, 1.0, w.terrain)
+		var e2 := Time.get_ticks_usec()
+		w.terrain.props_on = true
+		print("  EXP view_r=%.0f inside=%d/%d move+terrain=%.2fms cells_only=%.2fms" % [w.view_r, inside, w.sw.n, (e1 - e0) / 60000.0, (e2 - e1) / 60000.0])
+	var fl := "  foe step:"
+	for k in fp:
+		out["foe_" + k] = snappedf(fp[k] / 1000.0 / frames, 0.01)
+		fl += " %s=%.2fms" % [k, out["foe_" + k]]
+	print(fl)
+	report["bench"] = out
+	ok(true, "bench ran")
+
+## Art review 2: the value bands, the acts' colour scripts, the title stage, the tone curve and the act accents. The
+## numbers in the messages come from frozen combat frames (scratchpad ev2/art2: probe_art.gd, meas_an.py).
+func _look_art2_tests() -> void:
+	print("== art review 2: clutter, acts, title, tone curve, accents")
+	# clutter: the trees' gain is a warm bark (their map is blue, median linear B/R 2.06) at 3x the 0.05 floor
+	var tg: Color = Models.ALBEDO_GAIN["tree"]
+	var bark := Vector3(0.0086 * tg.r, 0.0116 * tg.g, 0.0176 * tg.b)          # the tree map's median, linear
+	var bark_y := 0.2126 * bark.x + 0.7152 * bark.y + 0.0722 * bark.z
+	ok(bark.z / bark.x <= 0.8 and bark_y >= 0.13 and Models.ALBEDO_GAIN["tree_dead"] is Color and float(Models.ALBEDO_GAIN["rock"]) >= 5.0
+		and float(Models.ALBEDO_GAIN["wall"]) >= 10.0 and float(Models.ALBEDO_GAIN["bush"]) >= 2.0,
+		"clutter off black: tree bark Y %.3f B/R %.2f, rock x%.1f, wall x%.1f, bush x%.1f (trees and rocks drew at L* 2-6, 81-93%% of them under L* 15)"
+		% [bark_y, bark.z / bark.x, float(Models.ALBEDO_GAIN["rock"]), float(Models.ALBEDO_GAIN["wall"]), float(Models.ALBEDO_GAIN["bush"])])
+	# Act II tints its rocks and bushes toward its ground; the trees keep their bark; the title puts the shared materials back
+	Models.tint_props(1, WorldView3D.STAGE_LOOK[1].get("clutter", Color(1, 1, 1)))
+	var rmat := Models.prop_mesh("rock", 1).surface_get_material(0) as BaseMaterial3D
+	var tmat := Models.prop_mesh("tree", 1).surface_get_material(0) as BaseMaterial3D
+	var tinted := rmat.albedo_color
+	var tree_kept := tmat.albedo_color.is_equal_approx(Models.albedo_gain_color("tree"))
+	Models.tint_props(-1, Color(1, 1, 1))
+	ok(tinted.r > tinted.b * 1.5 and tree_kept and rmat.albedo_color.is_equal_approx(Models.albedo_gain_color("rock")),
+		"Act II's rocks take its ground's hue (%s), the trees keep their bark, the title resets them" % str(tinted))
+	var ms := MenuStage3D.new()
+	add_child(ms)
+	var pbr := 0
+	var over := 0
+	for c in ms.get_children():
+		if c is MeshInstance3D and Models.has_pbr((c as MeshInstance3D).mesh):
+			pbr += 1
+			if (c as MeshInstance3D).material_override != null: over += 1
+	ms.queue_free()
+	ok(pbr >= 3 and over == 0, "the title's imported props keep their maps (%d, %d overridden): the prop shader drew them white x tint, lilac at L* 31 round an exile at L* 8" % [pbr, over])
+	var lk: Array = WorldView3D.STAGE_LOOK
+	var sky0: Color = lk[0].sky
+	var sun4: Color = lk[4].sun
+	var sun_y := 0.2126 * sun4.r + 0.7152 * sun4.g + 0.0722 * sun4.b
+	ok(sky0.b / sky0.r <= 1.4 and sun4.r >= sun4.b * 1.5 and absf(sun_y - 0.748) < 0.03,
+		"Act I's sky B/R %.2f (at 1.85 its blue pixels rose to 50%%); Act V's sun candle-warm at the old luma %.3f (Act V drew Act I's colours)" % [sky0.b / sky0.r, sun_y])
+	ok(float(lk[1].get("sat", WorldView3D.SAT)) < WorldView3D.SAT and float(lk[3].get("sat", WorldView3D.SAT)) < WorldView3D.SAT and float(lk[0].get("sat", WorldView3D.SAT)) == WorldView3D.SAT
+		and float(lk[4].get("rim_k", WorldView3D.RIM_FOE)) <= 0.35 and float(lk[0].get("rim_k", WorldView3D.RIM_FOE)) >= 0.6,
+		"saturation below the default in Acts II and IV (C* 45; 76%% blue), Act V's foe rim 0.35 (its foes drew 15 L* above the hero)")
+	var w5 := _world({"mode": "campaign", "stage": 4, "hero": 0, "seed": 64})
+	var v5 := WorldView3D.new()
+	add_child(v5)
+	v5.bind(w5)
+	ok(is_equal_approx(float(v5.foe_mats[0].get_shader_parameter("rim_k")), 0.35) and v5.sun.light_color.is_equal_approx(sun4)
+		and is_equal_approx(v5.env.adjustment_saturation, WorldView3D.SAT), "Act V binds its foe rim, its sun and the default saturation")
+	v5.queue_free()
+	var tc := WorldView3D.tone_curve()
+	var mono := true
+	var prev := -1.0
+	for i in 101:
+		var y := tc.gradient.sample(i / 100.0).r
+		mono = mono and y >= prev
+		prev = y
+	var vc := WorldView3D.new()
+	add_child(vc)
+	var on := vc.env.adjustment_color_correction != null
+	vc.queue_free()
+	ok(on and mono and absf(tc.gradient.sample(0.05).r - 0.05) < 0.005 and tc.gradient.sample(0.12).r < 0.115 and tc.gradient.sample(0.46).r > 0.5,
+		"the tone curve: toe kept, low mids pressed, upper mids opened (Act I's p5-p95 span had fallen 17%%, 85%% of the frame in the mid band)")
+	var lab := func(c: Color) -> Vector3:
+		var l := c.srgb_to_linear()
+		var f := func(t: float) -> float: return pow(t, 1.0 / 3.0) if t > 216.0 / 24389.0 else (24389.0 / 27.0 * t + 16.0) / 116.0
+		var fx: float = f.call((0.4124 * l.r + 0.3576 * l.g + 0.1805 * l.b) / 0.95047)
+		var fy: float = f.call(0.2126 * l.r + 0.7152 * l.g + 0.0722 * l.b)
+		var fz: float = f.call((0.0193 * l.r + 0.1192 * l.g + 0.9505 * l.b) / 1.08883)
+		return Vector3(116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+	var d76 := func(a: Color, b: Color) -> float: return (lab.call(a) - lab.call(b)).length()
+	var acc4 := Content.col(String(Content.STAGES[3].acc))
+	var acc5 := Content.col(String(Content.STAGES[4].acc))
+	var dg: float = d76.call(acc4, Color("6be8ff"))
+	var dc: float = d76.call(acc4, Content.col(Content.EL_COL[2]))
+	var dgold: float = d76.call(acc5, UIKit.GOLD)
+	var dbig: float = d76.call(acc5, Color("ffd84a"))
+	ok(dg >= 40.0 and dc >= 40.0 and dgold >= 20.0 and dbig >= 20.0,
+		"act accents off the loot: Act IV vs the XP gem %.0f and Cold %.0f (were 8 and 12), Act V vs GOLD %.0f and the big gem %.0f (were 10 and 23)" % [dg, dc, dgold, dbig])
+	# (art review 2 guards end)
+
+func _look_vfx_tests() -> void:
+	print("== 0.11.5 look: enemy shots, effect colours, telegraphs, hit squash, pooled shots")
+	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 65})
+	w.stats.set_source("t", [["max_hp", "add", 1e6]]); w.hp = 1e6
+	var v := WorldView3D.new()
+	add_child(v)
+	v.bind(w)
+	var fx := v.fx
+	var em := fx.esh_mm.material_override as ShaderMaterial
+	ok(em.shader.code.contains("depth_test_disabled") and em.shader.code.contains("blend_mix") and em.render_priority >= 100,
+		"enemy shots: their own alpha layer, never depth-tested, drawn after the other effects (they hid in the additive glow)")
+	w.spawn_eshot(w.pp + Vector2(120, 0), Vector2(-170, 0), 5.0)
+	fx._projectiles(0)
+	ok(fx.esh_mm.multimesh.visible_instance_count == w.eshots.size() and w.eshots.size() > 0, "every enemy shot drawn in the shot layer (%d)" % w.eshots.size())
+	var lin := true
+	for m in [fx.glow_mm.material_override, fx.bolt_mat, fx.gem_mm.material_override, fx.pick_mm["disc"].material_override, fx.beam_mm.material_override]:
+		lin = lin and (m as ShaderMaterial).shader.code.contains("lin(COLOR.rgb)")
+	ok(lin and FX3D.GEM_EM <= 1.0 and FX3D.GEM_BIG != Color("ffd84a"),
+		"effect shaders linearise their sRGB instance colours; crystals at emission %.1f; the big crystal is not the coin's colour" % FX3D.GEM_EM)
+	w.teles.clear()
+	w.add_tele(0, w.pp + Vector2(80, 0), 60.0, 1.0, 0.0, 10.0, true, false, -1, Color(1, 0.25, 0.3, 0.55), "a slam")
+	var zl := w.add_tele(2, w.pp + Vector2(-200, 0), 0.0, 1.0, 0.0, 10.0, true, false, -1, Color(1, 0.3, 0.25, 0.5), "a dash-cleave")
+	zl.dir = Vector2.RIGHT; zl.length = 200.0; zl.width = 60.0
+	fx._decals()
+	var top := 0
+	var under := 0
+	for d in fx.decals:
+		if not d.visible: continue
+		if d.material_override == fx.decal_top_mat: top += 1
+		elif d.material_override == fx.decal_mat: under += 1
+	ok(top == 2 and under >= 2 and (fx.decal_top_mat.shader.code.contains("depth_test_disabled")) and not fx.decal_mat.shader.code.contains("depth_test_disabled"),
+		"hostile telegraphs drawn over the bodies standing in them (%d), the hero's own decals under them (%d)" % [top, under])
+	var fsh: String = (load("res://shaders/3d/foe.gdshader") as Shader).code
+	var vat_at := fsh.find("if (has_vat) {")
+	var proc_at := fsh.find("} else if (INSTANCE_CUSTOM.z < 6.5)")
+	var sq := fsh.find("VERTEX.xz *= 1.0 + hf")
+	ok(vat_at >= 0 and sq > vat_at and sq < proc_at and fsh.contains("fl * fl * 0.55;"), "animated foes squash on a hit; the hit pop eases in squares")
+	var p0 := w._new_proj()
+	p0.prev = Vector2(5, 5)
+	w._pool.append(p0)
+	var p1 := w._new_proj()
+	ok(p1 == p0 and p1.prev == Vector2.INF, "a pooled shot starts with no previous position (it was drawn from its last life's)")
+	v.w = null
+	v.queue_free()

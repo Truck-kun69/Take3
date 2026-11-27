@@ -1,0 +1,294 @@
+# Models: Blender pipeline, textures, and AI-generated creatures
+
+Since 0.9.8 the four heroes, the tyrant and the herald, the five main swarm foes and eight props are
+generated through fal.ai and finished in headless Blender ("Generated models", next). The guardian,
+the Act V set and the remaining swarm kinds still come from the Blender pipelines further down. All
+of them fill the model slots (`godot/models/README.md`); delete a file to get the procedural
+version back.
+
+```bash
+# one-time: Blender in ~/toolchains (no GUI, no account)
+curl -fL https://download.blender.org/release/Blender4.5/blender-4.5.15-linux-x64.tar.xz | tar xJ -C ~/toolchains
+# textures: download CC0 sets, then pack them to 1024 px colour / normal / ORM (pack_textures.py [set ...])
+python3 tools/blender/fetch_textures.py /tmp/texraw
+python3 tools/blender/pack_textures.py /tmp/texraw godot/models/textures
+# models: all, or name some (warden spark ember storm tyrant guardian herald)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/build_models.py -- warden
+```
+
+## Generated models (fal.ai, 0.9.8)
+
+```bash
+python3 tools/fal_assets.py --plan             # what is still to make, at fal's published prices
+python3 tools/fal_assets.py --canary           # warden and tree first; then --all, or --only id,id
+B=~/toolchains/blender/blender
+$B -b --factory-startup --python tools/blender/obj_to_glb.py -- grunt runner brute spitter charger
+python3 tools/fal_assets.py --only grunt,runner,brute,spitter,charger      # their rigs need rig_input.glb
+$B -b --factory-startup --python tools/blender/process_fal_assets.py -- <ids>
+python3 tools/verify_assets.py --all           # size, maps, skeleton and clips, height, feet at 0
+python3 tools/gate_check.py                    # the release gate: exits 0, or names what fails
+```
+
+Every fal call goes through the queue and is written to `tools/fal_cache.json` when submitted and
+when done: endpoint, asset, request id, arguments (an inline file as its size and sha256), output
+URLs, local files and the price. A re-run reuses a finished call and never sends one that would
+take the total past $19.50. Spent for this set: $18.904 (`python3 tools/fal_assets.py --report`).
+Raw downloads stay in `tools/.fal_raw/` (not in git).
+
+| Kind | Ids | fal | `tools/blender/process_fal_assets.py` |
+|---|---|---|---|
+| Heroes | warden, spark, ember, storm | FLUX schnell concept (A-pose), Meshy v7.1 image-to-3d (PBR), Meshy rigging + multi-animation (Mixamo skeleton) | idle, walk, run, cast, roll, jump and die on one armature, root motion taken out; 38 units tall, facing +X |
+| Bosses | tyrant, herald | the same | idle, walk, attack, slam, die; 88 units |
+| Foes | grunt, runner, brute, spitter, charger | concept, Hunyuan3D 3.1 Rapid (an OBJ and its base colour map), Meshy's basic rig (walk, run) on `obj_to_glb.py`'s GLB | welded, 1,800 triangles, the 2048 px map; attack, hit, death and spawn keyed on the rig; the five clips baked into `<id>.vat`; 24-42 units at the kind's base radius |
+| Props | tree, tree_dead, rock, bush, arch, wall, pillar, bones | concept, Hunyuan3D 3.1 Pro (PBR) | welded (edges over 45 degrees stay sharp), decimated to the kind's budget; placement written into the vertices |
+
+* **Bones** is one closed surface with about 3,700 tiny tunnels (genus from V - E + F), and an edge
+  collapse keeps every one: it is voxel-remeshed, decimated to 1,200 triangles, unwrapped, and its
+  base colour, normal and roughness baked from the original with Cycles.
+* **Foes and props are drawn through a MultiMesh of the file's first mesh, without node
+  transforms**: every mesh node is written at the identity (verify_assets.py checks it).
+* **Textures** stay 1024-2048 px on every tier. Godot extracts a new `.glb`'s maps next to it; set
+  `compress/mode=2` on them (and `compress/normal_map=1` on normal maps), then run
+  `python3 tools/texture_budget.py` and re-import: heroes, bosses, landmark (tree, tree_dead, arch) and
+  foe albedo stay 2048 px; prop and foe normal and ORM maps and the clutter albedo (rock, wall, pillar,
+  bones, bush) import at 1024. `--check` verifies the imported sizes and the compression.
+
+### 0.9.9 (no fal calls: everything rebuilt from `tools/.fal_raw/`)
+
+* **Action slots.** Blender 4.4+ evaluates an action only through a slot, and a clip imported on
+  another armature keeps that armature's slot, which assigning the action does not pick. 0.9.8's foe
+  walk cycles were baked frozen that way (0.0 units of travel); `assign()` sets the slot, and the gate
+  now checks every walk moves.
+* **Hero clips trimmed** before the root motion is taken out, then started at frame 0: the jump
+  centred on the hips' apex (takeoff crouch to landing impact, 0.85 s, so half the jump is the apex),
+  the roll over its tumble (0.65 s), the cast over the hands' fastest swing (0.65 s; Stormwright 0.95).
+* **Foe maps baked** (`bake_foe_maps`): the welded 16k-triangle rig mesh, before decimation, is the
+  source; Cycles bakes a tangent normal and ambient occlusion onto the 1,800-triangle mesh at 1024 px
+  (the low mesh hidden from the bake's rays, rays from 3% out to 8% in), packed as ORM (R occlusion,
+  G 0.45 + 0.45 x (1 - AO) plus a little from the albedo's darkness, 0.40-0.92, B 0). The resized
+  albedo is saved to its own file: the exporter embeds an image's file, which was the 4096 px source.
+* **The bush's albedo is lifted** to a 0.05 median linear luminance (`ALBEDO_FLOOR`; Hunyuan baked it
+  at 0.011, near black): 200 bushes read as black balls on the night ground.
+
+## How a model is built (`tools/blender/build_models.py`)
+
+1. **Skeleton**: `humanoid()` lays out joints for a given height, bulk, hunch and limb length,
+   and the bones that connect them (21 bones: root, hips, spine, chest, neck, head, two arms and legs
+   with hands and feet, and a three-bone cape chain). Bosses add wing bones. The Herald has its own
+   rig: a core and three ring bones, each carrying four shard bones.
+2. **Body**: the same joint graph drives a Skin modifier with per-joint radii, then subdivision.
+   That gives an organic body with no manual sculpting. It is bound to the skeleton with Blender's
+   automatic (heat) weights.
+3. **Gear**: helmets, pauldrons, plates, hoods, hats, horns, belts, robes, capes and weapons are
+   procedural primitives (bmesh). Rigid pieces are bound 100% to one bone. Capes follow the cape
+   chain, and robes and tassets blend from the hips toward each thigh, so a stride swings the hem
+   without tearing it.
+4. **UVs**: a world-scale box projection gives every part the same texel density with no seams to
+   author.
+5. **Materials**: PBR sets from `godot/models/textures/` with a tint (exported as glTF
+   `baseColorFactor`), normal maps and ORM maps. Emissive materials are named `glow*`.
+6. **Animation**: poses are written as rotations in character axes (X forward, Y left, Z up) and
+   converted to each bone's local space, so the clips read like choreography:
+   * heroes: `idle` (breathing, cape drift), `run` (stride, arm swing, bob, trailing cape), `cast`
+     (turn and thrust), `roll` (tucked forward flip), `hit` (recoil), `die` (buckle and fall back)
+   * bosses: `idle`, `walk` (heavy stomp), `attack` (wind-up, slam, recover), `hit`, `die`. The
+     Herald's attack flings its shards outward and its death scatters them.
+7. **Export**: glTF with an external `.bin`, sharing one texture folder, so the game ships each
+   texture once.
+
+| Model | Height | Triangles | Look |
+|---|---|---|---|
+| Warden | 50 | ~9k | great helm with crest, layered pauldrons, cuirass, mail skirt and tabard, cape, rune longsword, heater shield |
+| Sparkcaller | 50 | ~9k | deep hood with a shadowed face and frost eyes, fur mantle, split coat over a robe, silver bracers, ice-crystal staff |
+| Emberwitch | 48 | ~9k | wide-brim crooked hat, ember eyes, corset, flared robe with a gold hem, bell sleeves, half cape, lantern staff |
+| Stormwright | 52 | ~9k | brass horned helm, fur mantle, crossed harness with a storm rune, one great pauldron, chain and leather kilt, cape, forked crystal staff |
+| Tyrant (act bosses) | 125 | ~8k | horned skull, glowing ribcage furnace, spined back, spiked pauldrons, bat wings, cleaver; glow recoloured per act |
+| Guardian (rift) | 115 | ~5k | stone golem with crystal growths and a core gem |
+| Herald (pinnacle) | floats at 70 | ~4k | crystal-blade cage around a glowing heart, three counter-rotating gold rings with twelve shards |
+
+## In the game
+
+`HeroRig` and `BossRig` load the models through the slots and:
+* loop `idle`, `run` and `walk`, and match the run speed to movement speed
+* drive `roll` from the simulation's dodge timer (the clip is scrubbed, so the flip always lands
+  when the roll ends)
+* add a per-instance rim light and a red hit-flash overlay
+* flare `glow*` materials on casts, and pulse and recolour them for bosses (one tyrant model gives
+  the green, ember, pale and neon bosses)
+* let a boss attack play out in full (wind-up, slam, recover), so hits don't cut it short
+
+Textures were imported as lossy WebP with mipmaps at the time; the generated models' maps are now
+VRAM-compressed (ETC2/ASTC on phones; `tools/texture_budget.py`).
+
+## AI-generated creatures (Tripo or Meshy)
+
+Both services turn a prompt or a concept image into a textured mesh. Both can also auto-rig and
+animate a humanoid through their APIs. The plan for Shardfall's swarm and elites: generate, then
+clean up in this same Blender pipeline (decimate to a budget, rescale, re-orient to +X, retexture
+or tint, add the UV2 limb ids the foe shader animates). The results drop into `godot/models/foes/`.
+
+**Keys can't be acquired automatically.** Each service needs an account, accepted terms of service,
+and (for Meshy's API, and for Tripo beyond any free grant) a payment method. Only the account owner
+can do those. Once you have a key:
+1. In a cloud Claude Code session, the session asks for it through a secure credential form (the
+   key is never pasted into chat). The environment's proxy then adds it to requests for that host
+   only, and the code never sees the value.
+2. Locally, set `TRIPO_API_KEY` or `MESHY_API_KEY` in your shell.
+
+At the time of writing (check the live pages):
+* **Tripo**: pay-as-you-go API credits at developers.tripo3d.ai/en/pricing (text-to-3D is about
+  $0.10 a model). Its developer program grants extra credits to game developers. The free Studio
+  plan is for the web app, and its outputs need attribution.
+* **Meshy**: API keys need the Pro plan or above (about $20 a month for 1,000 credits). A
+  text-to-3D preview costs about 20 credits, auto-rigging about 5, and each animation about 3.
+
+Check each service's licence terms for commercial use before shipping generated assets.
+
+## Critique passes
+
+| Pass | Found | Fixed |
+|---|---|---|
+| 0 | Steel rendered almost black: fully metallic with nothing bright to reflect in the dark scenes | Steel and chain lifted; metalness capped at 0.6 |
+| 1 | Steel overshot to beige; the Sparkcaller read grey; the Emberwitch's eyes sat inside her head; the Stormwright's horns were oversized blades | Cool steel tint and stronger normals, a saturated frost coat, eyes moved forward with a fringe, shorter swept-up horns, darker skin and belly wraps |
+| 2 | Guardian crystals too small to read; the Herald was all thick gold rings around an opaque crystal | Bigger shoulder, forearm and back crystals; thin rings; a cage of crystal blades around a visible glowing heart |
+| 3 | Textured heroes too dark on the title stage and in play; the Herald's crystal read grey in its arena | Per-instance rim light on authored models, a warm key light and cool back light on the title stage, faint violet self-glow on the Herald's crystal |
+
+![Heroes](screenshots/models_heroes.png)
+![Title screen](screenshots/models_menu_emberwitch.png)
+![In game](screenshots/models_ingame_warden.png)
+More: [bosses pass 1](screenshots/models_bosses_pass1.png), [guardian and herald pass 2](screenshots/models_guardian_herald_pass2.png),
+[herald in game](screenshots/models_ingame_herald.png), [pass 0 dark steel](screenshots/models_pass0_dark_steel.png).
+
+## Swarm foes from CC0 packs (KayKit, Quaternius)
+
+```bash
+bash tools/blender/fetch_packs.sh /tmp/packs          # KayKit via git, Quaternius via gdown (pip install gdown)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/import_packs.py -- /tmp/packs [kinds...]
+```
+
+The swarm draws hundreds of foes per kind in one instanced call, and the foe shader animates them,
+so `tools/blender/import_packs.py` bakes each rigged creature into that format:
+
+1. **Pose**: frame 1 of the creature's own `Idle` clip, deformed by its skeleton and frozen.
+2. **Colour**: its texture atlas sampled into vertex colours, pulled toward a darker, less saturated palette.
+3. **Limbs**: each face takes its dominant bone's part id (legs, arms, head) and that limb's joint
+   height into UV2, so the shader can walk the legs, swing the arms and bob the head. KayKit's
+   glowing eye mesh and Quaternius' dark pupils and maws become emissive eyes.
+4. **Lore**: glowing shard crystals grow from each creature's upper back. They're shard-touched.
+5. **Fit**: faces +X, feet at 0, scaled to the procedural foe's height. Coplanar facets are merged
+   losslessly, then each limb is collapsed to its share of a triangle budget (about 600–2,300).
+
+| Foe | Model | Triangles |
+|---|---|---|
+| Shardling (grunt) | KayKit Skeleton_Minion with blade | ~2.3k |
+| Skitterer (runner) | Quaternius Dino | ~0.7k |
+| Shardhulk (brute) | Quaternius Yeti | ~1.0k |
+| Glassmaw (spitter) | Quaternius Frog | ~1.4k |
+| Ramshard (charger) | Quaternius Demon | ~0.8k |
+| Breachspawn (breach) | Quaternius Alien | ~0.8k |
+| Treasure Gremlin (goblin) | Quaternius Mushroom King | ~0.8k |
+| Fractal (splitter) | Quaternius spiky blob | ~1.3k |
+| Fractal Shard (mini) | Quaternius blob | ~0.6k |
+
+Since 0.9.8 grunt, runner, brute, spitter and charger are generated ("Generated models" above); the
+table shows the pack models they replaced and the kinds still from the packs.
+
+Credits: `godot/models/foes/CREDITS.md`. Delete a `.glb` to bring that kind's procedural foe back.
+
+### Next: TRELLIS 2 (fal.ai)
+
+Image to 3D at `fal-ai/trellis-2` (about $0.25 at 512p, $0.30 at 1024p, $0.35 at 1536p). The plan:
+concept image, then TRELLIS 2, then the same bake for swarm kinds or the hero/boss path for elites.
+The fal key is the key ID and secret joined by a colon. fal shows the secret only once, when the
+key is created. In a cloud session it is entered through the secure credential form, never in chat.
+
+Critique passes for the imports:
+1. Decimation tore holes in the skeleton skull, and the colours were pastel toy colours. Fixed with
+   a lossless flat-face merge before collapsing, a higher budget for the skeleton, and a darker,
+   less saturated grade ([pass 1](screenshots/foes_pass1_pale_no_eyes.png)).
+2. The Quaternius creatures had no glowing eyes. Their dark pupils and maws are now emissive eyes,
+   and the blob pack fills the Fractal and its shards ([all nine](screenshots/foes_imported.png)).
+3. In play the creatures read as dark figures with amber eyes and blades
+   ([before and after, same moment](screenshots/foes_ingame_before_after.png)).
+
+## Generated props (TRELLIS 2 on fal.ai)
+
+```bash
+python3 tools/fal/gen3d.py /tmp/gen crystal pillar        # FLUX schnell concept -> TRELLIS 2 mesh (fal key needed)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/import_props.py -- /tmp/gen
+```
+
+`gen3d.py` asks FLUX schnell for one isolated object on a plain background (about $0.003), then
+TRELLIS 2 at 512 resolution (about $0.25) returns a textured mesh of about 20k triangles in about
+20 seconds. `import_props.py` stands it up and scales it to the slot. It cuts the mesh to 2,000–2,600
+triangles and samples the texture into vertex colours. Blue-to-violet saturated faces glow in the
+act's accent colour, and a tree's upper branches sway. Shading is smooth with crisp edges; flat
+shading made the cut-down stone look crumpled ([pass 1](screenshots/props_trellis_pass1_crumpled.png),
+[pass 2](screenshots/props_trellis.png)).
+
+All five slots are generated: `crystal`, `pillar`, `tree`, `rock`, `bones` (about $1.30 in fal credit).
+Second set of critique passes:
+1. Everything imported looked washed out, and the dead tree read pale although its concept is near-black.
+   Texture pixels are sRGB, but vertex colours are linear, and writing one as the other lightens every
+   colour. Both import scripts now convert, which also made the swarm foes properly grim.
+2. Cutting the tree to 2,000 triangles shattered its thin branches, and the bone pile turned to
+   confetti at 1,200. Their budgets are now 5,000 and 2,600
+   ([pass 1](screenshots/props_trellis_pass1_washed_out.png), [pass 2](screenshots/props_trellis_set_and_foes_linear.png)).
+
+## Realistic heroes (FLUX dev, TRELLIS 2, pose-fitted rig)
+
+![The four heroes on the title stage](screenshots/heroes_realistic_title.png)
+
+The shipped heroes replace the primitive-built ones above. They are AI-generated, then rigged here:
+
+```bash
+python3 tools/fal/gen3d.py hero-concepts /tmp/heroes warden spark ember storm   # FLUX dev, two seeds each (~$0.02 an image)
+python3 tools/fal/pose_keypoints.py pose_landmarker_heavy.task /tmp/heroes/warden_23.jpg ...   # joints + silhouette per painting
+python3 tools/fal/gen3d.py hero-model /tmp/heroes warden 23                    # TRELLIS 2 at 512 (~$0.25)
+python3 tools/fal/gen3d.py weapon /tmp/heroes                                   # sword, shield, three staffs (~$0.25 each)
+~/toolchains/blender-4.5.15-linux-x64/blender -b --factory-startup --python tools/blender/realistic_heroes.py -- /tmp/heroes
+```
+
+1. **Paintings**: full-body, grim and grimy, battle-worn and mud-caked, in an A-pose with empty hands so
+   the arms can be rigged ([concepts](screenshots/heroes_realistic_concepts.png); the chosen ones are in
+   `tools/fal/concepts/heroes/` with their joints).
+2. **Joints**: MediaPipe Pose finds shoulders, elbows, wrists, hips, knees and ankles in each painting.
+   Thresholds are lowered because helmets and hoods hide the faces its detector leans on.
+3. **Fit**: the joints are mapped onto the TRELLIS mesh through the silhouette's height. Each joint's
+   depth is the middle of the mesh cross-section there, and nose-to-ankle is set to the game's proportions.
+4. **Rig**: the 21-bone skeleton is bound with Blender's heat weights, computed on a watertight
+   voxel-remeshed copy and transferred back by nearest surface. Distance weights, smoothed over the
+   surface, fill in wherever the heat solver gives up. Robes, tabards and capes are then reweighted:
+   cloth below the hips follows the hips with a little of the near thigh, cloth behind the back
+   follows the torso, and neither touches the legs.
+5. **Weapons**: TRELLIS meshes stood up by shape (staff head up, sword crossguard at the hand, shield
+   face out) and bound rigidly to the hand or forearm.
+6. **Clips**: the same six clips as before, with a per-bone offset that brings the painted A-pose arms
+   down to the clips' rest, and a shorter stride for long robes.
+
+Critique passes:
+1. Generated meshes have holes and overlapping shells, so Blender's heat weighting failed outright.
+   Weighting a voxel-remeshed copy fixed it ([pass 1](screenshots/heroes_realistic_pass1_sheets.png):
+   still showing problem 2).
+2. Running looked like a dive. Measuring showed the skeleton was upright but the mesh stood 37 units
+   tall against a 45-unit skeleton: the image-to-mesh scale came from the silhouette's width, which
+   the Warden's floor-spread cape inflates. Scaling by height (with a cleaner silhouette top) fixed
+   the fit, and the heat solver then succeeded on all four. Cloth reweighting stopped the capes
+   tearing into sheets ([pass 2](screenshots/heroes_realistic_pass2_fitted.png)).
+3. The Stormwright's tattooed bare skin came back as dark patches. A re-run with a new seed and a
+   2048 texture did the same, and Blender's extra simplification made it worse, so heroes now keep
+   TRELLIS's own 40k-triangle mesh. The Stormwright was repainted in a bronze breastplate and
+   chainmail under his fur mantle ([before](screenshots/heroes_realistic_pass3_storm_skin.png),
+   [after](screenshots/heroes_realistic_storm_armoured.png)).
+4. TRELLIS 2 at 1024 resolution failed on fal every time (HTTP 502). Heroes use 512, and `gen3d.py`
+   retries 502s twice.
+
+Size: each hero is about 42k triangles with 1024 textures (imported as WebP)
+([screenshot](screenshots/heroes_realistic_web.png)).
+fal spend for the heroes: about $3.50, including the failed and repeated runs.
+
+2048 texture pass: the four heroes were regenerated from the same paintings and seed with
+`texture_size` 2048 (about $1 more; fal prices TRELLIS 2 by resolution, not texture size) and
+re-rigged with the same script. Shapes and rigs are unchanged. The added detail shows up close and
+on the title stage, but is barely visible at gameplay distance
+([1024 left, 2048 right](screenshots/heroes_tex1024_vs_2048.png)).

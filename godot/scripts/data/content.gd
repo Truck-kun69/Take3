@@ -1,0 +1,598 @@
+class_name Content
+extends RefCounted
+## Static game data. Everything here is plain dictionaries/arrays so systems stay data-driven:
+## adding an affix, reaction, gem, event or map mod is a table edit, not a code change.
+
+# ---------------------------------------------------------------- elements & statuses
+enum El { PHYS, FIRE, COLD, LIGHT, CHAOS }
+const EL_NAME := ["Physical", "Fire", "Cold", "Lightning", "Chaos"]
+const EL_STATUS := ["Bleed", "Burn", "Chill", "Shock", "Poison"]
+# Blood crimson, vermilion, ice, pale straw, toxic jade (art-director pass, tools: CIEDE2000 under normal, protan,
+# deutan and tritan vision): worst pair 24.7 / 6.8 / 4.1 / 7.9 -> 21.0 / 16.6 / 16.2 / 5.9; Fire sits 15.5 from the
+# Legendary orange (was 2.7) and Chaos's jade no longer equals the green of "better than equipped".
+const EL_COL := ["e0556f", "ff4b14", "7fe6ff", "ffeb99", "5ed1b2"]
+# Colour-blind safe alternates (Okabe-Ito); the renderer also adds per-element mote shapes. Physical is Okabe-Ito's
+# reddish purple, not its vermilion d55e00: on foes in Act II the vermilion Bleed and the orange Burn rendered 6.4
+# dE00 apart for deuteranopes (worse than the default palette's 7.9); as hexes its worst Physical pair goes from
+# 12.5 to 15.7 deutan and 18.2 to 14.0 protan (every pair of the palette stays above 10 for both).
+const EL_COL_CB := ["cc79a7", "e69f00", "56b4e9", "f0e442", "009e73"]
+# Every element hue comes from EL_COL through el_col() / status_cols() (World.el, the shaders' status_cols), so a palette
+# change or the colour-blind option reaches every status glow, number and particle. Colours that once shared those
+# hexes but mean something else are named here instead, so a palette change never drags them along:
+const BETTER := Color("7dff6b")      # an upgrade or a bonus: "+12 vs equipped", a map's reward
+const DANGER := Color("ff4a5e")      # a boss or a curse: off-screen boss arrows, boss life bars, the cursed chest
+const LIFE := Color("ff3a4e")        # the heart pickup, in both views
+
+# ---------------------------------------------------------------- heroes / weapons
+const HEROES := [
+	{"id": "warden", "name": "Warden", "blurb": "Orbiting blades. Bleeds.", "weapon": "orbit", "hp": 130.0, "spd": 150.0, "col": "f0b94d", "elem": El.PHYS,
+		"ult": "Blade Cyclone", "ult_d": "Blades double in reach and triple in damage for 6s."},
+	{"id": "spark", "name": "Sparkcaller", "blurb": "Rime bolts. Chills.", "weapon": "bolt", "hp": 105.0, "spd": 162.0, "col": "5ad6ff", "elem": El.COLD,
+		"ult": "Absolute Zero", "ult_d": "Freezes everything on screen for 2.5s and deals cold damage."},
+	{"id": "ember", "name": "Emberwitch", "blurb": "Incineration. Fire that spreads.", "weapon": "nova", "hp": 95.0, "spd": 155.0, "col": "ff7b50", "elem": El.FIRE,
+		"ult": "Cataclysm", "ult_d": "A screen-wide fire wave that leaves burning ground."},
+	{"id": "storm", "name": "Stormwright", "blurb": "Skyfall strikes. Shocks.", "weapon": "storm", "hp": 100.0, "spd": 155.0, "col": "b890ff", "elem": El.LIGHT,
+		"ult": "Thunderdome", "ult_d": "Ten lightning strikes per second for 4s."},
+]
+
+# Weapon tags gate which support gems can link. lv = per-level base stats (index 0 = level 1).
+const WEAPONS := {
+	"bolt": {"name": "Rime Bolt", "col": "5ad6ff", "elem": El.COLD, "tags": ["projectile", "spell"], "pair": "haste",
+		"evo": "Glacial Volley", "evo_d": "Six piercing bolts in a fan.",
+		"lv": [{"cd": 0.9, "n": 1, "dmg": 9.0, "pierce": 0}, {"cd": 0.8, "n": 2, "dmg": 9.0, "pierce": 0}, {"cd": 0.8, "n": 2, "dmg": 11.0, "pierce": 1},
+			{"cd": 0.7, "n": 3, "dmg": 12.0, "pierce": 1}, {"cd": 0.6, "n": 4, "dmg": 15.0, "pierce": 2}],
+		"evo_s": {"cd": 0.5, "n": 6, "dmg": 16.0, "pierce": 3},
+		"d": ["Fires a bolt at a foe.", "Fires 2 bolts.", "Bolts pierce a foe.", "3 bolts, faster.", "4 bolts that pierce twice."]},
+	"orbit": {"name": "Spin Blades", "col": "f0b94d", "elem": El.PHYS, "tags": ["melee", "area"], "pair": "might",
+		"evo": "Razor Halo", "evo_d": "Nine huge blades, double damage.",
+		"lv": [{"n": 3, "rad": 56.0, "spd": 2.6, "dmg": 8.0}, {"n": 3, "rad": 66.0, "spd": 2.8, "dmg": 10.0}, {"n": 4, "rad": 66.0, "spd": 3.0, "dmg": 11.0},
+			{"n": 5, "rad": 72.0, "spd": 3.2, "dmg": 12.0}, {"n": 7, "rad": 80.0, "spd": 3.6, "dmg": 14.0}],
+		"evo_s": {"n": 9, "rad": 92.0, "spd": 4.0, "dmg": 22.0},
+		"d": ["Three blades circle you.", "Wider orbit, more damage.", "Four blades.", "Five blades, faster.", "Seven blades."]},
+	"nova": {"name": "Flame Pulse", "col": "ff7b50", "elem": El.FIRE, "tags": ["area", "spell"], "pair": "vigor",
+		"evo": "Cataclysm Ring", "evo_d": "A vast rapid shockwave with heavy knockback.",
+		"lv": [{"cd": 2.8, "rad": 85.0, "dmg": 10.0}, {"cd": 2.5, "rad": 100.0, "dmg": 12.0}, {"cd": 2.5, "rad": 100.0, "dmg": 16.0},
+			{"cd": 2.2, "rad": 125.0, "dmg": 18.0}, {"cd": 1.5, "rad": 150.0, "dmg": 24.0}],
+		"evo_s": {"cd": 1.1, "rad": 200.0, "dmg": 42.0},
+		"d": ["A shockwave bursts around you.", "Larger, quicker pulses.", "More damage.", "Larger again.", "Huge, very fast pulses."]},
+	"storm": {"name": "Skyfall", "col": "b890ff", "elem": El.LIGHT, "tags": ["area", "spell", "strike"], "pair": "boots",
+		"evo": "Thunderfall", "evo_d": "Eight heavy strikes every 0.7s.",
+		"lv": [{"cd": 1.7, "n": 1, "rad": 34.0, "dmg": 20.0}, {"cd": 1.6, "n": 2, "rad": 34.0, "dmg": 22.0}, {"cd": 1.6, "n": 2, "rad": 48.0, "dmg": 26.0},
+			{"cd": 1.4, "n": 3, "rad": 48.0, "dmg": 28.0}, {"cd": 1.0, "n": 5, "rad": 52.0, "dmg": 34.0}],
+		"evo_s": {"cd": 0.7, "n": 8, "rad": 64.0, "dmg": 50.0},
+		"d": ["Lightning strikes a foe.", "Two strikes.", "Wider blasts.", "Three strikes.", "Five strikes, faster."]},
+	# ---- eight more (alpha): each plays differently, and four slots mean choosing between them
+	"lance": {"name": "Storm Lance", "col": "ffe27a", "elem": El.LIGHT, "tags": ["projectile"], "pair": "magnet",
+		"evo": "Sunpiercer", "evo_d": "Five lances that cross the whole field.",
+		"lv": [{"cd": 1.7, "n": 1, "dmg": 22.0}, {"cd": 1.6, "n": 1, "dmg": 28.0}, {"cd": 1.6, "n": 2, "dmg": 28.0},
+			{"cd": 1.4, "n": 2, "dmg": 34.0}, {"cd": 1.3, "n": 3, "dmg": 40.0}],
+		"evo_s": {"cd": 0.95, "n": 5, "dmg": 58.0},
+		"d": ["A heavy lance pierces every foe in a line.", "More damage.", "Two lances.", "Faster, stronger.", "Three lances."]},
+	"mine": {"name": "Ember Mines", "col": "ff8a3c", "elem": El.FIRE, "tags": ["area"], "pair": "searing",
+		"evo": "Cinder Field", "evo_d": "Four huge mines at a time, twice as often.",
+		"lv": [{"cd": 2.2, "n": 1, "rad": 70.0, "dmg": 26.0}, {"cd": 2.2, "n": 2, "rad": 70.0, "dmg": 26.0}, {"cd": 2.2, "n": 2, "rad": 85.0, "dmg": 32.0},
+			{"cd": 1.8, "n": 2, "rad": 85.0, "dmg": 38.0}, {"cd": 1.8, "n": 3, "rad": 100.0, "dmg": 46.0}],
+		"evo_s": {"cd": 1.2, "n": 4, "rad": 125.0, "dmg": 70.0},
+		"d": ["Drops a mine behind you; it bursts when a foe steps near.", "Two mines.", "Bigger bursts.", "Faster, stronger.", "Three mines."]},
+	"glaive": {"name": "Frost Glaive", "col": "9fe8ff", "elem": El.COLD, "tags": ["projectile", "melee"], "pair": "cryo",
+		"evo": "Winter's Return", "evo_d": "Four great glaives that cut on the way out and back.",
+		"lv": [{"cd": 1.8, "n": 1, "dmg": 16.0}, {"cd": 1.8, "n": 1, "dmg": 20.0}, {"cd": 1.8, "n": 2, "dmg": 20.0},
+			{"cd": 1.5, "n": 2, "dmg": 24.0}, {"cd": 1.5, "n": 3, "dmg": 28.0}],
+		"evo_s": {"cd": 1.1, "n": 4, "dmg": 44.0},
+		"d": ["Throws a glaive that returns to you, cutting both ways.", "More damage.", "Two glaives.", "Faster, stronger.", "Three glaives."]},
+	"wisp": {"name": "Grave Wisps", "col": "8cff7a", "elem": El.CHAOS, "tags": ["projectile", "spell"], "pair": "venom",
+		"evo": "Hungering Swarm", "evo_d": "Ten wisps that pass through a foe.",
+		"lv": [{"cd": 1.4, "n": 2, "dmg": 7.0, "pierce": 0}, {"cd": 1.4, "n": 3, "dmg": 7.0, "pierce": 0}, {"cd": 1.4, "n": 3, "dmg": 9.0, "pierce": 0},
+			{"cd": 1.2, "n": 4, "dmg": 9.0, "pierce": 0}, {"cd": 1.2, "n": 6, "dmg": 11.0, "pierce": 0}],
+		"evo_s": {"cd": 0.9, "n": 10, "dmg": 15.0, "pierce": 1},
+		"d": ["Wisps hunt foes down on their own.", "Three wisps.", "More damage.", "Four wisps, faster.", "Six wisps."]},
+	"arc": {"name": "Chain Arc", "col": "d9c8ff", "elem": El.LIGHT, "tags": ["spell"], "pair": "static",
+		"evo": "Stormweave", "evo_d": "Lightning leaps between fourteen foes.",
+		"lv": [{"cd": 1.3, "n": 3, "dmg": 14.0}, {"cd": 1.3, "n": 4, "dmg": 14.0}, {"cd": 1.3, "n": 4, "dmg": 18.0},
+			{"cd": 1.1, "n": 6, "dmg": 18.0}, {"cd": 1.1, "n": 8, "dmg": 22.0}],
+		"evo_s": {"cd": 0.7, "n": 14, "dmg": 34.0},
+		"d": ["Lightning leaps between 3 foes.", "4 foes.", "More damage.", "6 foes, faster.", "8 foes."]},
+	"aura": {"name": "Withering Aura", "col": "b86bff", "elem": El.CHAOS, "tags": ["area"], "pair": "regen",
+		"evo": "Deathly Presence", "evo_d": "A wide aura that also slows everything inside it.",
+		"lv": [{"cd": 0.5, "rad": 70.0, "dmg": 4.0}, {"cd": 0.5, "rad": 70.0, "dmg": 5.5}, {"cd": 0.5, "rad": 84.0, "dmg": 5.5},
+			{"cd": 0.45, "rad": 84.0, "dmg": 7.0}, {"cd": 0.4, "rad": 100.0, "dmg": 8.5}],
+		"evo_s": {"cd": 0.33, "rad": 135.0, "dmg": 13.0},
+		"d": ["Foes close to you wither constantly.", "More damage.", "Wider.", "Faster ticks.", "Wider and stronger."]},
+	"cleave": {"name": "Reaper's Cleave", "col": "ff5a6e", "elem": El.PHYS, "tags": ["melee", "area"], "pair": "serrated",
+		"evo": "Executioner's Arc", "evo_d": "A vast sweep that hurls foes away.",
+		"lv": [{"cd": 1.3, "rad": 95.0, "dmg": 20.0}, {"cd": 1.3, "rad": 95.0, "dmg": 26.0}, {"cd": 1.3, "rad": 115.0, "dmg": 26.0},
+			{"cd": 1.1, "rad": 115.0, "dmg": 32.0}, {"cd": 1.1, "rad": 135.0, "dmg": 40.0}],
+		"evo_s": {"cd": 0.8, "rad": 175.0, "dmg": 64.0},
+		"d": ["A heavy sweep in front of you.", "More damage.", "Longer reach.", "Faster, stronger.", "Longer and stronger."]},
+	"meteor": {"name": "Meteor", "col": "ff6a2a", "elem": El.FIRE, "tags": ["area", "spell", "strike"], "pair": "might",
+		"evo": "Starfall", "evo_d": "Five meteors at once.",
+		"lv": [{"cd": 3.2, "n": 1, "rad": 90.0, "dmg": 60.0}, {"cd": 3.2, "n": 1, "rad": 90.0, "dmg": 75.0}, {"cd": 3.2, "n": 2, "rad": 90.0, "dmg": 75.0},
+			{"cd": 2.8, "n": 2, "rad": 110.0, "dmg": 80.0}, {"cd": 2.8, "n": 3, "rad": 110.0, "dmg": 95.0}],
+		"evo_s": {"cd": 2.0, "n": 5, "rad": 130.0, "dmg": 150.0},
+		"d": ["A meteor lands on a foe after a moment.", "More damage.", "Two meteors.", "Wider, faster.", "Three meteors."]},
+	"totem": {"name": "Rime Totem", "col": "7fe6ff", "elem": El.COLD, "tags": ["projectile", "spell"], "pair": "haste",
+		"evo": "Glacial Spire", "evo_d": "Four spires firing twice as fast.",
+		"lv": [{"cd": 6.0, "n": 1, "rate": 0.6, "dmg": 9.0, "dur": 8.0}, {"cd": 6.0, "n": 1, "rate": 0.6, "dmg": 12.0, "dur": 8.0}, {"cd": 5.0, "n": 2, "rate": 0.6, "dmg": 12.0, "dur": 9.0},
+			{"cd": 5.0, "n": 2, "rate": 0.45, "dmg": 14.0, "dur": 9.0}, {"cd": 4.0, "n": 3, "rate": 0.45, "dmg": 17.0, "dur": 10.0}],
+		"evo_s": {"cd": 3.0, "n": 4, "rate": 0.3, "dmg": 26.0, "dur": 10.0},
+		"d": ["Plants a totem that shoots nearby foes.", "More damage.", "Two totems.", "They fire faster.", "Three totems."]},
+}
+const WEAPON_IDS := ["bolt", "orbit", "nova", "storm", "lance", "mine", "glaive", "wisp", "arc", "aura", "cleave", "meteor", "totem"]
+const MAX_WEAPONS := 4
+
+# ---------------------------------------------------------------- unlock track
+# The four starting weapons are always available. The rest are earned once, forever, by play
+# (Save.data.unlocked). "stat": a key of Save.data.stats, or a special key handled by Save.unlock_progress.
+const UNLOCKS := [
+	{"w": "lance", "stat": "kills", "need": 150, "d": "Slay 150 foes"},
+	{"w": "mine", "stat": "runs", "need": 2, "d": "Finish 2 runs"},
+	{"w": "wisp", "stat": "kills", "need": 600, "d": "Slay 600 foes"},
+	{"w": "cleave", "stat": "champions", "need": 1, "d": "Slay a Rift Champion"},
+	{"w": "glaive", "stat": "cleared", "need": 1, "d": "Clear Act I"},
+	{"w": "arc", "stat": "best_combo", "need": 80, "d": "Reach an 80 kill combo"},
+	{"w": "aura", "stat": "kills", "need": 2500, "d": "Slay 2,500 foes"},
+	{"w": "totem", "stat": "cleared", "need": 2, "d": "Clear two acts"},
+	{"w": "meteor", "stat": "champions", "need": 6, "d": "Slay 6 Rift Champions"},
+]
+
+# ---------------------------------------------------------------- weapon fusion
+# Two evolved weapons can be fused at a level-up (a gold "Fusion" card). Both keep firing; each also
+# carries its partner's element (so fusions feed the reaction engine), deals 25% more damage, and the
+# pair gains the hybrid behaviour below (World._fusion hooks). Key = the two ids sorted, joined by "+".
+const FUSIONS := {
+	"bolt+nova": {"name": "Glacial Nova", "d": "Every pulse also hurls a ring of eight frost bolts.", "col": "9fe8ff"},
+	"bolt+orbit": {"name": "Frost Halo", "d": "The blades shed frost bolts outward as they spin.", "col": "c8f0ff"},
+	"bolt+storm": {"name": "Hailstorm", "d": "Each lightning strike bursts into four frost shards.", "col": "b8d8ff"},
+	"nova+orbit": {"name": "Solar Wheel", "d": "Each pulse flings the blades wide, and the blades burn.", "col": "ffb04a"},
+	"nova+storm": {"name": "Thunderclap", "d": "Each strike detonates a flame pulse where it lands.", "col": "ff9ae0"},
+	"orbit+storm": {"name": "Tempest Blades", "d": "The blades call lightning down on foes they cut.", "col": "d0b8ff"},
+}
+
+## Any two evolved weapons can fuse. The six original pairs have a named hybrid behaviour; every other
+## pair gets the shared bonus (each carries the other's element, +25% damage) under a generated name.
+static func fusion_def(key: String) -> Dictionary:
+	if FUSIONS.has(key): return FUSIONS[key]
+	var ab := key.split("+")
+	var wa: Dictionary = WEAPONS[ab[0]]; var wb: Dictionary = WEAPONS[ab[1]]
+	return {"name": String(wa.name).split(" ")[0] + " " + String(wb.name).split(" ")[-1],
+		"d": "%s and %s share their elements and deal 25%% more damage." % [wa.name, wb.name], "col": wa.col}
+
+static func fusion_key(a: String, b: String) -> String:
+	return (a + "+" + b) if a < b else (b + "+" + a)
+
+# Passive perks: [stat, kind, value per level]. kind: add | inc | more
+const PERKS := {
+	"might": {"name": "Sharpened Edge", "d": "+15% increased damage.", "mods": [["damage", "inc", 0.15]]},
+	"haste": {"name": "Quickened Pulse", "d": "8% faster weapon cooldowns.", "mods": [["cooldown", "inc", -0.08]]},
+	"vigor": {"name": "Stout Heart", "d": "+20 max life.", "mods": [["max_hp", "add", 20.0]]},
+	"boots": {"name": "Light Steps", "d": "+8% movement speed.", "mods": [["move_speed", "inc", 0.08]]},
+	"magnet": {"name": "Crystal Pull", "d": "+35% pickup radius.", "mods": [["pickup", "inc", 0.35]]},
+	"regen": {"name": "Mending", "d": "+0.6 life regenerated per second.", "mods": [["regen", "add", 0.6]]},
+	"venom": {"name": "Venom Coating", "d": "Hits also poison (chaos).", "mods": [["apply_chaos", "add", 1.0], ["dot_damage", "inc", 0.05]]},
+	"searing": {"name": "Searing Rounds", "d": "Hits also burn (fire).", "mods": [["apply_fire", "add", 1.0], ["dot_damage", "inc", 0.05]]},
+	"serrated": {"name": "Serrated Edge", "d": "Hits also bleed (physical).", "mods": [["apply_phys", "add", 1.0], ["dot_damage", "inc", 0.05]]},
+	"cryo": {"name": "Cryo Core", "d": "Hits also chill (cold).", "mods": [["apply_cold", "add", 1.0], ["reaction_damage", "inc", 0.08]]},
+	"static": {"name": "Static Field", "d": "Hits also shock (lightning).", "mods": [["apply_light", "add", 1.0], ["reaction_damage", "inc", 0.08]]},
+}
+const PERK_IDS := ["might", "haste", "vigor", "boots", "magnet", "regen", "venom", "searing", "serrated", "cryo", "static"]
+
+# ---------------------------------------------------------------- support gems (PoE-style links)
+const GEMS := {
+	"chain": {"name": "Chain", "req": "projectile", "d": "Bolts chain to 2 more foes. 10% less damage.", "mods": [["chain", "add", 2.0], ["damage", "more", 0.9]]},
+	"gmp": {"name": "Multiple Projectiles", "req": "projectile", "d": "+2 projectiles. 26% less damage.", "mods": [["proj_count", "add", 2.0], ["damage", "more", 0.74]]},
+	"conc": {"name": "Concentrated Effect", "req": "area", "d": "35% more damage, 25% less area.", "mods": [["area", "more", 0.75], ["damage", "more", 1.35]]},
+	"aoe": {"name": "Increased Area", "req": "area", "d": "40% increased area.", "mods": [["area", "inc", 0.4]]},
+	"fast": {"name": "Faster Casting", "req": "", "d": "25% less cooldown, 10% less damage.", "mods": [["cooldown", "more", 0.75], ["damage", "more", 0.9]]},
+	"echo": {"name": "Spell Echo", "req": "spell", "d": "Repeats once at 70% damage.", "mods": [["echo", "add", 1.0], ["damage", "more", 0.85]]},
+	"inf_fire": {"name": "Fire Infusion", "req": "", "d": "Hits also Burn. +10% fire damage.", "mods": [["apply_fire", "add", 1.0], ["damage", "inc", 0.1]]},
+	"inf_cold": {"name": "Cold Infusion", "req": "", "d": "Hits also chill. +10% cold damage.", "mods": [["apply_cold", "add", 1.0], ["damage", "inc", 0.1]]},
+	"inf_light": {"name": "Lightning Infusion", "req": "", "d": "Hits also shock. +10% lightning damage.", "mods": [["apply_light", "add", 1.0], ["damage", "inc", 0.1]]},
+	"inf_chaos": {"name": "Chaos Infusion", "req": "", "d": "Hits also poison.", "mods": [["apply_chaos", "add", 1.0], ["dot_damage", "inc", 0.1]]},
+	"brutal": {"name": "Brutality", "req": "", "d": "30% more damage, but no elemental application.", "mods": [["damage", "more", 1.3], ["no_status", "add", 1.0]]},
+}
+const GEM_IDS := ["chain", "gmp", "conc", "aoe", "fast", "echo", "inf_fire", "inf_cold", "inf_light", "inf_chaos", "brutal"]
+const SOCKETS := 2
+
+# ---------------------------------------------------------------- elemental reactions
+# Applying element `a` to a foe carrying status `b` (or vice-versa) triggers the reaction.
+# spread: element re-applied to everything caught, which is what lets reactions cascade.
+const REACTIONS := [
+	{"id": "thermal", "a": El.FIRE, "b": El.COLD, "name": "Thermal Shock", "r": 70.0, "dmg": 26.0, "spread": El.FIRE, "col": "ffd0a0"},
+	{"id": "combust", "a": El.FIRE, "b": El.CHAOS, "name": "Toxic Combustion", "r": 80.0, "dmg": 22.0, "spread": El.CHAOS, "col": "b6ff4a"},
+	{"id": "supercon", "a": El.LIGHT, "b": El.COLD, "name": "Superconduct", "r": 64.0, "dmg": 14.0, "spread": El.COLD, "col": "a8f0ff", "debuff": 4.0},
+	{"id": "overload", "a": El.LIGHT, "b": El.FIRE, "name": "Overload", "r": 90.0, "dmg": 30.0, "spread": El.LIGHT, "col": "fff07a", "kb": 380.0},
+	{"id": "hemoarc", "a": El.LIGHT, "b": El.PHYS, "name": "Hemorrhagic Arc", "r": 160.0, "dmg": 8.0, "spread": El.PHYS, "col": "ff5a7a", "arc": 3},
+	{"id": "septic", "a": El.CHAOS, "b": El.PHYS, "name": "Septic Wound", "r": 0.0, "dmg": 0.0, "spread": -1, "col": "9aff6a", "payout": 0.6},
+	{"id": "frostbite", "a": El.COLD, "b": El.PHYS, "name": "Frostbite", "r": 0.0, "dmg": 18.0, "spread": -1, "col": "d8fbff", "freeze": 1.2},
+]
+const REACT_DEPTH := 2          # cascade depth cap (Chain Reaction keystone raises it)
+const REACT_FALLOFF := 0.7      # damage multiplier per cascade step
+const REACT_BUDGET := 24        # reactions resolved per frame; the rest are dropped (perf + readability)
+
+# ---------------------------------------------------------------- keystones (rule changers, PoE passive-tree style)
+const KEYSTONES := {
+	"equilibrium": {"name": "Elemental Equilibrium", "d": "Hitting a foe with an element makes it take 40% more damage from the other elements for 3s."},
+	"glass": {"name": "Glass Cannon", "d": "60% more damage. 40% less maximum life.", "mods": [["damage", "more", 1.6], ["max_hp", "more", 0.6]]},
+	"chainreact": {"name": "Chain Reaction", "d": "Reactions cascade 2 steps deeper but deal 20% less damage.", "mods": [["react_depth", "add", 2.0], ["reaction_damage", "more", 0.8]]},
+	"bloodmagic": {"name": "Blood Magic", "d": "Your Ultimate costs 30% life instead of charge. No flask healing.", "mods": [["flask_heal", "more", 0.0]]},
+	"ironreflex": {"name": "Iron Reflexes", "d": "You cannot dodge roll. +150 armour and 25% more life.", "mods": [["armor", "add", 150.0], ["max_hp", "more", 1.25], ["no_roll", "add", 1.0]]},
+	"pain": {"name": "Pain Attunement", "d": "50% more damage while below half life.", "mods": []},
+	"vaal": {"name": "Vaal Pact", "d": "Hits leech 2% of damage as life. No life regeneration.", "mods": [["leech", "add", 0.02], ["regen", "more", 0.0]]},
+	"momentum": {"name": "Unstoppable Momentum", "d": "Each second spent moving grants 4% more damage (max 40%). Standing still resets it.", "mods": []},
+	"avatar": {"name": "Avatar of Catalysis", "d": "Every hit applies a random element. 15% less damage.", "mods": [["apply_random", "add", 1.0], ["damage", "more", 0.85]]},
+}
+const KEYSTONE_IDS := ["equilibrium", "glass", "chainreact", "bloodmagic", "ironreflex", "pain", "vaal", "momentum", "avatar"]
+const KEYSTONE_LEVELS := [8, 16, 26]
+
+# ---------------------------------------------------------------- enemies
+const ENEMIES := [
+	{"id": "grunt", "name": "Shardling", "hp": 12.0, "spd": 60.0, "r": 11.0, "dmg": 6.0, "xp": 1.0, "lore": "Splinters of the fallen star given hunger."},
+	{"id": "runner", "name": "Skitterer", "hp": 7.0, "spd": 112.0, "r": 8.0, "dmg": 4.0, "xp": 1.0, "lore": "They run before they know what they chase."},
+	{"id": "brute", "name": "Shardhulk", "hp": 70.0, "spd": 40.0, "r": 18.0, "dmg": 12.0, "xp": 5.0, "lore": "Crystal grown around a stubborn heart."},
+	{"id": "spitter", "name": "Glassmaw", "hp": 16.0, "spd": 52.0, "r": 10.0, "dmg": 6.0, "xp": 2.0, "lore": "It spits what it cannot digest: you."},
+	{"id": "splitter", "name": "Fractal", "hp": 30.0, "spd": 50.0, "r": 14.0, "dmg": 8.0, "xp": 3.0, "lore": "Break it and you have three problems."},
+	{"id": "mini", "name": "Fractal Shard", "hp": 6.0, "spd": 80.0, "r": 7.0, "dmg": 4.0, "xp": 0.5, "lore": "The three problems."},
+	{"id": "charger", "name": "Ramshard", "hp": 22.0, "spd": 70.0, "r": 12.0, "dmg": 10.0, "xp": 3.0, "lore": "Aims once. Commits fully."},
+	{"id": "breach", "name": "Breachspawn", "hp": 18.0, "spd": 95.0, "r": 10.0, "dmg": 7.0, "xp": 1.5, "lore": "Hands of something on the other side of the rupture."},
+	{"id": "goblin", "name": "Treasure Gremlin", "hp": 260.0, "spd": 135.0, "r": 13.0, "dmg": 0.0, "xp": 10.0, "lore": "Steals from the dead. Runs from the living."},
+	{"id": "exile", "name": "Rogue Exile", "hp": 900.0, "spd": 92.0, "r": 16.0, "dmg": 14.0, "xp": 60.0, "lore": "Another survivor. Worse at sharing."},
+	{"id": "boss", "name": "Stage Tyrant", "hp": 1400.0, "spd": 46.0, "r": 36.0, "dmg": 16.0, "xp": 0.0, "lore": "Each world crowns the hungriest thing in it."},
+	{"id": "herald", "name": "The Shard Herald", "hp": 9000.0, "spd": 70.0, "r": 44.0, "dmg": 20.0, "xp": 0.0, "lore": "It announced the shardfall. It intends to announce the next one."},
+]
+enum E { GRUNT, RUNNER, BRUTE, SPITTER, SPLITTER, MINI, CHARGER, BREACH, GOBLIN, EXILE, BOSS, HERALD }
+const BESTIARY_TIERS := [10, 100, 1000]      # each tier: +3% damage against that foe, and a lore line
+
+# Elite affixes (bitmask)
+enum Aff { HASTED = 1, SHIELDED = 2, VOLATILE = 4, VAMPIRIC = 8, ARCANE = 16, MIRRORED = 32 }
+const AFFIX_NAMES := {1: "Hasted", 2: "Shielded", 4: "Volatile", 8: "Vampiric", 16: "Arcane", 32: "Mirrored"}
+
+# ---------------------------------------------------------------- stages
+const STAGES := [
+	{"name": "Mossglen Hollow", "blurb": "Roots, wisps and an angry stump.", "boss": "Elder Thornback", "boss_col": "9be04e",
+		"g0": "10241b", "g1": "1a4a2c", "g2": "2c7a43", "acc": "9ad06a", "hp": 1.0, "dmg": 1.0, "spd": 1.0, "gold": 1.0},
+	{"name": "Cinder Wastes", "blurb": "Ash, embers and slag.", "boss": "Cindermaw", "boss_col": "ff6a2a",
+		"g0": "2a1210", "g1": "4a2019", "g2": "6a2a18", "acc": "ff9a3c", "hp": 1.5, "dmg": 1.2, "spd": 1.05, "gold": 1.3},
+	{"name": "Gravebound Crypt", "blurb": "Bones that refuse to stay down.", "boss": "The Pale Regent", "boss_col": "e6e0ff",
+		"g0": "15131f", "g1": "2c2942", "g2": "3a3658", "acc": "cfc9ee", "hp": 2.2, "dmg": 1.4, "spd": 1.1, "gold": 1.7},
+	{"name": "Neon Rift", "blurb": "A torn seam in the grid.", "boss": "Overclock Prime", "boss_col": "ff4fd8",
+		"g0": "081426", "g1": "12365c", "g2": "164070", "acc": "7a3cff", "hp": 3.0, "dmg": 1.7, "spd": 1.15, "gold": 2.2},
+	{"name": "Drowned Cathedral", "blurb": "The tide is rising, and the bells still ring.", "boss": "The Tide Bishop", "boss_col": "7fe0c0",
+		"g0": "10171a", "g1": "26353a", "g2": "3d5052", "acc": "c9a46a", "hp": 4.0, "dmg": 2.0, "spd": 1.2, "gold": 2.8},
+]
+## Terrain per stage (scripts/sim/terrain.gd). Heights in world units (a hero is ~50 tall).
+##   amp: hill height; scale: hill wavelength; terraces: plateau steps (0 = rolling); cliff: max walkable
+##   rise per cell; liquid: water | lava | void | none, its surface `level`; river: width of carved channels.
+const TERRAIN := [
+	{"amp": 85.0, "scale": 1200.0, "terraces": 0, "cliff": 0.9, "liquid": "water", "level": -46.0, "deep": 20.0,
+		"river": 0.07, "river_scale": 1700.0, "river_depth": 24.0, "detail": 5.0, "shore": 20.0},     # Mossglen: rolling hills, lakes, streams
+	{"amp": 110.0, "scale": 1000.0, "terraces": 5, "cliff": 1.2, "liquid": "lava", "level": -62.0, "deep": 8.0,
+		"river": 0.04, "river_scale": 1400.0, "river_depth": 20.0, "detail": 4.0, "shore": 26.0},     # Cinder: terraces and lava rivers
+	{"amp": 90.0, "scale": 800.0, "terraces": 3, "cliff": 0.75, "liquid": "water", "level": -38.0, "deep": 9.0,
+		"river": 0.0, "detail": 2.5, "shore": 20.0},                                                     # Crypt: sunken pits, ledges, black pools
+	{"amp": 120.0, "scale": 1300.0, "terraces": 4, "cliff": 1.05, "liquid": "void", "level": -78.0, "deep": 999.0,
+		"river": 0.03, "river_scale": 1600.0, "river_depth": 40.0, "detail": 3.0, "shore": 30.0},    # Neon Rift: plateaus over void chasms
+	{"amp": 40.0, "scale": 700.0, "terraces": 3, "cliff": 1.3, "liquid": "water", "level": -8.0, "deep": 22.0,
+		"river": 0.09, "river_scale": 1100.0, "river_depth": 34.0, "detail": 2.0, "shore": 16.0, "tide": 16.0},   # Drowned Cathedral: flooded nave, deep aisles, rising tide
+]
+
+# ---------------------------------------------------------------- the Shard Web (passive tree) and Torment
+## Permanent passives bought with Echoes (earned at the end of every run). Four branches from the centre:
+## Might (up), Arcana (right), Fortitude (down), Fortune (left); minors, a notable, then a keystone.
+## x, y: layout in [-1, 1]; links are undirected; a node can be taken when it touches a taken node.
+const PASSIVES := {
+	"start": {"name": "Exile's Spark", "kind": "start", "x": 0.0, "y": 0.0, "links": ["m1", "a1", "f1", "o1"], "mods": [], "d": "Where every exile begins."},
+	# Might
+	"m1": {"name": "Whetted", "kind": "minor", "x": 0.0, "y": -0.2, "links": ["m2", "m3"], "mods": [["damage", "inc", 0.04]], "d": "+4% damage"},
+	"m2": {"name": "Keen Eye", "kind": "minor", "x": -0.12, "y": -0.36, "links": ["m4"], "mods": [["crit_chance", "add", 0.01]], "d": "+1% critical chance"},
+	"m3": {"name": "Heavy Hand", "kind": "minor", "x": 0.12, "y": -0.36, "links": ["m5"], "mods": [["damage", "inc", 0.04]], "d": "+4% damage"},
+	"m4": {"name": "Cruel Edge", "kind": "minor", "x": -0.14, "y": -0.54, "links": ["m6"], "mods": [["crit_mult", "add", 0.1]], "d": "+10% critical damage"},
+	"m5": {"name": "Keen Eye", "kind": "minor", "x": 0.14, "y": -0.54, "links": ["m6"], "mods": [["crit_chance", "add", 0.01]], "d": "+1% critical chance"},
+	"m6": {"name": "Butcher's Rhythm", "kind": "notable", "x": 0.0, "y": -0.68, "links": ["m7"], "mods": [["damage", "inc", 0.12], ["crit_mult", "add", 0.25]], "d": "+12% damage, +25% critical damage"},
+	"m7": {"name": "Whetstone", "kind": "minor", "x": 0.0, "y": -0.82, "links": ["m8"], "mods": [["damage", "inc", 0.05]], "d": "+5% damage"},
+	"m8": {"name": "Executioner", "kind": "keystone", "x": 0.0, "y": -0.97, "links": [], "mods": [["crit_mult", "more", 1.5], ["crit_chance", "more", 0.8]], "d": "Criticals hit 50% harder, but you crit 20% less often"},
+	# Arcana
+	"a1": {"name": "Wide Sigils", "kind": "minor", "x": 0.2, "y": 0.0, "links": ["a2", "a3"], "mods": [["area", "inc", 0.05]], "d": "+5% area"},
+	"a2": {"name": "Quickened", "kind": "minor", "x": 0.36, "y": -0.12, "links": ["a4"], "mods": [["cooldown", "inc", -0.04]], "d": "4% faster cooldowns"},
+	"a3": {"name": "Volatile Mix", "kind": "minor", "x": 0.36, "y": 0.12, "links": ["a5"], "mods": [["reaction_damage", "inc", 0.1]], "d": "+10% reaction damage"},
+	"a4": {"name": "Wide Sigils", "kind": "minor", "x": 0.54, "y": -0.14, "links": ["a6"], "mods": [["area", "inc", 0.05]], "d": "+5% area"},
+	"a5": {"name": "Quickened", "kind": "minor", "x": 0.54, "y": 0.14, "links": ["a6"], "mods": [["cooldown", "inc", -0.04]], "d": "4% faster cooldowns"},
+	"a6": {"name": "Cascade Theory", "kind": "notable", "x": 0.68, "y": 0.0, "links": ["a7"], "mods": [["react_depth", "add", 1.0], ["reaction_damage", "inc", 0.2]], "d": "Reactions cascade one step deeper, +20% reaction damage"},
+	"a7": {"name": "Volatile Mix", "kind": "minor", "x": 0.82, "y": 0.0, "links": ["a8"], "mods": [["reaction_damage", "inc", 0.1]], "d": "+10% reaction damage"},
+	"a8": {"name": "Tidecaller", "kind": "keystone", "x": 0.97, "y": 0.0, "links": [], "mods": [["ice_dur", "more", 2.0], ["chain", "add", 1.0]], "d": "Your ice lasts twice as long; chains leap once more"},
+	# Fortitude
+	"f1": {"name": "Thick Hide", "kind": "minor", "x": 0.0, "y": 0.2, "links": ["f2", "f3"], "mods": [["max_hp", "add", 15.0]], "d": "+15 life"},
+	"f2": {"name": "Mending", "kind": "minor", "x": 0.12, "y": 0.36, "links": ["f4"], "mods": [["regen", "add", 1.0]], "d": "+1 life per second"},
+	"f3": {"name": "Plated", "kind": "minor", "x": -0.12, "y": 0.36, "links": ["f5"], "mods": [["armor", "add", 10.0]], "d": "+10 armour"},
+	"f4": {"name": "Thick Hide", "kind": "minor", "x": 0.14, "y": 0.54, "links": ["f6"], "mods": [["max_hp", "add", 15.0]], "d": "+15 life"},
+	"f5": {"name": "Mending", "kind": "minor", "x": -0.14, "y": 0.54, "links": ["f6"], "mods": [["regen", "add", 1.0]], "d": "+1 life per second"},
+	"f6": {"name": "Iron Pilgrim", "kind": "notable", "x": 0.0, "y": 0.68, "links": ["f7"], "mods": [["max_hp", "inc", 0.12], ["armor", "add", 25.0]], "d": "+12% life, +25 armour"},
+	"f7": {"name": "Thick Hide", "kind": "minor", "x": 0.0, "y": 0.82, "links": ["f8"], "mods": [["max_hp", "add", 20.0]], "d": "+20 life"},
+	"f8": {"name": "Undying Vow", "kind": "keystone", "x": 0.0, "y": 0.97, "links": [], "mods": [["leech", "add", 0.02], ["regen_pct", "add", 0.005], ["move_speed", "more", 0.94]], "d": "Leech 2% of damage and regenerate 0.5% life per second, but move 6% slower"},
+	# Fortune
+	"o1": {"name": "Gilded", "kind": "minor", "x": -0.2, "y": 0.0, "links": ["o2", "o3"], "mods": [["gold_find", "inc", 0.08]], "d": "+8% gold"},
+	"o2": {"name": "Long Reach", "kind": "minor", "x": -0.36, "y": -0.12, "links": ["o4"], "mods": [["pickup", "inc", 0.15]], "d": "+15% pickup radius"},
+	"o3": {"name": "Plunder", "kind": "minor", "x": -0.36, "y": 0.12, "links": ["o5"], "mods": [["item_quantity", "inc", 0.05]], "d": "+5% item quantity"},
+	"o4": {"name": "Quick Study", "kind": "minor", "x": -0.54, "y": -0.14, "links": ["o6"], "mods": [["xp_gain", "inc", 0.05]], "d": "+5% experience"},
+	"o5": {"name": "Gilded", "kind": "minor", "x": -0.54, "y": 0.14, "links": ["o6"], "mods": [["gold_find", "inc", 0.08]], "d": "+8% gold"},
+	"o6": {"name": "Scavenger's Eye", "kind": "notable", "x": -0.68, "y": 0.0, "links": ["o7"], "mods": [["item_rarity", "inc", 0.2], ["item_quantity", "inc", 0.05]], "d": "+20% item rarity, +5% quantity"},
+	"o7": {"name": "Plunder", "kind": "minor", "x": -0.82, "y": 0.0, "links": ["o8"], "mods": [["item_quantity", "inc", 0.05]], "d": "+5% item quantity"},
+	"o8": {"name": "Gambler's Shard", "kind": "keystone", "x": -0.97, "y": 0.0, "links": [], "mods": [["item_quantity", "inc", 0.25], ["damage", "more", 0.92]], "d": "+25% item quantity, but 8% less damage"},
+}
+
+## Torment: optional difficulty tiers for the campaign, atlas and pinnacle (rifts scale on their own).
+## Winning a run on a tier unlocks the next.
+const TORMENT := [
+	{"name": "Normal", "hp": 1.0, "dmg": 1.0, "loot": 0.0, "gold": 0.0, "echo": 0},
+	{"name": "Torment I", "hp": 1.6, "dmg": 1.25, "loot": 0.15, "gold": 0.2, "echo": 1},
+	{"name": "Torment II", "hp": 2.4, "dmg": 1.5, "loot": 0.3, "gold": 0.4, "echo": 2},
+	{"name": "Torment III", "hp": 3.6, "dmg": 1.8, "loot": 0.45, "gold": 0.6, "echo": 3},
+	{"name": "Torment IV", "hp": 5.2, "dmg": 2.15, "loot": 0.6, "gold": 0.8, "echo": 4},
+	{"name": "Torment V", "hp": 7.4, "dmg": 2.55, "loot": 0.8, "gold": 1.0, "echo": 5},
+	{"name": "Torment VI", "hp": 10.5, "dmg": 3.0, "loot": 1.0, "gold": 1.25, "echo": 6},
+]
+
+static func passive_mods(taken: Array) -> Array:
+	var out: Array = []
+	for id in taken:
+		if PASSIVES.has(id): out.append_array(PASSIVES[id].mods)
+	return out
+
+## Undirected neighbours of a node.
+static func passive_links(id: String) -> Array:
+	var out: Array = (PASSIVES[id].links as Array).duplicate()
+	for k in PASSIVES:
+		if (PASSIVES[k].links as Array).has(id) and not out.has(k): out.append(k)
+	return out
+
+static func passive_can_take(id: String, taken: Array) -> bool:
+	if taken.has(id) or not PASSIVES.has(id): return false
+	for n in passive_links(id):
+		if taken.has(n): return true
+	return false
+
+const STAGE_TIME := 480.0      # an act: eight minutes, Rift Champions at each third, then the tyrant
+const PACE_REF := 150.0        # the difficulty ramps were tuned on 150 s acts; World.rt() maps the act onto them
+
+# ---------------------------------------------------------------- items
+const SLOTS := ["relic", "amulet", "ring", "boots"]
+const SLOT_NAME := {"relic": "Relic", "amulet": "Amulet", "ring": "Ring", "boots": "Boots"}
+enum Rarity { NORMAL, MAGIC, RARE, LEGENDARY }
+const RARITY_NAME := ["Normal", "Magic", "Rare", "Legendary"]
+# Rare is lemon, away from the gold of titles and selection (UIKit.GOLD, 10.9 deutan) and from gold coins; Legendary's
+# orange belongs to Legendary alone (Fire, Overclock and Doran's forge moved off it).
+const RARITY_COL := ["d8d8d8", "6f9bff", "fff25c", "ff8a2b"]
+const MAX_PREFIX := {0: 0, 1: 1, 2: 3, 3: 3}
+const MAX_SUFFIX := {0: 0, 1: 1, 2: 3, 3: 3}
+const BASES := {
+	"relic": [{"name": "Shard Idol", "imp": ["damage", "inc", 0.08]}, {"name": "Prism Fetish", "imp": ["reaction_damage", "inc", 0.15]}],
+	"amulet": [{"name": "Jade Amulet", "imp": ["max_hp", "add", 15.0]}, {"name": "Onyx Amulet", "imp": ["crit_chance", "add", 0.03]}],
+	"ring": [{"name": "Iron Ring", "imp": ["armor", "add", 12.0]}, {"name": "Coral Ring", "imp": ["regen", "add", 0.4]}],
+	"boots": [{"name": "Leather Boots", "imp": ["move_speed", "inc", 0.05]}, {"name": "Rift Treads", "imp": ["dodge_cd", "inc", -0.1]}],
+}
+# tiers: [min_item_level, lo, hi] -- higher tiers need higher item level, like PoE.
+const AFFIXES := {
+	"dmg": {"type": "prefix", "stat": "damage", "kind": "inc", "slots": ["relic", "amulet", "ring"], "fmt": "+%d%% increased Damage", "pct": true,
+		"tiers": [[1, 0.06, 0.10], [8, 0.11, 0.16], [18, 0.17, 0.24], [30, 0.25, 0.34]]},
+	"life": {"type": "prefix", "stat": "max_hp", "kind": "add", "slots": ["amulet", "ring", "boots", "relic"], "fmt": "+%d to maximum Life", "pct": false,
+		"tiers": [[1, 8.0, 14.0], [8, 15.0, 24.0], [18, 25.0, 38.0], [30, 39.0, 55.0]]},
+	"armor": {"type": "prefix", "stat": "armor", "kind": "add", "slots": ["ring", "boots", "amulet"], "fmt": "+%d to Armour", "pct": false,
+		"tiers": [[1, 8.0, 15.0], [10, 16.0, 30.0], [22, 31.0, 50.0]]},
+	"dot": {"type": "prefix", "stat": "dot_damage", "kind": "inc", "slots": ["relic", "amulet"], "fmt": "+%d%% increased Damage over Time", "pct": true,
+		"tiers": [[1, 0.10, 0.18], [12, 0.19, 0.30], [25, 0.31, 0.45]]},
+	"react": {"type": "prefix", "stat": "reaction_damage", "kind": "inc", "slots": ["relic", "amulet", "ring"], "fmt": "+%d%% increased Reaction Damage", "pct": true,
+		"tiers": [[1, 0.12, 0.20], [12, 0.21, 0.35], [25, 0.36, 0.55]]},
+	"proj": {"type": "prefix", "stat": "proj_count", "kind": "add", "slots": ["relic"], "fmt": "+%d Projectiles", "pct": false,
+		"tiers": [[15, 1.0, 1.0], [32, 2.0, 2.0]]},
+	"cdr": {"type": "suffix", "stat": "cooldown", "kind": "inc", "slots": ["relic", "amulet", "ring"], "fmt": "%d%% faster Cooldowns", "pct": true, "neg": true,
+		"tiers": [[1, -0.04, -0.07], [10, -0.08, -0.11], [22, -0.12, -0.15]]},
+	"crit": {"type": "suffix", "stat": "crit_chance", "kind": "add", "slots": ["relic", "amulet", "ring"], "fmt": "+%d%% Critical Strike Chance", "pct": true,
+		"tiers": [[1, 0.02, 0.03], [10, 0.04, 0.05], [22, 0.06, 0.08]]},
+	"critm": {"type": "suffix", "stat": "crit_mult", "kind": "add", "slots": ["relic", "amulet"], "fmt": "+%d%% Critical Multiplier", "pct": true,
+		"tiers": [[1, 0.10, 0.18], [12, 0.19, 0.30], [25, 0.31, 0.45]]},
+	"speed": {"type": "suffix", "stat": "move_speed", "kind": "inc", "slots": ["boots"], "fmt": "+%d%% Movement Speed", "pct": true,
+		"tiers": [[1, 0.05, 0.08], [10, 0.09, 0.13], [22, 0.14, 0.20]]},
+	"regen": {"type": "suffix", "stat": "regen", "kind": "add", "slots": ["ring", "amulet", "boots"], "fmt": "+%.1f Life Regeneration per second", "pct": false, "dec": true,
+		"tiers": [[1, 0.3, 0.6], [10, 0.7, 1.2], [22, 1.3, 2.2]]},
+	"pickup": {"type": "suffix", "stat": "pickup", "kind": "inc", "slots": ["boots", "ring"], "fmt": "+%d%% Pickup Radius", "pct": true,
+		"tiers": [[1, 0.10, 0.20], [10, 0.21, 0.35]]},
+	"rarity": {"type": "suffix", "stat": "item_rarity", "kind": "inc", "slots": ["amulet", "ring", "boots"], "fmt": "+%d%% Item Rarity", "pct": true,
+		"tiers": [[1, 0.08, 0.14], [12, 0.15, 0.24], [25, 0.25, 0.35]]},
+	"xp": {"type": "suffix", "stat": "xp_gain", "kind": "inc", "slots": ["amulet", "relic"], "fmt": "+%d%% Experience gained", "pct": true,
+		"tiers": [[1, 0.05, 0.08], [12, 0.09, 0.14]]},
+	"flask": {"type": "suffix", "stat": "flask_charge", "kind": "inc", "slots": ["ring", "boots"], "fmt": "+%d%% Flask Charges gained", "pct": true,
+		"tiers": [[1, 0.10, 0.20], [12, 0.21, 0.35]]},
+}
+
+# Legendary powers. The Cube extracts them into the Codex; up to 3 codex powers are active per run (D3 Kanai's Cube).
+const LEGENDARIES := {
+	"furnace": {"name": "The Furnace", "slot": "relic", "d": "50% more damage against elites, exiles and bosses."},
+	"stormherald": {"name": "Stormherald Coil", "slot": "amulet", "d": "Every 12th hit calls a chain of lightning through 5 foes."},
+	"rimeheart": {"name": "Rimeheart", "slot": "ring", "d": "Hits against chilled foes have a 12% chance to freeze them for 1.5s."},
+	"gorefeast": {"name": "Gorefeast Band", "slot": "ring", "d": "Killing a bleeding foe heals 1% of your maximum life."},
+	"cascade": {"name": "Cascade Sigil", "slot": "relic", "d": "Reactions echo once more at 50% damage."},
+	"greed": {"name": "Gremlin's Greed", "slot": "amulet", "d": "Doubles gold found. Treasure Gremlins appear twice as often."},
+	"phoenix": {"name": "Phoenix Ember", "slot": "amulet", "d": "Once per run, lethal damage instead restores 50% life and erupts in flame."},
+	"ouroboros": {"name": "Ouroboros Treads", "slot": "boots", "d": "Dodge rolling leaves a fire nova behind you."},
+}
+const LEGENDARY_IDS := ["furnace", "stormherald", "rimeheart", "gorefeast", "cascade", "greed", "phoenix", "ouroboros"]
+const CODEX_SLOTS := 3
+
+# ---------------------------------------------------------------- crafting currency (component-driven, PoE orbs)
+const CURRENCY := {
+	# Growth wears Magic's blue and Crown wears Rare's lemon (the rarity each one makes or feeds); Chaos is jade like the
+	# element, Star is white: worst pair 8.2 / 7.9 / 7.3 / 7.6 -> 12.2 / 11.1 / 11.4 / 8.3 (normal / protan / deutan / tritan)
+	"transmute": {"name": "Shard of Change", "d": "Normal to Magic.", "col": "85c6ff"},
+	"augment": {"name": "Shard of Growth", "d": "Adds an affix to a Magic item with room.", "col": "6f9bff"},
+	"regal": {"name": "Crown Shard", "d": "Magic to Rare, adding an affix.", "col": "fff25c"},
+	"chaos": {"name": "Chaos Shard", "d": "Rerolls every affix of a Rare item.", "col": "5ccc85"},
+	"exalt": {"name": "Star Shard", "d": "Adds an affix to a Rare item with room.", "col": "fff8eb"},
+	"annul": {"name": "Null Shard", "d": "Removes a random affix.", "col": "c0c0c0"},
+	"divine": {"name": "Divine Shard", "d": "Rerolls the values of every affix within its tier.", "col": "ffd9f7"},
+	"corrupt": {"name": "Rift Ember", "d": "Corrupts: upgrades a random affix tier, or bricks it. Corrupted items cannot be crafted.", "col": "ff4a4a"},
+}
+const CURRENCY_IDS := ["transmute", "augment", "regal", "chaos", "exalt", "annul", "divine", "corrupt"]
+const CURRENCY_WEIGHT := {"transmute": 30, "augment": 24, "regal": 10, "chaos": 12, "exalt": 4, "annul": 8, "divine": 6, "corrupt": 6}
+
+# ---------------------------------------------------------------- buffs: pylons, shrines, flasks (D3 / PoE)
+enum Stack { REFRESH, INTENSITY, DURATION, UNIQUE }
+const BUFFS := {
+	"power": {"name": "Power Pylon", "dur": 20.0, "policy": Stack.REFRESH, "col": "ff5a5a", "mods": [["damage", "more", 3.0]], "pylon": true},
+	"conduit": {"name": "Conduit Pylon", "dur": 20.0, "policy": Stack.REFRESH, "col": "fff07a", "mods": [], "pylon": true},
+	"channel": {"name": "Channeling Pylon", "dur": 20.0, "policy": Stack.REFRESH, "col": "6bd6ff", "mods": [["cooldown", "more", 0.35]], "pylon": true},
+	"shield": {"name": "Shield Pylon", "dur": 15.0, "policy": Stack.REFRESH, "col": "8affd0", "mods": [["invuln", "add", 1.0]], "pylon": true},
+	"speed": {"name": "Speed Pylon", "dur": 20.0, "policy": Stack.REFRESH, "col": "b890ff", "mods": [["move_speed", "more", 1.8]], "pylon": true},
+	"fortune": {"name": "Fortune Shrine", "dur": 60.0, "policy": Stack.REFRESH, "col": "ffd84a", "mods": [["item_rarity", "inc", 0.75], ["gold_find", "inc", 0.5]]},
+	"enlight": {"name": "Enlightened Shrine", "dur": 60.0, "policy": Stack.REFRESH, "col": "7dff6b", "mods": [["xp_gain", "inc", 0.25]]},
+	"frenzied": {"name": "Frenzied Shrine", "dur": 45.0, "policy": Stack.REFRESH, "col": "ff9a3c", "mods": [["cooldown", "more", 0.8]]},
+	"empowered": {"name": "Empowered Shrine", "dur": 45.0, "policy": Stack.REFRESH, "col": "ff6bd6", "mods": [["ult_charge", "inc", 1.0]]},
+	"riposte": {"name": "Riposte", "dur": 2.0, "policy": Stack.REFRESH, "col": "ffffff", "mods": [["crit_chance", "add", 1.0]]},
+	"rift_surge": {"name": "Rift Surge", "dur": 10.0, "policy": Stack.REFRESH, "col": "c48aff", "mods": [["damage", "inc", 0.3], ["move_speed", "inc", 0.2], ["cooldown", "more", 0.85]]},
+	"soulharvest": {"name": "Soul Harvest", "dur": 8.0, "policy": Stack.INTENSITY, "max": 25, "col": "c48aff", "mods": [["damage", "inc", 0.02]]},
+	"quicksilver": {"name": "Quicksilver", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "c9f3ff", "mods": [["move_speed", "inc", 0.4]]},
+	"granite": {"name": "Granite", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "a0a0a0", "mods": [["armor", "add", 120.0]]},
+	"diamond": {"name": "Diamond", "dur": 5.0, "policy": Stack.DURATION, "max_dur": 10.0, "col": "e0faff", "mods": [["crit_chance", "add", 0.3]]},
+	"frenzy": {"name": "Overclock", "dur": 12.0, "policy": Stack.REFRESH, "col": "ff4b14", "mods": [["cooldown", "more", 0.5]]},   # hot, not Legendary's orange
+	"aegis": {"name": "Aegis", "dur": 12.0, "policy": Stack.UNIQUE, "col": "ffd24a", "mods": [["invuln", "add", 1.0], ["move_speed", "inc", 0.3]]},
+	"gate": {"name": "Rift Gate", "dur": 0.0, "policy": Stack.REFRESH, "col": "7fd8ff", "mods": []},        # a ground object: banks the hoard
+	"whisper": {"name": "The Whisperer", "dur": 0.0, "policy": Stack.REFRESH, "col": "9a6bff", "mods": []},   # a ground object, never applied
+	"vital": {"name": "Vital Surge", "dur": 10.0, "policy": Stack.REFRESH, "col": "5dff6b", "mods": [["regen_pct", "add", 0.05]]},
+	"cyclone": {"name": "Blade Cyclone", "dur": 6.0, "policy": Stack.REFRESH, "col": "f0b94d", "mods": []},
+	"thunderdome": {"name": "Thunderdome", "dur": 4.0, "policy": Stack.REFRESH, "col": "b890ff", "mods": []},
+}
+const PYLON_IDS := ["power", "conduit", "channel", "shield", "speed"]
+const SHRINE_IDS := ["fortune", "enlight", "frenzied", "empowered"]
+const UTIL_FLASKS := ["quicksilver", "granite", "diamond", "sulphur"]
+const FLASK_NAME := {"life": "Life Flask", "quicksilver": "Quicksilver Flask", "granite": "Granite Flask", "diamond": "Diamond Flask", "sulphur": "Sulphur Flask"}
+## What each flask does, short: the touch buttons only say "1" and "2", and flask 2 is a different one each run (the coach's
+## "flask2" step, and the toast when it is drunk, say it; Content.BUFFS holds the numbers).
+const FLASK_EFFECT := {"life": "heals 45% of your life", "quicksilver": "40% faster for 5 s", "granite": "+120 armour for 5 s",
+	"diamond": "+30% critical strike chance for 5 s", "sulphur": "burns the foes around you for 5 s"}
+
+# ---------------------------------------------------------------- lore (collectibles)
+const LORE := [
+	["The Shardfall I", "The sky broke on a quiet night. Nobody remembers the sound, only the light."],
+	["The Shardfall II", "The pieces fell everywhere at once, and where they landed, things began to grow teeth."],
+	["The Shardfall III", "We called them shards. They called us food."],
+	["The Shardfall IV", "The Herald was seen before every fall. Tall. Patient. Singing."],
+	["Survivor's Log I", "Day 3. The gremlins steal from the dead. I follow them. They lead to gold."],
+	["Survivor's Log II", "Day 9. The breaches open where the shards fell thickest. Something reaches through."],
+	["Survivor's Log III", "Day 14. Another survivor tried to kill me for my boots. I have his boots now."],
+	["Survivor's Log IV", "Day 30. Fire and ice together make the shards scream. I have started to enjoy the sound."],
+	["Rift Notes I", "Rifts fold time. The deeper the rift, the less of it you get."],
+	["Rift Notes II", "Every guardian is the same guardian, wearing a different hunger."],
+	["Rift Notes III", "The atlas is not a map of places. It is a map of falls."],
+	["Rift Notes IV", "Collect the three fragments. Summon the Herald. End the song."],
+]
+const LORE_SET := 4      # each completed set of 4 pages: +5% damage and +10 life, permanently
+
+# ---------------------------------------------------------------- season (rotating weekly) affixes
+const SEASONS := [
+	{"id": "soulharvest", "name": "Season of Souls", "d": "Kills grant Soul Harvest: +2% damage per stack, up to 25 stacks."},
+	{"id": "ethereal", "name": "Season of Echoes", "d": "Slain elites return as ethereal allies for 10s."},
+	{"id": "avarice", "name": "Season of Avarice", "d": "Foes drop 50% more gold, but elites burst into coins that bite."},
+	{"id": "blight", "name": "Season of Blight", "d": "Foes leave poison clouds on death. +25% item quantity."},
+	{"id": "mirrored", "name": "Season of Mirrors", "d": "Elites spawn with a twin. +40% elite rewards."},
+]
+
+# ---------------------------------------------------------------- prophecies (targeted rewards)
+# Chosen on the main menu before a run: an objective, and a reward picked up front. It stays active
+# across runs until fulfilled (within a single run) or abandoned; the reward pays out the moment the
+# objective completes, mid-run. World.prophecy_progress() reads each objective from run metrics.
+const PROPHECIES := {
+	"pyre": {"name": "The Pyre", "d": "Slay 3 elites while they burn.", "target": 3},
+	"rime": {"name": "Rimebound", "d": "Kill 25 foes while they are frozen.", "target": 25},
+	"conduit": {"name": "The Conduit", "d": "Arc lightning through water or blood 6 times.", "target": 6},
+	"reaper": {"name": "The Reaper", "d": "Slay 600 foes in one run.", "target": 600},
+	"unscathed": {"name": "Unscathed", "d": "Reach the act's boss having lost less than 150 life in total.", "target": 1},
+	"hoarder": {"name": "The Hoarder", "d": "Bank a hoard worth 500 or more at once.", "target": 500},
+	"gambler": {"name": "The Gambler", "d": "Bank a hoard at x2 or higher.", "target": 1},
+	"alloy": {"name": "Alloy", "d": "Fuse two weapons.", "target": 1},
+	"pilgrim": {"name": "The Pilgrim", "d": "Complete 3 events in one run.", "target": 3},
+	"kindling": {"name": "Kindling", "d": "Ignite oil or detonate poison 5 times.", "target": 5},
+}
+const PROPHECY_IDS := ["pyre", "rime", "conduit", "reaper", "unscathed", "hoarder", "gambler", "alloy", "pilgrim", "kindling"]
+const PROPHECY_REWARDS := {
+	"legendary": "A legendary item",
+	"rare3": "Three rare items",
+	"chaos": "4 Chaos Shards",
+	"exalt": "2 Star Shards",
+	"echoes": "6 Echoes",
+	"gold": "600 gold",
+}
+const PROPHECY_REWARD_IDS := ["legendary", "rare3", "chaos", "exalt", "echoes", "gold"]
+
+# ---------------------------------------------------------------- the Whisperer's bargains
+# A hooded voice appears mid-run (Director object "whisper"); touching it offers two of these. Each is
+# a boon and a price, applied as one stat source for the rest of the run. Accepted bargains mark the
+# run (end screen) and pay +1 Echo each. "flag" bargains change a rule in World (see has_bargain).
+const WHISPERS := {
+	"blood_price": {"name": "Blood Price", "boon": "+50% more damage", "cost": "Your life flask no longer heals: it bursts into poison around you",
+		"mods": [["damage", "more", 1.5]], "flag": true},
+	"glass_crown": {"name": "Glass Crown", "boon": "+25% critical chance, +60% critical damage", "cost": "40% less maximum life",
+		"mods": [["crit_chance", "add", 0.25], ["crit_mult", "inc", 0.6], ["max_hp", "more", 0.6]]},
+	"ember_pact": {"name": "Ember Pact", "boon": "+2 projectiles", "cost": "The light fades three times as fast",
+		"mods": [["proj_count", "add", 2.0], ["dark_rate", "more", 3.0]]},
+	"gilded_tongue": {"name": "Gilded Tongue", "boon": "+100% item rarity and gold", "cost": "Foes have 35% more life",
+		"mods": [["item_rarity", "inc", 1.0], ["gold_find", "inc", 1.0], ["foe_hp", "more", 1.35]]},
+	"quickened_grave": {"name": "Quickened Grave", "boon": "+30% movement, 30% faster cooldowns", "cost": "Foes deal 40% more damage",
+		"mods": [["move_speed", "more", 1.3], ["cooldown", "more", 0.7], ["foe_dmg", "more", 1.4]]},
+	"hollow_hours": {"name": "Hollow Hours", "boon": "+60% experience", "cost": "You cannot regenerate life",
+		"mods": [["xp_gain", "more", 1.6], ["regen", "more", 0.0], ["regen_pct", "more", 0.0]]},
+	"long_night": {"name": "The Long Night", "boon": "Up to +80% more damage the darker it is", "cost": "The light never rises above half",
+		"mods": [], "flag": true},
+}
+const WHISPER_IDS := ["blood_price", "glass_crown", "ember_pact", "gilded_tongue", "quickened_grave", "hollow_hours", "long_night"]
+
+# ---------------------------------------------------------------- events (happenings) for the Director
+# weight: base pick weight; cd: per-event cooldown seconds; min_t: earliest run time
+const EVENTS := {
+	"breach": {"name": "Breach", "d": "A rupture opens. Kill inside it to keep it open.", "weight": 10, "cd": 70.0, "min_t": 30.0, "col": "c48aff"},
+	"goblin": {"name": "Treasure Gremlin", "d": "Catch it before it escapes.", "weight": 8, "cd": 60.0, "min_t": 20.0, "col": "ffd84a"},
+	"cursed": {"name": "Cursed Chest", "d": "Survive the onslaught to claim it.", "weight": 7, "cd": 80.0, "min_t": 40.0, "col": "ff4a5e"},
+	"strongbox": {"name": "Strongbox", "d": "Open it. Its guardians wake.", "weight": 9, "cd": 45.0, "min_t": 15.0, "col": "c8a070"},
+	"eclipse": {"name": "Eclipse", "d": "Darkness falls. Foes hide in it. Loot shines brighter.", "weight": 4, "cd": 120.0, "min_t": 60.0, "col": "403070"},
+	"meteor": {"name": "Starfall", "d": "Shards rain from the sky. They hit everything.", "weight": 6, "cd": 90.0, "min_t": 50.0, "col": "ffb24a"},
+	"merchant": {"name": "Wandering Merchant", "d": "A gambler with wares of unknown quality.", "weight": 4, "cd": 150.0, "min_t": 45.0, "col": "7dff6b"},
+	"delirium": {"name": "Delirium Mirror", "d": "Step into the fog. The deeper you go, the more it pays.", "weight": 5, "cd": 110.0, "min_t": 70.0, "col": "d8d8e8"},
+	"ritual": {"name": "Blood Ritual", "d": "Slay everything the altar summons.", "weight": 6, "cd": 90.0, "min_t": 35.0, "col": "ff2b4a"},
+	"exile": {"name": "Rogue Exile", "d": "Another survivor wants your loot.", "weight": 5, "cd": 999.0, "min_t": 55.0, "col": "ff8a2b"},
+	"forge": {"name": "Wayside Forge", "d": "Doran's apprentice works by the road. Spend gold to hone a weapon for this run.", "weight": 4, "cd": 160.0, "min_t": 90.0, "col": "cf7a5a"},   # Doran's forge colour
+}
+const EVENT_IDS := ["breach", "goblin", "cursed", "strongbox", "eclipse", "meteor", "merchant", "delirium", "ritual", "exile", "forge"]
+const EXILE_NAMES := ["Varkas", "Ilsa", "Torven", "Mireth", "Dunmor", "Kesh", "Oriane", "Bram", "Sefa", "Corvin"]
+const EXILE_TITLES := ["the Unbroken", "of the Ninth Fall", "Shardeater", "the Hollow", "Gravebinder", "the Last Light", "Who Walks Twice"]
+
+# ---------------------------------------------------------------- atlas map modifiers (PoE map mods)
+# qty/rar: bonus item quantity / rarity granted for running a map with that mod.
+const MAP_MODS := {
+	"hardened": {"name": "Hardened", "d": "Monsters have 40% more life", "qty": 0.10, "rar": 0.05},
+	"lethal": {"name": "Lethal", "d": "Monsters deal 30% more damage", "qty": 0.12, "rar": 0.06},
+	"swift": {"name": "Swift", "d": "Monsters move 20% faster", "qty": 0.08, "rar": 0.05},
+	"packed": {"name": "Teeming", "d": "40% more monsters", "qty": 0.18, "rar": 0.04},
+	"elite": {"name": "Champions", "d": "Elites are three times as common", "qty": 0.12, "rar": 0.12},
+	"hexed": {"name": "Hexed", "d": "Players have 50% less life regeneration and flask charges", "qty": 0.10, "rar": 0.08},
+	"breached": {"name": "Breach-touched", "d": "A Breach always opens", "qty": 0.10, "rar": 0.05},
+	"volatile": {"name": "Volatile", "d": "Elites explode on death", "qty": 0.08, "rar": 0.06},
+	"twinned": {"name": "Twinned", "d": "The map boss has a twin", "qty": 0.15, "rar": 0.15},
+	"eclipsed": {"name": "Eclipsed", "d": "Permanent darkness", "qty": 0.14, "rar": 0.14},
+}
+const MAP_MOD_IDS := ["hardened", "lethal", "swift", "packed", "elite", "hexed", "breached", "volatile", "twinned", "eclipsed"]
+const ATLAS_W := 7
+const ATLAS_H := 5
+
+# ---------------------------------------------------------------- greater rifts
+const GR_TIME := 300.0
+const GR_PROGRESS := 100.0
+static func gr_hp_mult(lvl: int) -> float: return pow(1.17, lvl - 1)      # D3: +17% monster life per level
+static func gr_dmg_mult(lvl: int) -> float: return pow(1.035, lvl - 1)
+
+static func col(hex: String) -> Color: return Color.html(hex)
+static func el_col(e: int, cb: bool = false) -> Color: return Color.html(EL_COL_CB[e] if cb else EL_COL[e])
+## Frozen foes' glow, the one status colour that is no element's: the pale ice the 3D view always showed.
+const FROZEN_COL := "e1f9ff"
+const FROZEN_COL_CB := "e7f9ff"
+## The status glow on foes, indexed by status code (0 none, 1 burn, 2 chill, 3 shock, 4 poison, 5 bleed, 6 frozen):
+## the element swatches themselves, for the foe and swarm shaders' status_cols uniform (WorldView3D / WorldView bind).
+static func status_cols(cb: bool = false) -> PackedColorArray:
+	return PackedColorArray([Color.BLACK, el_col(El.FIRE, cb), el_col(El.COLD, cb), el_col(El.LIGHT, cb), el_col(El.CHAOS, cb),
+		el_col(El.PHYS, cb), Color.html(FROZEN_COL_CB if cb else FROZEN_COL)])

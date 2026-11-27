@@ -1,0 +1,88 @@
+name: build
+# Runs the release gate (tools/gate_check.py --no-apk: asset and code checks, a headless boot, the chunk dressing,
+# the unit tests, the voice manifest and drop-in, the combat render smoke) and builds the Android packages on every push.
+# Signing: with the repository secrets below the release APK and the Play bundle are signed with the
+# release key. Without them CI builds a debug APK signed with the shared test key in tools/keys (fine for
+# sideloading): tools/build_android.sh refuses a CI release build without SHARDFALL_KEYSTORE. See docs/RELEASE.md.
+#   SHARDFALL_KEYSTORE_B64   base64 of the release keystore file
+#   SHARDFALL_KEYSTORE_USER  key alias
+#   SHARDFALL_KEYSTORE_PASS  keystore password
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SKIP_BLENDER: "1"
+      APK_REPACK_CACHE: /home/runner/apk-repack-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Cache toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/toolchains
+            ~/.local/share/godot/export_templates
+          key: toolchain-${{ hashFiles('tools/provision.sh') }}
+      - name: Provision Godot, export templates and the Android SDK
+        run: bash tools/provision.sh
+      # tools/apk_repack.py recompresses the engine library with zopfli (about 2 minutes); the result only
+      # changes with the Godot version, so it is cached
+      - name: APK repack cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/apk-repack-cache
+          key: apk-repack-${{ hashFiles('tools/provision.sh') }}
+      # zopfli for the APK repack; numpy and Pillow for the gate's model and texture checks; ffmpeg for the voice
+      # pipeline's selftest and the drop-in check; xvfb and Mesa's software Vulkan (lavapipe) for the gate's combat
+      # render smoke on the phones' renderer and for the export's shader baker (tools/build_android.sh)
+      - name: Install the gate's tools
+        run: |
+          python3 -m pip install --user zopfli numpy pillow
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg xvfb mesa-vulkan-drivers
+          ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libvorbis
+      - name: Import assets
+        run: ~/toolchains/godot/godot --headless --path godot --import || true
+      - name: Parse check (every script compiles)
+        run: ~/toolchains/godot/godot --headless --path godot res://tests/parse_all.tscn
+      # every check of the release gate (fal spend, models, textures, engine boot, chunk dressing, unit tests,
+      # the voice manifest and generator, the combat render smoke); the APK is built below
+      - name: Release gate (no APK)
+        env:
+          GODOT: /home/runner/toolchains/godot/godot
+        run: python3 tools/gate_check.py --no-apk
+      - name: Release key (if configured)
+        env:
+          KEY_B64: ${{ secrets.SHARDFALL_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEY_B64" ]; then
+            echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "SHARDFALL_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          fi
+      - name: Build APK (release with the release key, else a test-key debug APK)
+        env:
+          SHARDFALL_KEYSTORE_USER: ${{ secrets.SHARDFALL_KEYSTORE_USER }}
+          SHARDFALL_KEYSTORE_PASS: ${{ secrets.SHARDFALL_KEYSTORE_PASS }}
+        run: |
+          if [ -n "${SHARDFALL_KEYSTORE:-}" ]; then bash tools/build_android.sh; else bash tools/build_android.sh debug; fi
+      - name: Build Play bundle (release key only)
+        if: env.SHARDFALL_KEYSTORE != ''
+        env:
+          SHARDFALL_KEYSTORE_USER: ${{ secrets.SHARDFALL_KEYSTORE_USER }}
+          SHARDFALL_KEYSTORE_PASS: ${{ secrets.SHARDFALL_KEYSTORE_PASS }}
+        run: bash tools/build_android.sh aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shardfall-android
+          path: |
+            build/*.apk
+            build/*.aab
+          retention-days: 30

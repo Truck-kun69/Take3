@@ -1,1 +1,25 @@
-# Take3
+# Shardfall: Rift Survivors (Godot 4)
+
+A Godot 4.7 rebuild of the single-file web game in `reference/`, with a 20-point ARPG overhaul
+(elemental reaction cascades, support gems, keystones, crafted loot, legendary powers, bestiary and
+lore, pylons and shrines, an event director, greater rifts, an atlas, nemesis exiles and a pinnacle
+boss), three measured critique cycles, and a PoE2-style 3D renderer with drop-in slots for
+authored models, sounds and textures (`godot/models`, `godot/audio`, `godot/textures`).
+
+* `docs/DESIGN.md` — the 20 enhancements and the three critique cycles with their numbers
+* `docs/GRAPHICS.md` — the 3D renderer (PoE2 direction), models, effects, audio, asset slots, and the UI pass (fonts, logo, tiles)
+* `docs/MODELS.md` — rigged Blender models for heroes and bosses, CC0 textures, AI-generation keys
+* `docs/VOICES.md` — the voice layer: one manifest of 61 lines, VoiceBank, subtitles, and the ElevenLabs voice-pack generator
+* `docs/TOOLCHAIN.md` — provisioning Godot 4 + Android SDK headlessly, compute shader, export pipeline
+* `docs/screenshots/` — cycle-0 bugs, the final build on the Forward Mobile renderer, and the UI pass (`ui_*.png`)
+
+```bash
+bash tools/provision.sh                 # Godot 4.7.2, Android templates, SDK, debug keystore
+export PATH="$HOME/toolchains/godot:$PATH"
+godot --headless --path godot res://tests/tests.tscn -- unit sim bench
+bash tools/build_android.sh             # build/shardfall.apk (release; `debug` and `aab` modes too)
+python3 tools/gate_check.py             # the release gate: every check, then the APK
+```
+
+The Android APK (`com.shardfall.riftsurvivors`) is the only build: the web build and Shardfall Lite
+were retired in 0.9.9. Desktop runs are for development and the tests. See `docs/RELEASE.md`.

@@ -1,0 +1,63 @@
+class_name WhatsNew
+extends RefCounted
+## "What's new" (0.11.2): shown once on the title after an update to a profile that has played, listing what changed
+## in every version since the one it last saw (Save.data.seen_version). A new profile never sees it (the tutorial
+## covers it), and it can be reread from Captain Brask's page. Newest first; keep each version to a few lines.
+
+const NOTES := {
+	"0.11.5": [
+		["Cards you can compare", "Weapon cards show their numbers, a weapon to level is in every deal, and evolving comes about level 11."],
+		["A clearer camp", "Stations say what you can afford, wins name what they unlock, and the Shard Web lists what you can take."],
+		["Danger you can see", "Enemy shots and danger zones draw over your own fire and the bodies in them; foes squash when hit."],
+		["A truer world", "Trees, rocks and bushes are no longer black holes, each act has its own light, and contrast is back."],
+	],
+	"0.11.4": [
+		["Colours you can tell apart", "New element, rarity and currency colours, checked for colour blindness; statuses glow in their real colours."],
+		["A brighter fight", "Lighter scenes, no more white blob on burning foes, and your hero and the foes stand out from the ground."],
+		["A gentler start", "One tip at a time, the goal stated, Rift Gates and flask 2 explained, and Next: Act II after a win."],
+		["Easier to use", "Bigger buttons, text that fits, subtitles you can read, two taps for what cannot be undone."],
+	],
+	"0.11.3": [
+		["What's new", "This page: after an update, what changed since you last played. Captain Brask can show it again."],
+		["The smith's numbers", "Doran shows each weapon's level-1 hit now and after the next temper."],
+		["Named hybrids", "Mother Kiln lists the six weapon pairs that fuse into something new."],
+	],
+	"0.11.2": [
+		["Salvage on the way", "Nim can break down weak Normal or Magic finds as you pick them up. Set it at his bench."],
+		["New finds marked", "Items found since your last look are marked NEW on the Gear page, and the stash shows how full it is."],
+	],
+	"0.11.1": [
+		["The Wayside Forge", "In a run, Doran's apprentice may set up an anvil: hone a weapon you carry for 80 gold a rank."],
+		["A safer stash", "A full stash never throws away a Legendary or an item you locked."],
+		["Tempers in runs", "Level-up cards name a weapon's temper, and a kindled pair says when its fusion is ready."],
+	],
+	"0.11.0": [
+		["The Camp", "Between runs, where Gear was: temper weapons, fuse and salvage gear, trade, and learn the ropes."],
+		["Rift Ore and Shard Scrap", "Runs bring back ore and salvage gives scrap; the smith and the furnace use both."],
+		["Captain Brask's tips", "New exiles get one tip at a time in their first campaign runs. Options > Game turns them off."],
+	],
+}
+
+## 0.11.2-alpha -> 1102 (major, minor, patch), for ordering.
+static func key(v: String) -> int:
+	var p := v.split("-")[0].split(".")
+	var k := 0
+	for i in 3:
+		k = k * 100 + (int(p[i]) if i < p.size() else 0)
+	return k
+
+## The notes newer than `seen`, newest first: [[version, [[title, text], ...]], ...].
+static func since(seen: String) -> Array:
+	var ks := key(seen) if seen != "" else 0
+	var vs: Array = NOTES.keys()
+	vs.sort_custom(func(a, b): return key(a) > key(b))
+	var out: Array = []
+	for v in vs:
+		if key(v) > ks: out.append([v, NOTES[v]])
+	return out
+
+## Show it now: the profile has played, has not seen this version, and there is something newer to say.
+static func due(d: Dictionary, ver: String) -> bool:
+	if int((d.get("stats", {}) as Dictionary).get("runs", 0)) <= 0: return false
+	var seen := String(d.get("seen_version", ""))
+	return seen != ver and not since(seen if seen != "" else "0.10.6").is_empty()

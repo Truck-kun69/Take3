@@ -1,0 +1,84 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Shardfall: Rift Survivors"
+config/description="Survivor-like ARPG: elemental reaction cascades, linked support gems, crafted loot, rifts and an atlas of maps."
+config/version="0.11.5-alpha"
+run/main_scene="res://scenes/main.tscn"
+config/project_settings_override="user://override.cfg"
+config/quit_on_go_back=false
+config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.png"
+
+[autoload]
+
+Diag="*res://scripts/autoload/diag.gd"
+Save="*res://scripts/autoload/save.gd"
+Sfx="*res://scripts/autoload/sfx.gd"
+Voice="*res://scripts/audio/voice_bank.gd"
+
+[compression]
+
+formats/zstd/long_distance_matching=true
+formats/zstd/compression_level=19
+
+[debug]
+
+file_logging/enable_file_logging=true
+gdscript/warnings/inference_on_variant=1
+file_logging/enable_file_logging.android=false
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/emulate_touch_from_mouse.android=false
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.04, 0.05, 0.08, 1)
+
+[shader_globals]
+
+g_noise={
+"type": "sampler2D",
+"value": ""
+}
+terrain_h={
+"type": "sampler2D",
+"value": ""
+}
+terrain_s={
+"type": "sampler2D",
+"value": ""
+}
+terrain_o={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+terrain_l={
+"type": "vec4",
+"value": Vector4(-1000, 3, 0, 0)
+}
+terrain_f={
+"type": "sampler2D",
+"value": ""
+}

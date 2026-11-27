@@ -1,0 +1,614 @@
+{
+ "calls": {
+  "00be23a21c82a5e9f7f22493": {
+   "at": "2026-11-24T09:36:28+00:00",
+   "chars": 53,
+   "id": "ember_cast_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "00be23a21c82a5e9f7f22493",
+   "provider": "fal",
+   "usd": 0.0053,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "01857092024924342a51b2ad": {
+   "at": "2026-11-24T09:35:55+00:00",
+   "chars": 57,
+   "id": "spark_ult_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "01857092024924342a51b2ad",
+   "provider": "fal",
+   "usd": 0.0057,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "05a862ec10e9ea7f4ac3e3a5": {
+   "at": "2026-11-24T09:34:30+00:00",
+   "chars": 45,
+   "id": "tyrant_die_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "05a862ec10e9ea7f4ac3e3a5",
+   "provider": "fal",
+   "usd": 0.0045,
+   "voice_id_env": "EL_VOICE_TYRANT"
+  },
+  "092190c5f58304b332a24532": {
+   "at": "2026-11-24T09:36:33+00:00",
+   "chars": 51,
+   "id": "ember_cast_2",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "092190c5f58304b332a24532",
+   "provider": "fal",
+   "usd": 0.0051,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "0e60aeb59edea3d510cffd61": {
+   "at": "2026-11-24T09:37:14+00:00",
+   "chars": 52,
+   "id": "storm_ult_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "0e60aeb59edea3d510cffd61",
+   "provider": "fal",
+   "usd": 0.0052,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "13df7b77ce023cc0d7bdf10b": {
+   "at": "2026-11-24T09:37:17+00:00",
+   "chars": 57,
+   "id": "storm_kill_streak_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "13df7b77ce023cc0d7bdf10b",
+   "provider": "fal",
+   "usd": 0.0057,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "1748b8e3d630c39db263e42e": {
+   "at": "2026-11-24T09:36:11+00:00",
+   "chars": 51,
+   "id": "spark_low_hp_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "1748b8e3d630c39db263e42e",
+   "provider": "fal",
+   "usd": 0.0051,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "1b48a6efe09f54727ef2b9c4": {
+   "at": "2026-11-24T09:36:23+00:00",
+   "chars": 54,
+   "id": "ember_cast_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "1b48a6efe09f54727ef2b9c4",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "21ccfde80b649a0ba0068192": {
+   "at": "2026-11-24T09:37:58+00:00",
+   "chars": 130,
+   "id": "narrator_act_3_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "21ccfde80b649a0ba0068192",
+   "provider": "fal",
+   "usd": 0.013,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "29e65d5e87c38cd4e26ee18a": {
+   "at": "2026-11-24T09:38:02+00:00",
+   "chars": 136,
+   "id": "narrator_act_4_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "29e65d5e87c38cd4e26ee18a",
+   "provider": "fal",
+   "usd": 0.0136,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "2c97013c088928b3a951d0e5": {
+   "at": "2026-11-24T09:36:17+00:00",
+   "chars": 64,
+   "id": "spark_death_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "2c97013c088928b3a951d0e5",
+   "provider": "fal",
+   "usd": 0.0064,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "2d77bb895163221d952227ed": {
+   "at": "2026-11-24T09:38:05+00:00",
+   "chars": 123,
+   "id": "herald_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "2d77bb895163221d952227ed",
+   "provider": "fal",
+   "usd": 0.0123,
+   "voice_id_env": "EL_VOICE_HERALD"
+  },
+  "3deea4ad9c2f11828d179f2f": {
+   "at": "2026-11-24T09:35:01+00:00",
+   "chars": 64,
+   "id": "warden_cast_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "3deea4ad9c2f11828d179f2f",
+   "provider": "fal",
+   "usd": 0.0064,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "3f3291c9f545486b3f8cf5bc": {
+   "at": "2026-11-24T09:37:43+00:00",
+   "chars": 30,
+   "id": "narrator_intro_3",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "3f3291c9f545486b3f8cf5bc",
+   "provider": "fal",
+   "usd": 0.003,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "42bd8225da43fa4dc6a81031": {
+   "at": "2026-11-24T09:37:19+00:00",
+   "chars": 53,
+   "id": "storm_kill_streak_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "42bd8225da43fa4dc6a81031",
+   "provider": "fal",
+   "usd": 0.0053,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "462003908f53c52877db1248": {
+   "at": "2026-11-24T09:36:14+00:00",
+   "chars": 56,
+   "id": "spark_boss_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "462003908f53c52877db1248",
+   "provider": "fal",
+   "usd": 0.0056,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "46cfa2a284e609e31541fa77": {
+   "at": "2026-11-24T09:35:07+00:00",
+   "chars": 53,
+   "id": "warden_cast_2",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "46cfa2a284e609e31541fa77",
+   "provider": "fal",
+   "usd": 0.0053,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "4a6700b53f190cfefd2269b5": {
+   "at": "2026-11-24T09:36:01+00:00",
+   "chars": 60,
+   "id": "spark_kill_streak_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "4a6700b53f190cfefd2269b5",
+   "provider": "fal",
+   "usd": 0.006,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "503b4612e9d8585dfeb07787": {
+   "at": "2026-11-24T09:37:26+00:00",
+   "chars": 49,
+   "id": "storm_low_hp_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "503b4612e9d8585dfeb07787",
+   "provider": "fal",
+   "usd": 0.0049,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "5a96295a53a8f29c34bbb7a1": {
+   "at": "2026-11-24T09:35:53+00:00",
+   "chars": 54,
+   "id": "spark_cast_2",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "5a96295a53a8f29c34bbb7a1",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "5ba3d8b025b73175a6a5dffd": {
+   "at": "2026-11-24T09:36:59+00:00",
+   "chars": 126,
+   "id": "storm_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "5ba3d8b025b73175a6a5dffd",
+   "provider": "fal",
+   "usd": 0.0126,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "5cca0944f2e11d50e7173719": {
+   "at": "2026-11-24T09:36:50+00:00",
+   "chars": 52,
+   "id": "ember_low_hp_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "5cca0944f2e11d50e7173719",
+   "provider": "fal",
+   "usd": 0.0052,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "62394549dfb97a1288001d87": {
+   "at": "2026-11-24T09:35:33+00:00",
+   "chars": 42,
+   "id": "warden_low_hp_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "62394549dfb97a1288001d87",
+   "provider": "fal",
+   "usd": 0.0042,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "6596bc4f264fc7201257220b": {
+   "at": "2026-11-24T09:34:58+00:00",
+   "chars": 131,
+   "id": "warden_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "6596bc4f264fc7201257220b",
+   "provider": "fal",
+   "usd": 0.0131,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "66285491af0d6ffb15be0b34": {
+   "at": "2026-11-24T09:37:02+00:00",
+   "chars": 63,
+   "id": "storm_cast_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "66285491af0d6ffb15be0b34",
+   "provider": "fal",
+   "usd": 0.0063,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "68b17a764fac9bcc794e42ec": {
+   "at": "2026-11-24T09:37:49+00:00",
+   "chars": 129,
+   "id": "narrator_act_1_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "68b17a764fac9bcc794e42ec",
+   "provider": "fal",
+   "usd": 0.0129,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "7aaba4e5044a2d5c30eb99c1": {
+   "at": "2026-11-24T09:37:40+00:00",
+   "chars": 29,
+   "id": "narrator_intro_2",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "7aaba4e5044a2d5c30eb99c1",
+   "provider": "fal",
+   "usd": 0.0029,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "800835fc1b9e5db356cac27b": {
+   "at": "2026-11-24T09:36:38+00:00",
+   "chars": 52,
+   "id": "ember_ult_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "800835fc1b9e5db356cac27b",
+   "provider": "fal",
+   "usd": 0.0052,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "852a3b4255c52146269cb7b0": {
+   "at": "2026-11-24T09:36:47+00:00",
+   "chars": 50,
+   "id": "ember_low_hp_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "852a3b4255c52146269cb7b0",
+   "provider": "fal",
+   "usd": 0.005,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "870ee131714cad9928b3a86d": {
+   "at": "2026-11-24T09:35:17+00:00",
+   "chars": 58,
+   "id": "warden_kill_streak_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "870ee131714cad9928b3a86d",
+   "provider": "fal",
+   "usd": 0.0058,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "93ee959ee0ca68febe3eb7cc": {
+   "at": "2026-11-24T09:35:47+00:00",
+   "chars": 55,
+   "id": "spark_cast_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "93ee959ee0ca68febe3eb7cc",
+   "provider": "fal",
+   "usd": 0.0055,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "97470dbe8c304da5e3f5478c": {
+   "at": "2026-11-24T09:37:23+00:00",
+   "chars": 55,
+   "id": "storm_low_hp_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "97470dbe8c304da5e3f5478c",
+   "provider": "fal",
+   "usd": 0.0055,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "9749e6ad4aa6e933c6ea3451": {
+   "at": "2026-11-24T09:35:28+00:00",
+   "chars": 54,
+   "id": "warden_low_hp_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "9749e6ad4aa6e933c6ea3451",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "9a934a9f1cdcd0c6043451fe": {
+   "at": "2026-11-24T09:35:42+00:00",
+   "chars": 125,
+   "id": "spark_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "9a934a9f1cdcd0c6043451fe",
+   "provider": "fal",
+   "usd": 0.0125,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "9b69b2ef38a640397e3a8344": {
+   "at": "2026-11-24T09:35:36+00:00",
+   "chars": 63,
+   "id": "warden_boss_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "9b69b2ef38a640397e3a8344",
+   "provider": "fal",
+   "usd": 0.0063,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "9cab6b00f1ca027af4f8bd79": {
+   "at": "2026-11-24T09:36:41+00:00",
+   "chars": 61,
+   "id": "ember_kill_streak_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "9cab6b00f1ca027af4f8bd79",
+   "provider": "fal",
+   "usd": 0.0061,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "9ea89969814247cafc00a560": {
+   "at": "2026-11-24T09:37:53+00:00",
+   "chars": 135,
+   "id": "narrator_act_2_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "9ea89969814247cafc00a560",
+   "provider": "fal",
+   "usd": 0.0135,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "a2b47e7d4a8859c9fce15181": {
+   "at": "2026-11-24T09:35:44+00:00",
+   "chars": 65,
+   "id": "spark_cast_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "a2b47e7d4a8859c9fce15181",
+   "provider": "fal",
+   "usd": 0.0065,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "a2d940a7facd3b6dc142cc9d": {
+   "at": "2026-11-24T09:35:22+00:00",
+   "chars": 55,
+   "id": "warden_kill_streak_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "a2d940a7facd3b6dc142cc9d",
+   "provider": "fal",
+   "usd": 0.0055,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "a5fd664012cca394d0ba5a9c": {
+   "at": "2026-11-24T09:34:24+00:00",
+   "chars": 122,
+   "id": "tyrant_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "a5fd664012cca394d0ba5a9c",
+   "provider": "fal",
+   "usd": 0.0122,
+   "voice_id_env": "EL_VOICE_TYRANT"
+  },
+  "a76a477610f825ce6bc2e0e2": {
+   "at": "2026-11-24T09:35:10+00:00",
+   "chars": 59,
+   "id": "warden_ult_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "a76a477610f825ce6bc2e0e2",
+   "provider": "fal",
+   "usd": 0.0059,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "b0377c4e53c26745486e448f": {
+   "at": "2026-11-24T09:36:07+00:00",
+   "chars": 54,
+   "id": "spark_low_hp_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "b0377c4e53c26745486e448f",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "ba28cde102a952b085eb2d37": {
+   "at": "2026-11-24T09:38:07+00:00",
+   "chars": 49,
+   "id": "herald_die_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "ba28cde102a952b085eb2d37",
+   "provider": "fal",
+   "usd": 0.0049,
+   "voice_id_env": "EL_VOICE_HERALD"
+  },
+  "ba6798382b0c79c38486c275": {
+   "at": "2026-11-24T09:35:14+00:00",
+   "chars": 44,
+   "id": "warden_ult_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "ba6798382b0c79c38486c275",
+   "provider": "fal",
+   "usd": 0.0044,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "bd9143986311992fffdf60bc": {
+   "at": "2026-11-24T09:36:44+00:00",
+   "chars": 65,
+   "id": "ember_kill_streak_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "bd9143986311992fffdf60bc",
+   "provider": "fal",
+   "usd": 0.0065,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "bd9b10aeb31f9f7e53eef98a": {
+   "at": "2026-11-24T09:36:20+00:00",
+   "chars": 131,
+   "id": "ember_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "bd9b10aeb31f9f7e53eef98a",
+   "provider": "fal",
+   "usd": 0.0131,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "c3417bcd50c2e490f5501e74": {
+   "at": "2026-11-24T09:36:55+00:00",
+   "chars": 55,
+   "id": "ember_death_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "c3417bcd50c2e490f5501e74",
+   "provider": "fal",
+   "usd": 0.0055,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "c8df2e0972cdbfa80917171a": {
+   "at": "2026-11-24T09:37:11+00:00",
+   "chars": 53,
+   "id": "storm_ult_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "c8df2e0972cdbfa80917171a",
+   "provider": "fal",
+   "usd": 0.0053,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "cc6c0005474de06fad6db378": {
+   "at": "2026-11-24T09:37:05+00:00",
+   "chars": 56,
+   "id": "storm_cast_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "cc6c0005474de06fad6db378",
+   "provider": "fal",
+   "usd": 0.0056,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "cdb93b89b43a7bb69c5f697d": {
+   "at": "2026-11-24T09:35:39+00:00",
+   "chars": 50,
+   "id": "warden_death_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "cdb93b89b43a7bb69c5f697d",
+   "provider": "fal",
+   "usd": 0.005,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "d5dc925f98a3e55eac5acc2d": {
+   "at": "2026-11-24T09:37:08+00:00",
+   "chars": 58,
+   "id": "storm_cast_2",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "d5dc925f98a3e55eac5acc2d",
+   "provider": "fal",
+   "usd": 0.0058,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "d765691df1cb01f2be47f4cd": {
+   "at": "2026-11-24T09:37:46+00:00",
+   "chars": 137,
+   "id": "narrator_act_0_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "d765691df1cb01f2be47f4cd",
+   "provider": "fal",
+   "usd": 0.0137,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "d9d6ec16a4d2bc711e0cbca0": {
+   "at": "2026-11-24T09:36:52+00:00",
+   "chars": 62,
+   "id": "ember_boss_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "d9d6ec16a4d2bc711e0cbca0",
+   "provider": "fal",
+   "usd": 0.0062,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "dce1182bbb760c338cd84042": {
+   "at": "2026-11-24T09:37:37+00:00",
+   "chars": 24,
+   "id": "narrator_intro_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "dce1182bbb760c338cd84042",
+   "provider": "fal",
+   "usd": 0.0024,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "df792369c910f7864b2bbef4": {
+   "at": "2026-11-24T09:35:58+00:00",
+   "chars": 61,
+   "id": "spark_ult_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "df792369c910f7864b2bbef4",
+   "provider": "fal",
+   "usd": 0.0061,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "e25c9b5a4925d961546cd492": {
+   "at": "2026-11-24T09:37:34+00:00",
+   "chars": 29,
+   "id": "narrator_intro_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "e25c9b5a4925d961546cd492",
+   "provider": "fal",
+   "usd": 0.0029,
+   "voice_id_env": "EL_VOICE_NARRATOR"
+  },
+  "e5c2fb182f681fbc171c017c": {
+   "at": "2026-11-24T09:36:35+00:00",
+   "chars": 56,
+   "id": "ember_ult_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "e5c2fb182f681fbc171c017c",
+   "provider": "fal",
+   "usd": 0.0056,
+   "voice_id_env": "EL_VOICE_EMBER"
+  },
+  "f05c0c2cb842caa03257f930": {
+   "at": "2026-11-24T09:37:28+00:00",
+   "chars": 51,
+   "id": "storm_boss_spawn_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "f05c0c2cb842caa03257f930",
+   "provider": "fal",
+   "usd": 0.0051,
+   "voice_id_env": "EL_VOICE_STORM"
+  },
+  "f14018d5a75ee885fb838d1a": {
+   "at": "2026-11-24T09:36:04+00:00",
+   "chars": 52,
+   "id": "spark_kill_streak_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "f14018d5a75ee885fb838d1a",
+   "provider": "fal",
+   "usd": 0.0052,
+   "voice_id_env": "EL_VOICE_SPARK"
+  },
+  "f352a2da75e40fc1bbcf1950": {
+   "at": "2026-11-24T09:35:04+00:00",
+   "chars": 54,
+   "id": "warden_cast_1",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "f352a2da75e40fc1bbcf1950",
+   "provider": "fal",
+   "usd": 0.0054,
+   "voice_id_env": "EL_VOICE_WARDEN"
+  },
+  "f86bf909b464bd936acd3e55": {
+   "at": "2026-11-24T09:37:31+00:00",
+   "chars": 50,
+   "id": "storm_death_0",
+   "model_id": "eleven_multilingual_v2",
+   "ogg_from": "f86bf909b464bd936acd3e55",
+   "provider": "fal",
+   "usd": 0.005,
+   "voice_id_env": "EL_VOICE_STORM"
+  }
+ }
+}
