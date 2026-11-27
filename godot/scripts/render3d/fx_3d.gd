@@ -23,6 +23,7 @@ const SPARK_CAP := 700
 const MARK_CAP := 96
 const MARK_LIFT := 0.4             # marks lie this far above the ground (clear of its depth, under decals at 0.5)
 const ESHOT_RING := Color(1.0, 0.08, 0.46)      # enemy shots' ring: magenta-crimson
+const ESHOT_CAP := 360                         # World.spawn_eshot's own cap
 const DECAL_POOL := 110
 static var _headless := DisplayServer.get_name() == "headless"
 
@@ -32,6 +33,10 @@ var gem_mm: MultiMeshInstance3D
 var _gemb := PackedFloat32Array()
 var proj_mm: MultiMeshInstance3D
 var _pb := PackedFloat32Array()
+## Hostile shots in their own layer (eshot.gdshader: alpha-blended on a dark outline, no depth test, drawn last), not
+## in the additive glow pass, where the hero's own fire and the bodies they fly between hid them (one draw call).
+var esh_mm: MultiMeshInstance3D
+var _eb := PackedFloat32Array()
 var blade_mm: MultiMeshInstance3D
 var debris_mm: MultiMeshInstance3D
 var _db := PackedFloat32Array()
@@ -100,6 +105,9 @@ func _ready() -> void:
 	var bolt := SphereMesh.new(); bolt.radial_segments = 6; bolt.rings = 3; bolt.radius = 0.5; bolt.height = 1.0
 	proj_mm = _mm(bolt, 800, _lit_vc())
 	_pb.resize(800 * 20)
+	esh_mm = _mm(quad, ESHOT_CAP, _shader("res://shaders/3d/eshot.gdshader"))
+	(esh_mm.material_override as ShaderMaterial).render_priority = 100
+	_eb.resize(ESHOT_CAP * 20)
 	var blade := MeshKit.new()
 	blade.add("box", Vector3(0, 0, 0), Vector3(1.0, 0.12, 0.28), Color(0.85, 0.88, 0.95))
 	blade.add("prism", Vector3(0.62, 0, 0), Vector3(0.28, 0.1, 0.28), Color(0.95, 0.95, 1.0), 0, 0, Vector3(0, 0, -PI / 2))
@@ -457,20 +465,32 @@ func _projectiles(gn: int) -> int:
 		for k in 3:                                   # trail
 			var tp := pos - v * 0.018 * (k + 1)
 			_g(gn * 20, tp, p.r * (5.0 - k * 1.2), Color(p.col.r, p.col.g, p.col.b, 0.5 - k * 0.14), 0.0); gn += 1
+	var en := 0
 	for q in w.eshots:
-		if gn >= GLOW_CAP - 3: break
+		if en >= ESHOT_CAP: break
 		var qa := q.pos if q.prev == Vector2.INF else view.lerp_pos(q.prev, q.pos)
 		var qp := Vector3(qa.x, view.ground_y(qa) + 14.0, qa.y)
-		# hostile shots, one look for all of them: a white-hot core inside a vivid magenta-crimson ring. No
-		# hero spell uses that hue (fire is orange, cold cyan, lightning yellow), so a shot never reads as
-		# one of yours, and the ring's colour no longer follows the shooter's
-		_g(gn * 20, qp, q.r * 3.2, Color(ESHOT_RING.r, ESHOT_RING.g, ESHOT_RING.b, 0.95), 3.0, 0.6); gn += 1
-		_g(gn * 20, qp, q.r * 1.5, Color(1.0, 0.97, 0.95, 1.0), 2.0, 1.2); gn += 1
-		_g(gn * 20, qp - Vector3(q.vel.x, 0, q.vel.y) * 0.03, q.r * 2.2, Color(ESHOT_RING.r, ESHOT_RING.g, ESHOT_RING.b, 0.35), 0.0); gn += 1
+		# hostile shots, one look for all of them: a white-hot core inside a vivid magenta-crimson ring on a dark
+		# outline (eshot.gdshader). No hero spell uses that hue (fire is orange, cold cyan, lightning yellow), so a
+		# shot never reads as one of yours, and the ring's colour no longer follows the shooter's. 3.9 x r keeps
+		# the 12-unit ring of the old glow sprite (3.2 x r, ring at 0.75)
+		_e(en * 20, qp, q.r * 3.9)
+		en += 1
+	var emm := esh_mm.multimesh
+	if en > 0: emm.buffer = _eb          # nothing to draw: skip the upload
+	emm.visible_instance_count = en
 	var mm := proj_mm.multimesh
 	if pn > 0: mm.buffer = _pb          # nothing to draw: skip the upload
 	mm.visible_instance_count = pn
 	return gn
+
+## One hostile shot into the shot layer's buffer (_g's layout: scaled basis, ESHOT_RING, no custom data).
+func _e(o: int, p: Vector3, s: float) -> void:
+	_eb[o] = s; _eb[o + 1] = 0.0; _eb[o + 2] = 0.0; _eb[o + 3] = p.x
+	_eb[o + 4] = 0.0; _eb[o + 5] = s; _eb[o + 6] = 0.0; _eb[o + 7] = p.y
+	_eb[o + 8] = 0.0; _eb[o + 9] = 0.0; _eb[o + 10] = s; _eb[o + 11] = p.z
+	_eb[o + 12] = ESHOT_RING.r; _eb[o + 13] = ESHOT_RING.g; _eb[o + 14] = ESHOT_RING.b; _eb[o + 15] = 1.0
+	_eb[o + 16] = 0.0; _eb[o + 17] = 0.0; _eb[o + 18] = 0.0; _eb[o + 19] = 0.0
 
 ## In-place write into the projectile buffer (a member, so no copy-on-write).
 func _wb(o: int, b: Basis, p: Vector3, c: Color, cu: Color) -> void:
