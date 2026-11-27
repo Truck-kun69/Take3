@@ -100,6 +100,14 @@ void vertex() {
 		}
 		NORMAL = n1;
 		v_mpos = VERTEX;
+		// the hit squash (as in the procedural branch below) for the animated foes too: every common kind (grunt,
+		// runner, brute, spitter, charger) has an animation texture, so a hit was the emission pop alone. After v_mpos,
+		// so the skin noise stays on the body; feet at y 0, so the body squats onto them
+		if (INSTANCE_CUSTOM.z < 6.5) {
+			float hf = INSTANCE_CUSTOM.y;
+			VERTEX.xz *= 1.0 + hf * 1.5;
+			VERTEX.y *= 1.0 - hf * 1.2;
+		}
 	} else if (INSTANCE_CUSTOM.z < 6.5) {                           // corpses (7) are not animated
 		float ph = INSTANCE_CUSTOM.x;
 		float flash = INSTANCE_CUSTOM.y;
@@ -225,8 +233,9 @@ void fragment() {
 	if (ally) { base *= 0.4; em += vec3(0.6, 0.45, 1.0) * (0.6 + fres * 2.0); }
 	float fl = clamp(v_custom.y * 10.0, 0.0, 1.0);
 	// short, curved hit pop in one flat warm tone (it used to be base x2, which amplified every facet and
-	// noise detail into bright dots; a hammered crowd read as confetti; found by bisecting the shader)
-	em += vec3(0.95, 0.72, 0.6) * fl * fl * fl * 0.55;
+	// noise detail into bright dots; a hammered crowd read as confetti; found by bisecting the shader). Squared, not
+	// cubed: cubed, four frames after a hit (60 fps) only 4-13% of a foe's pixels still differed by 5 dE00
+	em += vec3(0.95, 0.72, 0.6) * fl * fl * 0.55;
 	if (corpse) {
 		// crumble from the edges, glowing at the burn line, then gone
 		base *= 0.4 * (1.0 - 0.6 * v_custom.y);
