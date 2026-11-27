@@ -25,6 +25,12 @@ const MARK_LIFT := 0.4             # marks lie this far above the ground (clear 
 const ESHOT_RING := Color(1.0, 0.08, 0.46)      # enemy shots' ring: magenta-crimson
 const ESHOT_CAP := 360                         # World.spawn_eshot's own cap
 const DECAL_POOL := 110
+## The big XP crystal (4+ XP): pale jade, its own colour. It was the coin's ffd84a (0 dE00 apart, the shape alone told
+## them apart); a6ffc9 is 31.0 / 17.8 / 19.2 / 41.6 dE00 from the coin (normal / protan / deutan / tritan) and at least
+## 12.9 / 8.6 / 11.7 / 7.5 from every element (both palettes) and rarity colour (ffd84a: 7.2 / 2.3 / 0.9 / 4.9)
+const GEM_BIG := Color("a6ffc9")
+## Crystal emission: at 2.2 both kinds blew out to near-white (#91a2b2 for 6be8ff, 22.6 dE00 off; 5.7 at 0.9)
+const GEM_EM := 0.9
 static var _headless := DisplayServer.get_name() == "headless"
 
 var glow_mm: MultiMeshInstance3D
@@ -83,14 +89,18 @@ static func _shader(path: String) -> ShaderMaterial:
 	m.shader = load(path)
 	return m
 
+## Lit vertex-colour instances (XP crystals, pickups, projectile cores, debris, blades). The instance colour is an sRGB
+## hex, linearised per vertex: read as linear, the heart (ff3a4e) rendered pink #f194b6 and the crystals near-white.
 static func _lit_vc() -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
 render_mode diffuse_burley;
 varying vec4 v_c;
-void vertex() { v_c = INSTANCE_CUSTOM; }      // instance transforms carry world heights (view.ground_y)
-void fragment() { ALBEDO = COLOR.rgb; ROUGHNESS = 0.35 + 0.5 * v_c.y; METALLIC = v_c.z; EMISSION = COLOR.rgb * v_c.x; }"""
+varying vec3 v_col;
+vec3 lin(vec3 c) { return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045))); }
+void vertex() { v_c = INSTANCE_CUSTOM; v_col = lin(COLOR.rgb); }      // instance transforms carry world heights (view.ground_y)
+void fragment() { ALBEDO = v_col; ROUGHNESS = 0.35 + 0.5 * v_c.y; METALLIC = v_c.z; EMISSION = v_col * v_c.x; }"""
 	m.shader = sh
 	return m
 
@@ -129,10 +139,13 @@ func _ready() -> void:
 	bs.code = """shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 uniform float time = 0.0;
+varying vec3 v_col;
+vec3 lin(vec3 c) { return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045))); }
+void vertex() { v_col = lin(COLOR.rgb); }      // the rarity hex, linearised
 void fragment() {
 	float h = UV.y;
 	float a = pow(h, 2.2) * (0.75 + 0.25 * sin(time * 5.0 + UV.x * 20.0));
-	ALBEDO = COLOR.rgb * 2.0;
+	ALBEDO = v_col * 2.0;
 	ALPHA = clamp(a * COLOR.a, 0.0, 1.0);
 }"""
 	bm.shader = bs
@@ -521,13 +534,13 @@ func _gems(dt: float) -> void:
 		var s := 9.0 if big else 6.0
 		var b := Basis(Vector3.UP, time * 2.5 + i).scaled(Vector3(s, s * 1.6, s))
 		var p := Vector3(g.x, view.ground_y(g) + 10.0 + sin(time * 4.0 + i) * 2.5, g.y)
-		var c := Color("ffd84a") if big else gc
+		var c := GEM_BIG if big else gc
 		var o := n * 20
 		_gemb[o] = b.x.x; _gemb[o + 1] = b.y.x; _gemb[o + 2] = b.z.x; _gemb[o + 3] = p.x
 		_gemb[o + 4] = b.x.y; _gemb[o + 5] = b.y.y; _gemb[o + 6] = b.z.y; _gemb[o + 7] = p.y
 		_gemb[o + 8] = b.x.z; _gemb[o + 9] = b.y.z; _gemb[o + 10] = b.z.z; _gemb[o + 11] = p.z
 		_gemb[o + 12] = c.r; _gemb[o + 13] = c.g; _gemb[o + 14] = c.b; _gemb[o + 15] = 1.0
-		_gemb[o + 16] = 2.2; _gemb[o + 17] = 0.0; _gemb[o + 18] = 0.0; _gemb[o + 19] = 0.0
+		_gemb[o + 16] = GEM_EM; _gemb[o + 17] = 0.0; _gemb[o + 18] = 0.0; _gemb[o + 19] = 0.0
 		n += 1
 	var mm := gem_mm.multimesh
 	if n > 0: mm.buffer = _gemb          # nothing to draw: skip the upload
