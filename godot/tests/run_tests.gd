@@ -4644,6 +4644,13 @@ func _keystone_deal_tests() -> void:
 	sv.data.stats.runs = runs0
 	ok(res[0][0] == 0 and res[0][1] == 200, "a first run's keystone deal holds no roll-, flask- or regen-taking keystone and can be skipped (%d of 200 held one, %d had Second Wind)" % res[0])
 	ok(res[World.KEYSTONE_NEW_RUNS][0] > 0 and res[World.KEYSTONE_NEW_RUNS][1] == 200, "from the third run they are dealt again, still with the skip (%d of 200, %d)" % res[World.KEYSTONE_NEW_RUNS])
+	# a carried weapon below level 5 is in every ordinary deal (it was in 21% of them: eleven perks diluted the pool)
+	var with_w := 0
+	for k in 200:
+		var w2 := _world({"mode": "campaign", "stage": 0, "hero": k % 4, "seed": 900 + k})
+		w2.lvl = 2 + k % 5
+		if w2.make_choices().any(func(c): return c.kind == "w" and w2.weapons.has(c.id)): with_w += 1
+	ok(with_w == 200, "every ordinary level-up deals a level for a carried weapon below level 5 (%d of 200)" % with_w)
 
 func _evolve_pair_tests() -> void:
 	var w := _world({"mode": "campaign", "stage": 0, "hero": 0, "seed": 81})

@@ -2645,6 +2645,19 @@ func make_choices() -> Array:
 		if seen.has(key): continue
 		seen[key] = true
 		out.append(c)
+	# a carried weapon below level 5 is always offered: eleven perks diluted the pool, so the starting weapon's level
+	# was in 21% of the deals and a player taking it whenever it came evolved at a median level of 20
+	var carried := pool.filter(func(c): return c.kind == "w" and weapons.has(c.id))
+	if not carried.is_empty() and not out.any(func(c): return c.kind == "w" and weapons.has(c.id)):
+		for kind in ["p", "g", "w"]:
+			var at := -1
+			for i in range(out.size() - 1, -1, -1):
+				if out[i].kind == kind:
+					at = i
+					break
+			if at >= 0:
+				out[at] = carried[0]
+				break
 	if out.is_empty(): out.append({"kind": "heal", "id": "heal"})
 	return out
 
